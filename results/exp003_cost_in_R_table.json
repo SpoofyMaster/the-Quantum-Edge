@@ -1,0 +1,212 @@
+{
+  "experiment": "exp003_cost_in_R_table",
+  "status": "ARITHMETIC on UNVERIFIED specs + placeholder spreads",
+  "rows": [
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 3,
+      "cost_R": 0.3666666666666666,
+      "breakeven_winrate_1p5R": 0.5466666666666666
+    },
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 5,
+      "cost_R": 0.21999999999999997,
+      "breakeven_winrate_1p5R": 0.488
+    },
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 8,
+      "cost_R": 0.13749999999999998,
+      "breakeven_winrate_1p5R": 0.45499999999999996
+    },
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 12,
+      "cost_R": 0.09166666666666665,
+      "breakeven_winrate_1p5R": 0.43666666666666665
+    },
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 20,
+      "cost_R": 0.05499999999999999,
+      "breakeven_winrate_1p5R": 0.422
+    },
+    {
+      "symbol": "EURUSD",
+      "stop_pips": 30,
+      "cost_R": 0.03666666666666666,
+      "breakeven_winrate_1p5R": 0.41466666666666663
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 3,
+      "cost_R": 0.43333333333333324,
+      "breakeven_winrate_1p5R": 0.5733333333333333
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 5,
+      "cost_R": 0.25999999999999995,
+      "breakeven_winrate_1p5R": 0.504
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 8,
+      "cost_R": 0.16249999999999998,
+      "breakeven_winrate_1p5R": 0.465
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 12,
+      "cost_R": 0.10833333333333331,
+      "breakeven_winrate_1p5R": 0.44333333333333336
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 20,
+      "cost_R": 0.06499999999999999,
+      "breakeven_winrate_1p5R": 0.426
+    },
+    {
+      "symbol": "GBPUSD",
+      "stop_pips": 30,
+      "cost_R": 0.04333333333333333,
+      "breakeven_winrate_1p5R": 0.4173333333333333
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 3,
+      "cost_R": 0.5166666666666666,
+      "breakeven_winrate_1p5R": 0.6066666666666667
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 5,
+      "cost_R": 0.30999999999999994,
+      "breakeven_winrate_1p5R": 0.524
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 8,
+      "cost_R": 0.19374999999999998,
+      "breakeven_winrate_1p5R": 0.47750000000000004
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 12,
+      "cost_R": 0.12916666666666665,
+      "breakeven_winrate_1p5R": 0.45166666666666666
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 20,
+      "cost_R": 0.07749999999999999,
+      "breakeven_winrate_1p5R": 0.43099999999999994
+    },
+    {
+      "symbol": "USDJPY",
+      "stop_pips": 30,
+      "cost_R": 0.05166666666666666,
+      "breakeven_winrate_1p5R": 0.4206666666666667
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 3,
+      "cost_R": 0.6333333333333332,
+      "breakeven_winrate_1p5R": 0.6533333333333333
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 5,
+      "cost_R": 0.38,
+      "breakeven_winrate_1p5R": 0.5519999999999999
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 8,
+      "cost_R": 0.2375,
+      "breakeven_winrate_1p5R": 0.495
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 12,
+      "cost_R": 0.1583333333333333,
+      "breakeven_winrate_1p5R": 0.46333333333333326
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 20,
+      "cost_R": 0.095,
+      "breakeven_winrate_1p5R": 0.438
+    },
+    {
+      "symbol": "XAUUSD",
+      "stop_pips": 30,
+      "cost_R": 0.06333333333333334,
+      "breakeven_winrate_1p5R": 0.4253333333333333
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 3,
+      "cost_R": 0.7799999999999999,
+      "breakeven_winrate_1p5R": 0.712
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 5,
+      "cost_R": 0.4679999999999999,
+      "breakeven_winrate_1p5R": 0.5871999999999999
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 8,
+      "cost_R": 0.2925,
+      "breakeven_winrate_1p5R": 0.517
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 12,
+      "cost_R": 0.19499999999999998,
+      "breakeven_winrate_1p5R": 0.47800000000000004
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 20,
+      "cost_R": 0.11699999999999998,
+      "breakeven_winrate_1p5R": 0.4468
+    },
+    {
+      "symbol": "XAGUSD",
+      "stop_pips": 30,
+      "cost_R": 0.078,
+      "breakeven_winrate_1p5R": 0.4312
+    }
+  ],
+  "EURUSD": {
+    "commission_price_units": 7e-05,
+    "round_trip_cost_price": 0.00010999999999999999,
+    "round_trip_cost_pips": 1.0999999999999999
+  },
+  "GBPUSD": {
+    "commission_price_units": 7e-05,
+    "round_trip_cost_price": 0.00013,
+    "round_trip_cost_pips": 1.2999999999999998
+  },
+  "USDJPY": {
+    "commission_price_units": 0.010499999999999999,
+    "round_trip_cost_price": 0.015499999999999998,
+    "round_trip_cost_pips": 1.5499999999999998
+  },
+  "XAUUSD": {
+    "commission_price_units": 0.07,
+    "round_trip_cost_price": 0.19,
+    "round_trip_cost_pips": 1.9
+  },
+  "XAGUSD": {
+    "commission_price_units": 0.0014,
+    "round_trip_cost_price": 0.023399999999999997,
+    "round_trip_cost_pips": 2.34
+  },
+  "markdown": "| Symbol | pip unit | RT cost (pips) | stop 3p: cost R / BE win% @1.5R | stop 5p: cost R / BE win% @1.5R | stop 8p: cost R / BE win% @1.5R | stop 12p: cost R / BE win% @1.5R | stop 20p: cost R / BE win% @1.5R | stop 30p: cost R / BE win% @1.5R |\n|---|---|---|---|---|---|---|---|---|\n| EURUSD | 0.0001 | 1.10 | 0.37 / 54.7% | 0.22 / 48.8% | 0.14 / 45.5% | 0.09 / 43.7% | 0.05 / 42.2% | 0.04 / 41.5% |\n| GBPUSD | 0.0001 | 1.30 | 0.43 / 57.3% | 0.26 / 50.4% | 0.16 / 46.5% | 0.11 / 44.3% | 0.06 / 42.6% | 0.04 / 41.7% |\n| USDJPY | 0.01 | 1.55 | 0.52 / 60.7% | 0.31 / 52.4% | 0.19 / 47.8% | 0.13 / 45.2% | 0.08 / 43.1% | 0.05 / 42.1% |\n| XAUUSD | 0.1 | 1.90 | 0.63 / 65.3% | 0.38 / 55.2% | 0.24 / 49.5% | 0.16 / 46.3% | 0.10 / 43.8% | 0.06 / 42.5% |\n| XAGUSD | 0.01 | 2.34 | 0.78 / 71.2% | 0.47 / 58.7% | 0.29 / 51.7% | 0.19 / 47.8% | 0.12 / 44.7% | 0.08 / 43.1% |"
+}

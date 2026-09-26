@@ -1,0 +1,46 @@
+# Global research configuration. Changing any value here must be logged in the journal.
+
+[account]
+currency = "USD"
+initial_equity = 100000.0
+
+[risk]
+risk_per_trade_pct = 0.20        # % of equity at stop, INCLUDING estimated costs
+max_daily_loss_pct = 1.00        # planned daily loss incl. commissions -> lockout
+max_open_risk_pct = 0.60         # sum of open-position risk (correlation-adjusted)
+max_positions = 3
+max_holding_minutes = 120
+min_holding_minutes_target = 5   # preference, never blocks a protective stop
+correlation_threshold = 0.60     # |rho| above which exposures are aggregated
+exec_health_max_spread_mult = 3.0  # circuit breaker: spread > k * median spread for the hour
+exec_health_max_consecutive_rejects = 3
+
+[execution]
+entry = "next_bar_open"          # decisions at bar close t, fill at open t+1
+intrabar_policy = "stop_first"   # if stop & target inside the same bar, assume stop hit
+default_slippage_ticks = 1.0     # extra adverse ticks per market order
+latency_bars = 0                 # extra bars of delay on top of next_bar_open (stress tests use 1)
+
+[splits]
+# Chronological. The final test period is LOCKED until a strategy freeze is journaled.
+data_start = "2020-01-01"
+dev_end = "2023-12-31"            # model development / walk-forward
+validation_end = "2025-06-30"     # validation (still used for selection -> counts in trial registry)
+final_test_start = "2025-07-01"   # UNTOUCHED final test
+embargo_minutes = 240             # purge/embargo around fold boundaries (>= 2x max horizon)
+
+[sessions]
+# Local wall-clock times; converted with zoneinfo so DST is handled per region.
+asia_tz = "Asia/Tokyo"
+asia_open = "09:00"
+asia_close = "15:00"
+london_tz = "Europe/London"
+london_open = "08:00"
+london_close = "16:30"
+newyork_tz = "America/New_York"
+newyork_open = "08:00"
+newyork_close = "17:00"
+rollover_tz = "America/New_York"
+rollover_time = "17:00"           # FX day boundary; no new trades / no positions held across
+rollover_blackout_before_min = 15
+rollover_blackout_after_min = 30
