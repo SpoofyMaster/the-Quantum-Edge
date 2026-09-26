@@ -9,7 +9,7 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [!] R-3 Official IC Markets Raw specs per symbol (icmarkets.com blocked) → user can verify via MT5 Specification (see broker_specs.md)
 - [x] R-4 Hypothesis register H-01…H-10 with measurable definitions — Day 1
 - [ ] R-5 Economic-calendar source for tier-1 news blackout (H-10) — find a licensed/free historical calendar with timestamps
-- [ ] R-6 Write de-seasonalised impulse definition (vol normalised by same-minute-of-week median over trailing 20 weeks) — code + causality test
+- [x] R-6 De-seasonalised impulse (qe.features.seasonal_sigma) + causality test — Day 2
 
 ## Infrastructure (done Day 1, all unit-tested)
 - [x] I-1 Canonical M1 bid/ask schema + quality report
@@ -22,23 +22,33 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [x] I-8 Stats: stationary bootstrap, PSR, DSR, MC drawdown, calibration (Brier/ECE)
 
 ## Data (Days 4–7)
-- [!] D-1 Download Dukascopy 2020-01→latest for EURUSD, GBPUSD, USDJPY, XAUUSD, XAGUSD (`scripts/fetch_dukascopy.py`) — BLOCKED by egress policy; needs `datafeed.dukascopy.com` allowed, or user uploads data
+- [x] D-1 M1 2020-01→2025-06 for 5 symbols via GitHub Actions (HistData, bid-only) — Day 2. Dukascopy returned HTTP 503 to GitHub runners → [!] D-1b observed bid/ask source still missing
 - [?] D-2 User exports IC Markets MT5 M1 + spread (`tools/mql5/ExportM1WithSpread.mq5`) to measure broker-specific spreads
-- [ ] D-3 Spread & volatility seasonality by minute-of-week per symbol; recompute exp003 with measured spreads
-- [ ] D-4 Data-quality report per symbol/year; reconcile Dukascopy vs MT5 bars (price & spread deltas)
+- [x] D-3 Volatility seasonality + cost-in-R by session (EXP004) — Day 2. Spread part blocked (no observed spreads)
+- [x] D-4 Data-quality report per symbol/year (EXP004) — Day 2; [ ] D-4b reconcile against a second source
 - [?] D-5 User runs `pine/tools/m1_coverage_probe.pine` on TradingView M1 for each symbol and reports first-bar date
 
 ## Probability engine (Days 8–12)
-- [ ] P-1 Event-conditional models (fit only on impulse/sweep events, not all bars) — lesson from M-04
-- [ ] P-2 Baseline = cost/regime-only model; directional model must beat it (rule from M-03)
-- [ ] P-3 Symmetric long/short labels; time-to-target survival curves (Kaplan–Meier) per horizon
+- [x] P-1 Event-conditional meta-label models on strategy trades (EXP006) — no OOS value → rejected
+- [x] P-2 Cost/regime-only baseline implemented and compared (EXP006)
+- [x] P-3 Competing-risks cumulative incidence tooling (qe.survival) — Day 2; [ ] apply to a future candidate
 - [ ] P-4 Candidate models: calibrated logistic, HMM regime, GARCH vol forecast, CUSUM change-points — keep only what adds OOS value
-- [ ] P-5 Power analysis on real data: trades/year needed to detect net EV of 0.05/0.1R (exp001 suggests >1 symbol-year is necessary)
+- [x] P-5 SNR/cost frontier on real data (EXP008): best net IR ≈ 0.02 → 20–40 years for t=3
 
 ## Validation / later
-- [ ] V-1 Cost stress (+50% spread, +1 bar latency, 2 ticks slippage)
+- [x] V-1 Cost stress: spread ×2, slippage 3 ticks, +1 bar latency (EXP006/007)
 - [ ] V-2 Parameter-stability heatmaps
-- [ ] V-3 Year/session/regime breakdowns
+- [x] V-3 Per-year breakdowns (EXP006/007); session split built into families
 - [ ] V-4 Probability of Backtest Overfitting (CSCV)
-- [ ] T-1 Pine v6 strategy + dashboard (only after edge gate)
+- [x] T-1 Pine v6 research prototype + dashboard (pine/quantum_edge_impulse_reversion.pine) — NOT compiled; demo/paper only
 - [?] Q-1 MQL5 EA — requires explicit human approval after validation
+
+## Day 2 outcome and next research cycle (needs user input or new data)
+- [x] EXP005 event study (275 cells, FDR), EXP006 executable strategies + stress + meta-labels, EXP007 pre-registered validation look, EXP008 SNR frontier
+- [x] Final deliverables: docs/deliverables/{FINAL_REPORT, REPRODUCE, paper_trading_plan, mql5_spec}.md
+- [?] U-1 User: compile `pine/quantum_edge_impulse_reversion.pine` and `pine/tools/m1_coverage_probe.pine` on TradingView; report errors or first-bar dates
+- [?] U-2 User: verify IC Markets specs in MT5 (docs/research/broker_specs.md); export M1 + spread with tools/mql5/ExportM1WithSpread.mq5
+- [?] U-3 User: decide whether to run the forward paper test (docs/deliverables/paper_trading_plan.md)
+- [ ] N-1 Re-run EXP005/006 with observed spreads once U-2 data exists (new trial family; validation already used once for H-11 only)
+- [ ] N-2 New information sources for new hypotheses: economic-calendar surprises; order-flow data
+- [ ] N-3 Retry Dukascopy from CI with low concurrency (503 may be rate-limiting); reconcile vs HistData (D-4b)

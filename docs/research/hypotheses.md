@@ -25,7 +25,7 @@ next-bar open, in units of round-trip cost, for H ∈ {5, 15, 30, 60, 120} min. 
 | ID | Statement (measurable) | Status | Evidence (dev period only) |
 |---|---|---|---|
 | H-01 | After a de-seasonalised 5-min impulse > k·σ in London/NY, price **continues**. | **REJECTED** | Significantly **negative** on EURUSD, GBPUSD, XAUUSD, XAGUSD for k = 3/4/5 and H = 5–60 (q ≤ 0.05). Example: XAUUSD k=5 at H=30 is −1.51× cost. USDJPY is not significant. |
-| H-02 | The same impulse in Asia / late NY **reverts**. | **SUPPORTED on dev, pending validation** | EURUSD k=5 at H=120: +1.59 pips = 1.32× cost, CI [0.93, 2.24], q = 0.0001. GBPUSD k=3 at H=120: 0.66× cost. XAUUSD k=3 at H=30: 0.40× cost. |
+| H-02 | The same impulse in Asia / late NY **reverts**. | **Gross effect SUPPORTED; strategy REJECTED** (EXP006 net −0.017R, CI [−0.063, 0.029]) | EURUSD k=5 at H=120: +1.59 pips = 1.32× cost, CI [0.93, 2.24], q = 0.0001. GBPUSD k=3 at H=120: 0.66× cost. XAUUSD k=3 at H=30: 0.40× cost. |
 | H-03 | London-open 30-min range break continues. | REJECTED (no evidence) | No FDR survivor. Best cell is USDJPY H=60 at 0.66× cost, CI includes 0. |
 | H-04 | Previous-FX-day high/low sweep reverts. | REJECTED (no evidence) | No survivor. |
 | H-05 | Round-number break with range expansion continues. | REJECTED | Where significant, the sign is *negative* (GBPUSD, XAUUSD, XAGUSD). |
@@ -34,7 +34,7 @@ next-bar open, in units of round-trip cost, for H ∈ {5, 15, 30, 60, 120} min. 
 | H-08 | USD strength into the 16:00 London fix, weakness after. | REJECTED (no evidence) | No survivor on any symbol. |
 | H-09 | USD-led metal impulses continue. | NOT TESTED | Continuation is rejected generally. |
 | H-10 | Spread/news suspension improves net EV. | BLOCKED | Needs observed spreads and a news calendar. |
-| **H-11** | **Fade** a de-seasonalised 5-min impulse > k·σ in London/NY (mean reversion within 15–60 min). | **GENERATED from dev data → EXP006, then one-shot validation (EXP007)** | This is the mirror image of H-01's rejection. It is data-snooped by construction, so only the untouched validation period can support it. |
+| **H-11** | **Fade** a de-seasonalised 5-min impulse > k·σ in London/NY (mean reversion within 15–60 min). | **REJECTED** | Gross effect is real on dev (XAUUSD k5 H30 = 1.5× cost). As an executed strategy, EXP006 dev gives +0.021R, CI [−0.017, 0.059], DSR 0.00. EXP007 validation (2024-01 → 2025-06, pre-registered) gives **−0.055R**, CI [−0.110, 0.000], and −0.073R at spread ×2. |
 
 Caveats that apply to every row:
 - HistData is bid-only, so spreads are **modelled**, not observed.

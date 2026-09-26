@@ -339,3 +339,5 @@
 {"ts": "2026-09-26T20:25:48+00:00", "experiment": "exp006_strategy_wf_dev", "data_kind": "market_dev", "variant": {"symbol": "EURUSD", "family": "H11_impulse_k4_active_fade", "H": 30, "variant": "stress_latency1"}, "metrics": {}}
 {"ts": "2026-09-26T20:25:49+00:00", "experiment": "exp006_strategy_wf_dev", "data_kind": "market_dev", "variant": {"symbol": "EURUSD", "family": "H11_impulse_k4_active_fade", "H": 30, "variant": "exitB_time_2x_stop"}, "metrics": {}}
 {"ts": "2026-09-26T20:25:51+00:00", "experiment": "exp006_strategy_wf_dev", "data_kind": "market_dev", "variant": {"symbol": "EURUSD", "family": "H11_impulse_k4_active_fade", "H": 30, "variant": "stress_spread2x"}, "metrics": {}}
+{"ts": "2026-09-26T20:29:23+00:00", "experiment": "exp007_validation_confirm", "data_kind": "market_validation", "variant": {"symbol": "XAUUSD", "family": "H11_impulse_k5_active_fade", "H": 30, "variant": "base"}, "metrics": {}}
+{"ts": "2026-09-26T20:29:25+00:00", "experiment": "exp007_validation_confirm", "data_kind": "market_validation", "variant": {"symbol": "XAUUSD", "family": "H11_impulse_k5_active_fade", "H": 30, "variant": "stress_spread2x"}, "metrics": {}}

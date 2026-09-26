@@ -15,4 +15,9 @@ python -m pytest -q                                   # unit tests
 python experiments/exp001_pipeline_null_and_power.py  # synthetic pipeline validation
 ```
 
-**Current state:** infrastructure and synthetic validation only. No market data has been analysed yet.
+**Current state (2026-09-26): research cycle 1 complete — NO tradable edge found.**
+- Largest effect found: a short-term reversal after big impulses. It is statistically real, but
+  worth about 0.02 information ratio per trade after costs.
+- Out of sample, the best candidate lost money: 2024–2025H1 net −0.055R per trade.
+- Read [`docs/deliverables/FINAL_REPORT.md`](docs/deliverables/FINAL_REPORT.md). No live trading;
+  MQL5 not started (needs approval, not recommended).
