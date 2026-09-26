@@ -12,6 +12,9 @@ on:
       symbols:
         description: "comma-separated symbols to fetch"
         default: "EURUSD,GBPUSD,USDJPY,XAUUSD,XAGUSD"
+      source:
+        description: "dukascopy (bid+ask, preferred) or histdata (bid only, spreads assumed)"
+        default: "dukascopy"
       start:
         default: "2020-01-01"
       end:
@@ -34,6 +37,7 @@ jobs:
       SYMBOLS: ${{ inputs.symbols }}
       START: ${{ inputs.start }}
       END: ${{ inputs.end }}
+      SOURCE: ${{ inputs.source }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,29 +50,40 @@ jobs:
           [[ "$EXPERIMENT" =~ ^exp[0-9]{3}_[a-z0-9_]+$ ]] || { echo "bad experiment name"; exit 1; }
           [[ "$SYMBOLS" =~ ^[A-Z,]+$ ]] || { echo "bad symbols"; exit 1; }
           [[ "$START$END" =~ ^[0-9-]+$ ]] || { echo "bad dates"; exit 1; }
+          [[ "$SOURCE" =~ ^(dukascopy|histdata)$ ]] || { echo "bad source"; exit 1; }
           test -f "experiments/$EXPERIMENT.py"
       - name: Restore market-data cache
         uses: actions/cache/restore@v4
         with:
           path: data
-          key: m1-v1-${{ github.run_id }}
-          restore-keys: m1-v1-
-      - name: Probe Dukascopy connectivity
+          key: m1-${{ inputs.source }}-v1-${{ github.run_id }}
+          restore-keys: m1-${{ inputs.source }}-v1-
+      - name: Probe data-source connectivity
         run: |
+          mkdir -p logs
+          curl -sS -m 30 -A "Mozilla/5.0" -o /dev/null -w "%{http_code} %{time_total}s histdata\n" https://www.histdata.com/ 2>&1 | tee -a logs/probe.log || true
           for u in "https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5" \
                    "https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5"; do
-            curl -sS -m 30 -A "Mozilla/5.0" -o /tmp/probe.bin -w "%{http_code} %{size_download} bytes %{time_total}s $u\n" "$u" || echo "curl failed: $u"
+            curl -sS -m 30 -A "Mozilla/5.0" -o /tmp/probe.bin -w "%{http_code} %{size_download} bytes %{time_total}s $u\n" "$u" 2>&1 | tee -a logs/probe.log || echo "curl failed: $u" | tee -a logs/probe.log
           done
-      - name: Fetch missing months (Dukascopy)
-        run: python scripts/fetch_dukascopy_m1.py "$SYMBOLS" "$START" "$END"
+      - name: Fetch missing months
+        run: |
+          set -o pipefail
+          if [ "$SOURCE" = "histdata" ]; then
+            python scripts/fetch_histdata_m1.py "$SYMBOLS" "${START:0:4}" "${END:0:4}" 2>&1 | tee logs/fetch.log
+          else
+            python scripts/fetch_dukascopy_m1.py "$SYMBOLS" "$START" "$END" 2>&1 | tee logs/fetch.log
+          fi
       - name: Save market-data cache
         if: always()
         uses: actions/cache/save@v4
         with:
           path: data
-          key: m1-v1-${{ github.run_id }}
+          key: m1-${{ inputs.source }}-v1-${{ github.run_id }}
       - name: Run experiment
-        run: python "experiments/$EXPERIMENT.py"
+        run: |
+          set -o pipefail
+          python "experiments/$EXPERIMENT.py" 2>&1 | tee "logs/$EXPERIMENT.log"
       - name: Publish aggregated results to ci-results branch
         if: always()
         run: |
@@ -76,6 +91,8 @@ jobs:
           mkdir -p /tmp/out/results
           cp results/*.json /tmp/out/results/ 2>/dev/null || true
           cp data/fetch_report_*.json /tmp/out/results/ 2>/dev/null || true
+          mkdir -p /tmp/out/logs
+          for f in logs/*.log; do [ -f "$f" ] && tail -c 200000 "$f" > "/tmp/out/logs/$(basename "$f")"; done
           git config user.name "quantum-edge-ci"
           git config user.email "actions@users.noreply.github.com"
           git reset -q --hard
@@ -86,8 +103,9 @@ jobs:
             git checkout --orphan ci-results
             git rm -rf -q .
           fi
-          mkdir -p results
-          cp /tmp/out/results/*.json results/
-          git add results
+          mkdir -p results logs
+          cp /tmp/out/results/*.json results/ 2>/dev/null || true
+          cp /tmp/out/logs/*.log logs/ 2>/dev/null || true
+          git add results logs
           git commit -q -m "CI results: $EXPERIMENT (run ${{ github.run_id }})" || echo "nothing to commit"
           git push origin ci-results
