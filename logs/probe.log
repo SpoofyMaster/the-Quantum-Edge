@@ -1,3 +1,4 @@
-200 1.018485s histdata
-503 107 bytes 1.145224s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5
-503 107 bytes 0.513660s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5
+200 0.778909s histdata
+200 11346 bytes 19.060523s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5
+curl: (28) Connection timed out after 30002 milliseconds
+000 0 bytes 30.002782s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5
