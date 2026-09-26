@@ -1,0 +1,69 @@
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/09/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/01/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/03/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/07/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/05/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/02/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/08/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/09/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/03/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/02/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/07/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/05/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/01/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/08/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/09/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/05/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/07/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/02/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/08/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/01/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/03/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/01/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/02/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/09/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/10/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/05/BID_candles_min_1.bi5: The read operation timed out
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/07/BID_candles_min_1.bi5: The read operation timed out
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/08/BID_candles_min_1.bi5: The read operation timed out
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/03/BID_candles_min_1.bi5: The read operation timed out
+retry 2/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/10/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
+retry 1/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/12/BID_candles_min_1.bi5: The read operation timed out
+retry 3/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/10/BID_candles_min_1.bi5: The read operation timed out
+retry 4/4 https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/10/BID_candles_min_1.bi5: <urlopen error _ssl.c:999: The handshake operation timed out>
+Traceback (most recent call last):
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 88, in <module>
+    main(*sys.argv[1:4])
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 74, in main
+    parts = [p for p in ex.map(lambda d: day_bars(sym, d), days) if not p.empty]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 74, in <listcomp>
+    parts = [p for p in ex.map(lambda d: day_bars(sym, d), days) if not p.empty]
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/concurrent/futures/_base.py", line 619, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/concurrent/futures/_base.py", line 317, in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/concurrent/futures/_base.py", line 456, in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/concurrent/futures/_base.py", line 401, in __get_result
+    raise self._exception
+  File "/opt/hostedtoolcache/Python/3.11.16/x64/lib/python3.11/concurrent/futures/thread.py", line 58, in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 74, in <lambda>
+    parts = [p for p in ex.map(lambda d: day_bars(sym, d), days) if not p.empty]
+                                         ^^^^^^^^^^^^^^^^
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 49, in day_bars
+    bid = decode_candles_bi5(fetch(candle_url(symbol, d, "BID")), symbol, d)
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/runner/work/the-Quantum-Edge/the-Quantum-Edge/scripts/fetch_dukascopy_m1.py", line 44, in fetch
+    raise RuntimeError(f"failed {url}: {err}")
+RuntimeError: failed https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/01/BID_candles_min_1.bi5: HTTP Error 503: Service Unavailable
