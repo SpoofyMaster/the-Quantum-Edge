@@ -363,36 +363,36 @@
   "bars": 30126,
   "sha256": "0d2e6c4a96272e80d00dd0084085104eac00a93edb523db4cd44e7a95c21676c",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  },
  "2025-02": {
   "bars": 27402,
   "sha256": "96bfb5c4d820478dfd5bacab4753d67fa828ebbe054ad7b90567e85cf93413c0",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  },
  "2025-03": {
   "bars": 28943,
   "sha256": "378963534dd66da509ffb5c9a2fb93f151c485fca84a07eed49f6b64d421e7e4",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  },
  "2025-04": {
   "bars": 28938,
   "sha256": "de055fbd8a77260586e77ac5c07f9f2d5b083a26d00abd29a82c3f9f5c7dd338",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  },
  "2025-05": {
   "bars": 30098,
   "sha256": "53238a5069b822f7d346af681797523d34b46699f0951eec098aa63e9d66ca39",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  },
  "2025-06": {
   "bars": 28873,
   "sha256": "86e63f4097d814007a4a05b64ca5642e136970b44ed34c0961dea07682454c7d",
   "source": "histdata.com M1 BID (ask assumed)",
-  "fetched_utc": "2026-09-26T20:20:23+00:00"
+  "fetched_utc": "2026-09-26T20:16:50+00:00"
  }
 }
