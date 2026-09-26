@@ -27,6 +27,9 @@ def events_impulse(f, ses, k):
     out = {}
     out[f"H01_impulse_k{k}_active_cont"] = (trig & active, d)
     out[f"H02_impulse_k{k}_quiet_revert"] = (trig & ~active & ~ses.rollover_blackout, -d)
+    # H-11 (generated from EXP005 on the dev period, where H-01 continuation was significantly
+    # NEGATIVE): fade the impulse in active sessions. Must be confirmed out of sample.
+    out[f"H11_impulse_k{k}_active_fade"] = (trig & active, -d)
     return out
 
 

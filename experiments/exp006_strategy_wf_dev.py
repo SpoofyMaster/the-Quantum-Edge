@@ -43,28 +43,31 @@ COST_FEATS = ["spread_rel", "vol_regime_60", "rv_ratio_15_240", "range_z", "tv_z
 
 
 def candidates(exp005: dict, max_n: int = 6) -> list[tuple[str, str, int, str]]:
-    # only cells significant in the HYPOTHESISED direction; strongest edge-over-cost first
-    surv = sorted([(x, s, f, int(h)) for s, f, h, x, _ in exp005.get("fdr", {}).get("survivors", []) if x > 0],
-                  reverse=True)
-    if surv:
-        return [(s, f, h, "fdr_survivor") for _, s, f, h in surv[:max_n]]
-    cells = []
-    for s, fams in exp005["symbols"].items():
-        for f, cell in fams.items():
-            for h, c in cell.get("by_h", {}).items():
-                if c["ci95"][0] > 0:
-                    cells.append((c["mean_over_cost"], s, f, int(h)))
-    cells.sort(reverse=True)
-    return [(s, f, h, "exploratory_top") for _, s, f, h in cells[:3]]
+    """FDR survivors (q<=0.10) in the hypothesised direction, plus H-01 survivors with NEGATIVE sign
+    re-expressed as the H-11 fade family (a hypothesis generated on this same dev data). One horizon
+    per (symbol, family) — the strongest — ranked by |mean_over_cost|, top `max_n`."""
+    best = {}
+    for s, f, h, x, _ in exp005.get("fdr", {}).get("survivors", []):
+        if x > 0:
+            fam = f
+        elif f.startswith("H01_"):
+            fam, x = f.replace("H01_", "H11_").replace("_active_cont", "_active_fade"), -x
+        else:
+            continue
+        if x > best.get((s, fam), (0, 0))[0]:
+            best[(s, fam)] = (x, int(h))
+    ranked = sorted(((x, s, fam, h) for (s, fam), (x, h) in best.items()), reverse=True)[:max_n]
+    return [(s, fam, h, f"fdr_survivor x_cost={x:.2f}") for x, s, fam, h in ranked]
 
 
-def signals_for(df, f, mask, d, H):
+def signals_for(df, f, mask, d, H, stop_mult=1.0, target_mult=1.5):
     idx = df.index[mask.fillna(False).to_numpy()]
     sigma = np.maximum(f["seasonal_sigma"], f["rv_60"]).reindex(idx)
     move = sigma * np.sqrt(H) * df.bc.reindex(idx)
     dd = pd.Series(np.asarray(d, float) if not np.isscalar(d) else d, index=df.index).reindex(idx)
-    sig = pd.DataFrame({"direction": dd, "stop_dist": 1.0 * move, "target_dist": 1.5 * move}, index=idx)
-    return sig.dropna()
+    tgt = target_mult * move if target_mult else move * np.nan
+    sig = pd.DataFrame({"direction": dd, "stop_dist": stop_mult * move, "target_dist": tgt}, index=idx)
+    return sig.dropna(subset=["direction", "stop_dist"])
 
 
 def meta_filter(trades, f, cfg, feats, margin=0.03):
@@ -130,6 +133,11 @@ def main():
                     row["variants"][name] = evaluate(tr[keep], name, count_trials("market_dev"))
                     row["variants"][name]["oos_scored_trades"] = int(scored.sum())
                     row["variants"][name + "_unfiltered_same_oos_window"] = evaluate(tr[scored], "unfiltered_oos", count_trials("market_dev"))
+        # exit variant B: time exit at H with a wide catastrophe stop (closest to what EXP005 measured)
+        sigB = signals_for(df, f, mask, d, H, stop_mult=2.0, target_mult=None)
+        trB, _ = backtest.run({sym: df}, {sym: sigB}, inst, cfg, backtest.BacktestConfig(**base_cfg))
+        register_trial(EXP, {"symbol": sym, "family": fam, "H": H, "variant": "exitB_time_2x_stop"}, {}, "market_dev")
+        row["variants"]["exitB_time_2x_stop"] = evaluate(trB, "exitB_time_2x_stop", count_trials("market_dev")) if len(trB) else {"trades": 0}
         # cost stress: whole modelled spread profile x2 (bid-only data) — signals unchanged
         df2 = load_m1(sym, DEV_START, DEV_END, cfg=cfg, spread_scale=2.0)
         tr2, _ = backtest.run({sym: df2}, {sym: sig}, inst, cfg, backtest.BacktestConfig(**base_cfg))
