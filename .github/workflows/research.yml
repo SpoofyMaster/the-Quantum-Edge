@@ -40,6 +40,8 @@ jobs:
       SOURCE: ${{ inputs.source }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # EXP007 records the commit that pre-registered its candidates
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -89,7 +91,7 @@ jobs:
         run: |
           set -e
           mkdir -p /tmp/out/results
-          cp results/*.json /tmp/out/results/ 2>/dev/null || true
+          cp results/*.json results/*.jsonl /tmp/out/results/ 2>/dev/null || true
           cp data/fetch_report_*.json /tmp/out/results/ 2>/dev/null || true
           mkdir -p /tmp/out/logs
           for f in logs/*.log; do [ -f "$f" ] && tail -c 200000 "$f" > "/tmp/out/logs/$(basename "$f")"; done
@@ -104,7 +106,7 @@ jobs:
             git rm -rf -q .
           fi
           mkdir -p results logs
-          cp /tmp/out/results/*.json results/ 2>/dev/null || true
+          cp /tmp/out/results/*.json /tmp/out/results/*.jsonl results/ 2>/dev/null || true
           cp /tmp/out/logs/*.log logs/ 2>/dev/null || true
           git add results logs
           git commit -q -m "CI results: $EXPERIMENT (run ${{ github.run_id }})" || echo "nothing to commit"
