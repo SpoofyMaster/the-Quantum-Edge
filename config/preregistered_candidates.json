@@ -1,0 +1,9 @@
+{
+  "registered_utc": "2026-09-26T20:40:00Z",
+  "purpose": "DOCUMENTATION-ONLY out-of-sample look. The edge gate already FAILED on the development period (EXP006: best net EV +0.021R, CI [-0.017, +0.059], DSR 0.00 after 317 market trials). This candidate cannot be accepted regardless of the validation outcome; the look measures whether the dev-period sign persists out of sample.",
+  "rules_frozen_from": "experiments/exp006_strategy_wf_dev.py (signals_for defaults: stop 1.0 x expected move, target 1.5 x, time exit at H) + qe/events.py + qe/backtest.py at this commit",
+  "candidates": [
+    {"symbol": "XAUUSD", "family": "H11_impulse_k5_active_fade", "H": 30,
+     "why": "highest dev-period net EV among EXP006 candidates"}
+  ]
+}

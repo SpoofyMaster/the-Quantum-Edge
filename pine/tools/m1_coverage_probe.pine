@@ -1,0 +1,39 @@
+//@version=6
+// Quantum Edge — M1 history coverage probe (research tool, no trading).
+// Purpose: measure how much M1 history THIS TradingView subscription actually loads for the chart
+// symbol, so we never claim TradingView tested bars it did not have.
+// Status: NOT YET COMPILED ON TRADINGVIEW (written in a sandbox without TradingView access).
+indicator("QE M1 Coverage Probe", overlay = true, max_labels_count = 10)
+
+var int   firstTime   = na
+var int   barCount    = 0
+var int   gapCount    = 0
+var int   missingMins = 0
+
+if na(firstTime)
+    firstTime := time
+barCount += 1
+
+// gaps > 1 minute that are NOT weekend closures (< 36h)
+if barCount > 1
+    int dtMin = (time - time[1]) / 60000
+    if dtMin > 1 and dtMin < 36 * 60
+        gapCount    += 1
+        missingMins += dtMin - 1
+
+var table t = table.new(position.top_right, 2, 7, bgcolor = color.new(color.black, 20), border_width = 1)
+if barstate.islast
+    table.cell(t, 0, 0, "Symbol", text_color = color.white)
+    table.cell(t, 1, 0, syminfo.tickerid, text_color = color.white)
+    table.cell(t, 0, 1, "Timeframe", text_color = color.white)
+    table.cell(t, 1, 1, timeframe.period, text_color = timeframe.period == "1" ? color.lime : color.red)
+    table.cell(t, 0, 2, "First bar (UTC)", text_color = color.white)
+    table.cell(t, 1, 2, str.format_time(firstTime, "yyyy-MM-dd HH:mm", "UTC"), text_color = color.yellow)
+    table.cell(t, 0, 3, "Last bar (UTC)", text_color = color.white)
+    table.cell(t, 1, 3, str.format_time(time, "yyyy-MM-dd HH:mm", "UTC"), text_color = color.white)
+    table.cell(t, 0, 4, "Bars loaded", text_color = color.white)
+    table.cell(t, 1, 4, str.tostring(barCount), text_color = color.white)
+    table.cell(t, 0, 5, "Intraweek gaps", text_color = color.white)
+    table.cell(t, 1, 5, str.tostring(gapCount), text_color = color.white)
+    table.cell(t, 0, 6, "Missing minutes", text_color = color.white)
+    table.cell(t, 1, 6, str.tostring(missingMins), text_color = color.white)

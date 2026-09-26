@@ -1,0 +1,40 @@
+{
+  "experiment": "exp002_null_auc_diagnostic",
+  "data": "SYNTHETIC null (same seed as EXP001)",
+  "frictionless_all_features_ex_spread": {
+    "oos_events": 48576,
+    "base_rate": 0.47679924242424243,
+    "auc": 0.5066980715434865,
+    "brier": 0.24999610350584708,
+    "brier_base_rate": 0.24946172484791093,
+    "brier_skill": -0.0021421268463606147,
+    "ece": 0.019698747067512953
+  },
+  "friction_cost_features_only": {
+    "oos_events": 48576,
+    "base_rate": 0.38105237154150196,
+    "auc": 0.5174301805252288,
+    "brier": 0.23550881483736194,
+    "brier_base_rate": 0.23585146168409907,
+    "brier_skill": 0.0014528078150988222,
+    "ece": 0.012218625861089624
+  },
+  "friction_directional_features_only": {
+    "oos_events": 48576,
+    "base_rate": 0.38105237154150196,
+    "auc": 0.4997425616821454,
+    "brier": 0.23618553269436207,
+    "brier_base_rate": 0.23585146168409907,
+    "brier_skill": -0.0014164466392430075,
+    "ece": 0.012059552629429211
+  },
+  "friction_all_features": {
+    "oos_events": 48576,
+    "base_rate": 0.38105237154150196,
+    "auc": 0.5100988791703094,
+    "brier": 0.23608076895563926,
+    "brier_base_rate": 0.23585146168409907,
+    "brier_skill": -0.0009722529167417449,
+    "ece": 0.018305761304598087
+  }
+}

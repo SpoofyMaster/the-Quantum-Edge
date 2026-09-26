@@ -1,0 +1,1229 @@
+{
+  "experiment": "exp001_pipeline_null_and_power",
+  "data": "SYNTHETIC (qe.synthetic.generate) - not market evidence",
+  "seed": 20260926,
+  "runs": [
+    {
+      "planted_edge_sigma_per_min": 0.0,
+      "bars": 372540,
+      "median_spread": 6.170728740650944e-05,
+      "strategies": [
+        {
+          "k": 2.5,
+          "mode": "continuation",
+          "signals": 3397,
+          "gross": {
+            "trades": 2201,
+            "net_profit_usd": -6016.9732239252335,
+            "net_return_pct": -6.016973223925233,
+            "win_rate": 0.41117673784643344,
+            "profit_factor": 0.9751198042876499,
+            "ev_R": -0.012715116968095722,
+            "ev_R_ci95": [
+              -0.060317550620188086,
+              0.03863738352031917
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.95320308950477,
+            "max_drawdown_pct": 9.390416528062367,
+            "sharpe_per_trade": -0.010882263428822548,
+            "psr_vs_0": 0.3052963120286484,
+            "rejects": {
+              "symbol_already_open": 882,
+              "daily_budget_insufficient": 206,
+              "rollover_blackout": 108
+            }
+          },
+          "net": {
+            "trades": 2123,
+            "net_profit_usd": -65057.82759245871,
+            "net_return_pct": -65.05782759245871,
+            "win_rate": 0.3457371643900141,
+            "profit_factor": 0.6073231494341167,
+            "ev_R": -0.24717502895504753,
+            "ev_R_ci95": [
+              -0.28583299929778466,
+              -0.2060037066618393
+            ],
+            "commission_usd": 30818.129999999997,
+            "avg_bars_held": 39.52896844088554,
+            "max_drawdown_pct": 65.05782759245878,
+            "sharpe_per_trade": -0.2478572981012985,
+            "psr_vs_0": 2.808318853880888e-26,
+            "rejects": {
+              "symbol_already_open": 782,
+              "daily_budget_insufficient": 384,
+              "rollover_blackout": 108
+            }
+          }
+        },
+        {
+          "k": 2.5,
+          "mode": "reversal",
+          "signals": 3397,
+          "gross": {
+            "trades": 2230,
+            "net_profit_usd": 25332.70248103216,
+            "net_return_pct": 25.332702481032157,
+            "win_rate": 0.4367713004484305,
+            "profit_factor": 1.095499492535383,
+            "ev_R": 0.052067723893113774,
+            "ev_R_ci95": [
+              0.0012320105393802511,
+              0.10106495744701599
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 42.00896860986547,
+            "max_drawdown_pct": 14.158847032751543,
+            "sharpe_per_trade": 0.044154546688919494,
+            "psr_vs_0": 0.9821176930777951,
+            "rejects": {
+              "symbol_already_open": 883,
+              "rollover_blackout": 108,
+              "daily_budget_insufficient": 176
+            }
+          },
+          "net": {
+            "trades": 2135,
+            "net_profit_usd": -60492.64877774173,
+            "net_return_pct": -60.49264877774173,
+            "win_rate": 0.3639344262295082,
+            "profit_factor": 0.639457892268852,
+            "ev_R": -0.21693464244559038,
+            "ev_R_ci95": [
+              -0.26353014466872055,
+              -0.17139634808791163
+            ],
+            "commission_usd": 31940.789999999997,
+            "avg_bars_held": 39.49555035128806,
+            "max_drawdown_pct": 62.33180267718676,
+            "sharpe_per_trade": -0.21576458117740213,
+            "psr_vs_0": 3.9406693844604454e-21,
+            "rejects": {
+              "symbol_already_open": 798,
+              "rollover_blackout": 108,
+              "daily_budget_insufficient": 356
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "continuation",
+          "signals": 1005,
+          "gross": {
+            "trades": 863,
+            "net_profit_usd": 6291.329336818505,
+            "net_return_pct": 6.291329336818506,
+            "win_rate": 0.4275782155272306,
+            "profit_factor": 1.0644968429078627,
+            "ev_R": 0.03686164033562145,
+            "ev_R_ci95": [
+              -0.040321584593889064,
+              0.11613549469861066
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 40.720741599073,
+            "max_drawdown_pct": 4.791135071009099,
+            "sharpe_per_trade": 0.031125829219629426,
+            "psr_vs_0": 0.8208981393557726,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 111,
+              "daily_budget_insufficient": 2
+            }
+          },
+          "net": {
+            "trades": 856,
+            "net_profit_usd": -27121.790092489908,
+            "net_return_pct": -27.121790092489906,
+            "win_rate": 0.37850467289719625,
+            "profit_factor": 0.6905779554895469,
+            "ev_R": -0.18404794522017978,
+            "ev_R_ci95": [
+              -0.24884725714487038,
+              -0.12066614966922459
+            ],
+            "commission_usd": 16349.410000000002,
+            "avg_bars_held": 38.29556074766355,
+            "max_drawdown_pct": 27.121790092489924,
+            "sharpe_per_trade": -0.17932868844799343,
+            "psr_vs_0": 2.8677550534262555e-07,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 118,
+              "daily_budget_insufficient": 2
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "reversal",
+          "signals": 1005,
+          "gross": {
+            "trades": 861,
+            "net_profit_usd": 2884.6077966685616,
+            "net_return_pct": 2.8846077966685617,
+            "win_rate": 0.42044134727061555,
+            "profit_factor": 1.0285551177942067,
+            "ev_R": 0.01797827541578691,
+            "ev_R_ci95": [
+              -0.05322561503590723,
+              0.09671033095941198
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 38.983739837398375,
+            "max_drawdown_pct": 7.127526186750835,
+            "sharpe_per_trade": 0.015157891460336883,
+            "psr_vs_0": 0.6721231479767582,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 112,
+              "daily_budget_insufficient": 3
+            }
+          },
+          "net": {
+            "trades": 863,
+            "net_profit_usd": -28393.22467920194,
+            "net_return_pct": -28.39322467920194,
+            "win_rate": 0.373117033603708,
+            "profit_factor": 0.6893363020898157,
+            "ev_R": -0.1928409909275961,
+            "ev_R_ci95": [
+              -0.2596396749483792,
+              -0.12610817718860542
+            ],
+            "commission_usd": 16999.78,
+            "avg_bars_held": 37.37543453070683,
+            "max_drawdown_pct": 31.282760534892695,
+            "sharpe_per_trade": -0.187997898146561,
+            "psr_vs_0": 7.834188162180969e-08,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 110,
+              "daily_budget_insufficient": 3
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "continuation",
+          "signals": 258,
+          "gross": {
+            "trades": 243,
+            "net_profit_usd": 789.2300931095972,
+            "net_return_pct": 0.7892300931095972,
+            "win_rate": 0.41975308641975306,
+            "profit_factor": 1.0286940721326223,
+            "ev_R": 0.017538028866407044,
+            "ev_R_ci95": [
+              -0.10581922611071021,
+              0.16885316749381699
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 38.30452674897119,
+            "max_drawdown_pct": 2.4422394577060285,
+            "sharpe_per_trade": 0.01480556479215749,
+            "psr_vs_0": 0.5913293390751341,
+            "rejects": {
+              "symbol_already_open": 10,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 242,
+            "net_profit_usd": -11435.803977743122,
+            "net_return_pct": -11.435803977743122,
+            "win_rate": 0.34710743801652894,
+            "profit_factor": 0.6037679395202845,
+            "ev_R": -0.2503775261760916,
+            "ev_R_ci95": [
+              -0.3801324171845979,
+              -0.12477227501882737
+            ],
+            "commission_usd": 5024.040000000001,
+            "avg_bars_held": 36.03305785123967,
+            "max_drawdown_pct": 11.455238587738155,
+            "sharpe_per_trade": -0.2485708479451979,
+            "psr_vs_0": 0.00018704722224071585,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "reversal",
+          "signals": 258,
+          "gross": {
+            "trades": 242,
+            "net_profit_usd": 263.485300240327,
+            "net_return_pct": 0.26348530024032696,
+            "win_rate": 0.41735537190082644,
+            "profit_factor": 1.0096198190596195,
+            "ev_R": 0.006936660118664016,
+            "ev_R_ci95": [
+              -0.12022728052392101,
+              0.13522275741899684
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 37.31818181818182,
+            "max_drawdown_pct": 4.215669338489834,
+            "sharpe_per_trade": 0.005849831231325081,
+            "psr_vs_0": 0.5362216603646689,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 242,
+            "net_profit_usd": -7079.935521317484,
+            "net_return_pct": -7.079935521317484,
+            "win_rate": 0.3925619834710744,
+            "profit_factor": 0.7417537173946465,
+            "ev_R": -0.1507518424667894,
+            "ev_R_ci95": [
+              -0.26985908291566507,
+              -0.03824035050556518
+            ],
+            "commission_usd": 5115.11,
+            "avg_bars_held": 35.09090909090909,
+            "max_drawdown_pct": 9.271752512008376,
+            "sharpe_per_trade": -0.14451998010267883,
+            "psr_vs_0": 0.015128694197948963,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          }
+        }
+      ],
+      "probability_model": {
+        "oos_events": 48576,
+        "base_rate": 0.38105237154150196,
+        "auc": 0.5100988791703094,
+        "brier": 0.23608076895563926,
+        "brier_base_rate": 0.23585146168409907,
+        "brier_skill": -0.0009722529167417449,
+        "ece": 0.018305761304598087
+      }
+    },
+    {
+      "planted_edge_sigma_per_min": 0.05,
+      "bars": 372540,
+      "median_spread": 6.170728740650944e-05,
+      "strategies": [
+        {
+          "k": 2.5,
+          "mode": "continuation",
+          "signals": 3405,
+          "gross": {
+            "trades": 2213,
+            "net_profit_usd": 3490.0473897894785,
+            "net_return_pct": 3.4900473897894786,
+            "win_rate": 0.4202440126525079,
+            "profit_factor": 1.0138934481066895,
+            "ev_R": 0.009155860003201736,
+            "ev_R_ci95": [
+              -0.039478365692032565,
+              0.056979775033983264
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.86398553999096,
+            "max_drawdown_pct": 6.588534338834677,
+            "sharpe_per_trade": 0.007815440992937822,
+            "psr_vs_0": 0.6436155870083715,
+            "rejects": {
+              "symbol_already_open": 883,
+              "daily_budget_insufficient": 201,
+              "rollover_blackout": 108
+            }
+          },
+          "net": {
+            "trades": 2142,
+            "net_profit_usd": -62516.508069434196,
+            "net_return_pct": -62.516508069434195,
+            "win_rate": 0.353874883286648,
+            "profit_factor": 0.6306157150024713,
+            "ev_R": -0.2285986025649044,
+            "ev_R_ci95": [
+              -0.2696315378447292,
+              -0.18947251956113076
+            ],
+            "commission_usd": 31917.2,
+            "avg_bars_held": 39.45658263305322,
+            "max_drawdown_pct": 62.51650806943418,
+            "sharpe_per_trade": -0.22790876052367648,
+            "psr_vs_0": 3.930837895324703e-23,
+            "rejects": {
+              "symbol_already_open": 799,
+              "daily_budget_insufficient": 356,
+              "rollover_blackout": 108
+            }
+          }
+        },
+        {
+          "k": 2.5,
+          "mode": "reversal",
+          "signals": 3405,
+          "gross": {
+            "trades": 2235,
+            "net_profit_usd": 15992.650323889395,
+            "net_return_pct": 15.992650323889395,
+            "win_rate": 0.429082774049217,
+            "profit_factor": 1.0611973350123152,
+            "ev_R": 0.03462356660230511,
+            "ev_R_ci95": [
+              -0.013311735128614312,
+              0.08410520904284702
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.65592841163311,
+            "max_drawdown_pct": 15.671094924612891,
+            "sharpe_per_trade": 0.029409784920020984,
+            "psr_vs_0": 0.9188354114137098,
+            "rejects": {
+              "symbol_already_open": 883,
+              "rollover_blackout": 108,
+              "daily_budget_insufficient": 179
+            }
+          },
+          "net": {
+            "trades": 2133,
+            "net_profit_usd": -63433.83071602423,
+            "net_return_pct": -63.43383071602424,
+            "win_rate": 0.3553680262541022,
+            "profit_factor": 0.6155295170621075,
+            "ev_R": -0.23534653892305946,
+            "ev_R_ci95": [
+              -0.2793371140037394,
+              -0.19184801737999616
+            ],
+            "commission_usd": 30900.729999999996,
+            "avg_bars_held": 39.3089545241444,
+            "max_drawdown_pct": 65.27266519638768,
+            "sharpe_per_trade": -0.2350300878441374,
+            "psr_vs_0": 2.8613290245177506e-24,
+            "rejects": {
+              "symbol_already_open": 792,
+              "rollover_blackout": 108,
+              "daily_budget_insufficient": 372
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "continuation",
+          "signals": 1014,
+          "gross": {
+            "trades": 865,
+            "net_profit_usd": 12748.453964587956,
+            "net_return_pct": 12.748453964587956,
+            "win_rate": 0.44046242774566474,
+            "profit_factor": 1.1293607855068624,
+            "ev_R": 0.0709054893470669,
+            "ev_R_ci95": [
+              -0.00484198843390803,
+              0.15323622928638334
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 40.534104046242774,
+            "max_drawdown_pct": 4.753191561947505,
+            "sharpe_per_trade": 0.05955490753019429,
+            "psr_vs_0": 0.9612814263096792,
+            "rejects": {
+              "rollover_blackout": 30,
+              "symbol_already_open": 117,
+              "daily_budget_insufficient": 2
+            }
+          },
+          "net": {
+            "trades": 860,
+            "net_profit_usd": -22273.05992879258,
+            "net_return_pct": -22.27305992879258,
+            "win_rate": 0.3941860465116279,
+            "profit_factor": 0.748104974327684,
+            "ev_R": -0.14564656600798584,
+            "ev_R_ci95": [
+              -0.21088979609553168,
+              -0.08649291101859027
+            ],
+            "commission_usd": 17059.21,
+            "avg_bars_held": 38.72093023255814,
+            "max_drawdown_pct": 22.273059928792584,
+            "sharpe_per_trade": -0.1408877877041761,
+            "psr_vs_0": 3.191854563785924e-05,
+            "rejects": {
+              "rollover_blackout": 30,
+              "symbol_already_open": 119,
+              "daily_budget_insufficient": 5
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "reversal",
+          "signals": 1014,
+          "gross": {
+            "trades": 867,
+            "net_profit_usd": -1485.5752661854358,
+            "net_return_pct": -1.4855752661854358,
+            "win_rate": 0.4117647058823529,
+            "profit_factor": 0.9853111953098099,
+            "ev_R": -0.007284096518615643,
+            "ev_R_ci95": [
+              -0.0770092005403165,
+              0.07141313655204051
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 38.732410611303344,
+            "max_drawdown_pct": 10.508638680314789,
+            "sharpe_per_trade": -0.006175759474156494,
+            "psr_vs_0": 0.4279857039672432,
+            "rejects": {
+              "rollover_blackout": 30,
+              "symbol_already_open": 114,
+              "daily_budget_insufficient": 3
+            }
+          },
+          "net": {
+            "trades": 870,
+            "net_profit_usd": -33636.59238634308,
+            "net_return_pct": -33.63659238634308,
+            "win_rate": 0.34942528735632183,
+            "profit_factor": 0.6311381579960192,
+            "ev_R": -0.23506326526011784,
+            "ev_R_ci95": [
+              -0.29912809380396876,
+              -0.16887710171682047
+            ],
+            "commission_usd": 16382.66,
+            "avg_bars_held": 36.36896551724138,
+            "max_drawdown_pct": 36.08341989154764,
+            "sharpe_per_trade": -0.2315478711056282,
+            "psr_vs_0": 1.0712986265599183e-10,
+            "rejects": {
+              "rollover_blackout": 30,
+              "symbol_already_open": 111,
+              "daily_budget_insufficient": 3
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "continuation",
+          "signals": 259,
+          "gross": {
+            "trades": 243,
+            "net_profit_usd": 5330.028551542688,
+            "net_return_pct": 5.3300285515426875,
+            "win_rate": 0.4609053497942387,
+            "profit_factor": 1.2041475327906395,
+            "ev_R": 0.10845057220459756,
+            "ev_R_ci95": [
+              -0.02031677968001452,
+              0.25635097004155166
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 38.95473251028807,
+            "max_drawdown_pct": 2.0165747048361244,
+            "sharpe_per_trade": 0.09084003081793676,
+            "psr_vs_0": 0.9232993382553147,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 243,
+            "net_profit_usd": -7673.856169830347,
+            "net_return_pct": -7.673856169830348,
+            "win_rate": 0.3868312757201646,
+            "profit_factor": 0.7224168593153123,
+            "ev_R": -0.16342974347680103,
+            "ev_R_ci95": [
+              -0.275327463270999,
+              -0.03855111907508344
+            ],
+            "commission_usd": 5187.5599999999995,
+            "avg_bars_held": 37.148148148148145,
+            "max_drawdown_pct": 8.226446383607758,
+            "sharpe_per_trade": -0.15921648223188262,
+            "psr_vs_0": 0.008604452762735994,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "reversal",
+          "signals": 259,
+          "gross": {
+            "trades": 244,
+            "net_profit_usd": -733.5218835835816,
+            "net_return_pct": -0.7335218835835816,
+            "win_rate": 0.4098360655737705,
+            "profit_factor": 0.9737189085367549,
+            "ev_R": -0.013739394368779247,
+            "ev_R_ci95": [
+              -0.1473422711824804,
+              0.1201944695981953
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 35.307377049180324,
+            "max_drawdown_pct": 4.707088707433341,
+            "sharpe_per_trade": -0.011608306697952887,
+            "psr_vs_0": 0.42837829258958804,
+            "rejects": {
+              "symbol_already_open": 10,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 245,
+            "net_profit_usd": -10256.624397773765,
+            "net_return_pct": -10.256624397773765,
+            "win_rate": 0.3510204081632653,
+            "profit_factor": 0.6464569346678537,
+            "ev_R": -0.2201603731683939,
+            "ev_R_ci95": [
+              -0.3398580902630574,
+              -0.09999299936176752
+            ],
+            "commission_usd": 5092.43,
+            "avg_bars_held": 32.83673469387755,
+            "max_drawdown_pct": 11.233942228160748,
+            "sharpe_per_trade": -0.21361549771855087,
+            "psr_vs_0": 0.0008864607874770304,
+            "rejects": {
+              "symbol_already_open": 9,
+              "rollover_blackout": 5
+            }
+          }
+        }
+      ],
+      "probability_model": {
+        "oos_events": 48576,
+        "base_rate": 0.3809906126482213,
+        "auc": 0.5100833041408266,
+        "brier": 0.23605618940669348,
+        "brier_base_rate": 0.2358367657221543,
+        "brier_skill": -0.0009304049089515765,
+        "ece": 0.017410843911744057
+      }
+    },
+    {
+      "planted_edge_sigma_per_min": 0.1,
+      "bars": 372540,
+      "median_spread": 6.170728740650944e-05,
+      "strategies": [
+        {
+          "k": 2.5,
+          "mode": "continuation",
+          "signals": 3417,
+          "gross": {
+            "trades": 2214,
+            "net_profit_usd": 9944.171840206205,
+            "net_return_pct": 9.944171840206206,
+            "win_rate": 0.42728093947606144,
+            "profit_factor": 1.0387069618352178,
+            "ev_R": 0.02283817922335389,
+            "ev_R_ci95": [
+              -0.0245201035548514,
+              0.07579680162259701
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.91102077687444,
+            "max_drawdown_pct": 6.76271380968668,
+            "sharpe_per_trade": 0.019424701765275373,
+            "psr_vs_0": 0.8204488993426899,
+            "rejects": {
+              "symbol_already_open": 894,
+              "daily_budget_insufficient": 199,
+              "rollover_blackout": 110
+            }
+          },
+          "net": {
+            "trades": 2160,
+            "net_profit_usd": -60724.35017990992,
+            "net_return_pct": -60.72435017990991,
+            "win_rate": 0.36157407407407405,
+            "profit_factor": 0.6483629375069754,
+            "ev_R": -0.21573520057074455,
+            "ev_R_ci95": [
+              -0.2585416692836323,
+              -0.17495389138785425
+            ],
+            "commission_usd": 32902.03,
+            "avg_bars_held": 39.25416666666667,
+            "max_drawdown_pct": 60.724350179909955,
+            "sharpe_per_trade": -0.214227722636531,
+            "psr_vs_0": 4.41703008723457e-21,
+            "rejects": {
+              "symbol_already_open": 808,
+              "daily_budget_insufficient": 339,
+              "rollover_blackout": 110
+            }
+          }
+        },
+        {
+          "k": 2.5,
+          "mode": "reversal",
+          "signals": 3417,
+          "gross": {
+            "trades": 2240,
+            "net_profit_usd": 8169.36745455291,
+            "net_return_pct": 8.16936745455291,
+            "win_rate": 0.42142857142857143,
+            "profit_factor": 1.031950531421981,
+            "ev_R": 0.018943157033216446,
+            "ev_R_ci95": [
+              -0.03182022181796708,
+              0.06803087024253722
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.30982142857143,
+            "max_drawdown_pct": 18.58329946574525,
+            "sharpe_per_trade": 0.016116107039487678,
+            "psr_vs_0": 0.7778373121840909,
+            "rejects": {
+              "symbol_already_open": 878,
+              "rollover_blackout": 110,
+              "daily_budget_insufficient": 189
+            }
+          },
+          "net": {
+            "trades": 2132,
+            "net_profit_usd": -64357.76657935182,
+            "net_return_pct": -64.35776657935182,
+            "win_rate": 0.3531894934333959,
+            "profit_factor": 0.6083637585174363,
+            "ev_R": -0.24151015374075316,
+            "ev_R_ci95": [
+              -0.2876822025055311,
+              -0.19724359235921995
+            ],
+            "commission_usd": 30647.47,
+            "avg_bars_held": 39.2453095684803,
+            "max_drawdown_pct": 66.42988293405823,
+            "sharpe_per_trade": -0.24160955536709072,
+            "psr_vs_0": 2.2495097762081164e-25,
+            "rejects": {
+              "symbol_already_open": 789,
+              "rollover_blackout": 110,
+              "daily_budget_insufficient": 386
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "continuation",
+          "signals": 1016,
+          "gross": {
+            "trades": 867,
+            "net_profit_usd": 20739.65946419759,
+            "net_return_pct": 20.73965946419759,
+            "win_rate": 0.4544405997693195,
+            "profit_factor": 1.2084244531896429,
+            "ev_R": 0.11030051376375342,
+            "ev_R_ci95": [
+              0.030921045883994483,
+              0.1868409720478124
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 40.28489042675894,
+            "max_drawdown_pct": 4.50658140683449,
+            "sharpe_per_trade": 0.09203169563457163,
+            "psr_vs_0": 0.9968969443370852,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 120
+            }
+          },
+          "net": {
+            "trades": 865,
+            "net_profit_usd": -18328.899670900857,
+            "net_return_pct": -18.328899670900856,
+            "win_rate": 0.40578034682080927,
+            "profit_factor": 0.7945384098961866,
+            "ev_R": -0.11603536947397125,
+            "ev_R_ci95": [
+              -0.18356788999826656,
+              -0.04903527800410459
+            ],
+            "commission_usd": 17582.6,
+            "avg_bars_held": 38.42774566473989,
+            "max_drawdown_pct": 18.32889967090085,
+            "sharpe_per_trade": -0.11126855110442306,
+            "psr_vs_0": 0.000691926494834195,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 121,
+              "daily_budget_insufficient": 1
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "reversal",
+          "signals": 1016,
+          "gross": {
+            "trades": 870,
+            "net_profit_usd": -11099.623144320516,
+            "net_return_pct": -11.099623144320516,
+            "win_rate": 0.3839080459770115,
+            "profit_factor": 0.8882242623254415,
+            "ev_R": -0.06635262368143979,
+            "ev_R_ci95": [
+              -0.14123634428592588,
+              0.008705673321349099
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 37.90344827586207,
+            "max_drawdown_pct": 18.131167094558574,
+            "sharpe_per_trade": -0.05692052680763742,
+            "psr_vs_0": 0.049135534828929676,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 114,
+              "daily_budget_insufficient": 3
+            }
+          },
+          "net": {
+            "trades": 867,
+            "net_profit_usd": -37295.88933586558,
+            "net_return_pct": -37.29588933586558,
+            "win_rate": 0.33217993079584773,
+            "profit_factor": 0.5899960429276311,
+            "ev_R": -0.26865105128860406,
+            "ev_R_ci95": [
+              -0.3313044319774087,
+              -0.20423910388613403
+            ],
+            "commission_usd": 15908.48,
+            "avg_bars_held": 35.70818915801615,
+            "max_drawdown_pct": 39.70105591152805,
+            "sharpe_per_trade": -0.267396184551225,
+            "psr_vs_0": 3.4586651416429464e-13,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 112,
+              "daily_budget_insufficient": 8
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "continuation",
+          "signals": 262,
+          "gross": {
+            "trades": 244,
+            "net_profit_usd": 10627.686068174677,
+            "net_return_pct": 10.627686068174675,
+            "win_rate": 0.4959016393442623,
+            "profit_factor": 1.4208613133475956,
+            "ev_R": 0.20876208655973552,
+            "ev_R_ci95": [
+              0.06127185744248929,
+              0.36209904221595135
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 37.959016393442624,
+            "max_drawdown_pct": 2.1106076725493823,
+            "sharpe_per_trade": 0.17243327526185565,
+            "psr_vs_0": 0.9965541540223763,
+            "rejects": {
+              "symbol_already_open": 13,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 244,
+            "net_profit_usd": -3925.3792481438654,
+            "net_return_pct": -3.9253792481438654,
+            "win_rate": 0.4262295081967213,
+            "profit_factor": 0.8517836936363279,
+            "ev_R": -0.08110536170094441,
+            "ev_R_ci95": [
+              -0.20948444324497692,
+              0.04239816552445516
+            ],
+            "commission_usd": 5307.890000000001,
+            "avg_bars_held": 37.22950819672131,
+            "max_drawdown_pct": 4.619931701902304,
+            "sharpe_per_trade": -0.0775803512380838,
+            "psr_vs_0": 0.11629380783344329,
+            "rejects": {
+              "symbol_already_open": 13,
+              "rollover_blackout": 5
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "reversal",
+          "signals": 262,
+          "gross": {
+            "trades": 246,
+            "net_profit_usd": -4717.577942188895,
+            "net_return_pct": -4.717577942188894,
+            "win_rate": 0.3699186991869919,
+            "profit_factor": 0.8395920999917924,
+            "ev_R": -0.09689305039114376,
+            "ev_R_ci95": [
+              -0.23193556123513295,
+              0.04745462796852533
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 34.25609756097561,
+            "max_drawdown_pct": 7.284768930586981,
+            "sharpe_per_trade": -0.08272571609011192,
+            "psr_vs_0": 0.10302279237523054,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 5
+            }
+          },
+          "net": {
+            "trades": 247,
+            "net_profit_usd": -11894.883917444498,
+            "net_return_pct": -11.894883917444497,
+            "win_rate": 0.3360323886639676,
+            "profit_factor": 0.5977064886521382,
+            "ev_R": -0.2556001707773055,
+            "ev_R_ci95": [
+              -0.3735321222226204,
+              -0.13315244446963895
+            ],
+            "commission_usd": 5077.52,
+            "avg_bars_held": 33.417004048582996,
+            "max_drawdown_pct": 12.436938952356543,
+            "sharpe_per_trade": -0.2519572780759678,
+            "psr_vs_0": 0.00014219241306048731,
+            "rejects": {
+              "symbol_already_open": 10,
+              "rollover_blackout": 5
+            }
+          }
+        }
+      ],
+      "probability_model": {
+        "oos_events": 48576,
+        "base_rate": 0.38082592226613965,
+        "auc": 0.5098755941340555,
+        "brier": 0.23602504281371212,
+        "brier_base_rate": 0.23579753919628377,
+        "brier_skill": -0.0009648260885324333,
+        "ece": 0.01781713946817948
+      }
+    },
+    {
+      "planted_edge_sigma_per_min": 0.2,
+      "bars": 372540,
+      "median_spread": 6.170728740650944e-05,
+      "strategies": [
+        {
+          "k": 2.5,
+          "mode": "continuation",
+          "signals": 3432,
+          "gross": {
+            "trades": 2247,
+            "net_profit_usd": 26030.970155960273,
+            "net_return_pct": 26.030970155960276,
+            "win_rate": 0.4379172229639519,
+            "profit_factor": 1.0936479002929518,
+            "ev_R": 0.05298702500511525,
+            "ev_R_ci95": [
+              0.005604712187619851,
+              0.10150900666876014
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 41.40142412105029,
+            "max_drawdown_pct": 7.46390178758922,
+            "sharpe_per_trade": 0.04484231617288787,
+            "psr_vs_0": 0.9838431435618586,
+            "rejects": {
+              "symbol_already_open": 902,
+              "daily_budget_insufficient": 173,
+              "rollover_blackout": 110
+            }
+          },
+          "net": {
+            "trades": 2178,
+            "net_profit_usd": -57151.82285492537,
+            "net_return_pct": -57.15182285492536,
+            "win_rate": 0.3723599632690542,
+            "profit_factor": 0.6806826651406678,
+            "ev_R": -0.193949849763499,
+            "ev_R_ci95": [
+              -0.23377631249343583,
+              -0.1513500084808955
+            ],
+            "commission_usd": 34561.66,
+            "avg_bars_held": 38.72819100091827,
+            "max_drawdown_pct": 57.15182285492542,
+            "sharpe_per_trade": -0.19083313778339556,
+            "psr_vs_0": 1.4118098722926854e-17,
+            "rejects": {
+              "symbol_already_open": 815,
+              "daily_budget_insufficient": 329,
+              "rollover_blackout": 110
+            }
+          }
+        },
+        {
+          "k": 2.5,
+          "mode": "reversal",
+          "signals": 3432,
+          "gross": {
+            "trades": 2250,
+            "net_profit_usd": -4466.558730565754,
+            "net_return_pct": -4.466558730565754,
+            "win_rate": 0.4097777777777778,
+            "profit_factor": 0.9821306617451397,
+            "ev_R": -0.00881322908593718,
+            "ev_R_ci95": [
+              -0.05700634628365673,
+              0.04018957461357056
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 40.25955555555556,
+            "max_drawdown_pct": 22.303515292025097,
+            "sharpe_per_trade": -0.007518638445925206,
+            "psr_vs_0": 0.3609237103936599,
+            "rejects": {
+              "symbol_already_open": 860,
+              "rollover_blackout": 110,
+              "daily_budget_insufficient": 212
+            }
+          },
+          "net": {
+            "trades": 2134,
+            "net_profit_usd": -66477.45357183057,
+            "net_return_pct": -66.47745357183057,
+            "win_rate": 0.34817244611059045,
+            "profit_factor": 0.5934545124604304,
+            "ev_R": -0.25569465233434585,
+            "ev_R_ci95": [
+              -0.2977190644899689,
+              -0.20973834048786938
+            ],
+            "commission_usd": 30112.809999999998,
+            "avg_bars_held": 38.17291471415183,
+            "max_drawdown_pct": 68.54818454261357,
+            "sharpe_per_trade": -0.2564773572486407,
+            "psr_vs_0": 5.961878827832952e-28,
+            "rejects": {
+              "symbol_already_open": 768,
+              "rollover_blackout": 110,
+              "daily_budget_insufficient": 420
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "continuation",
+          "signals": 1023,
+          "gross": {
+            "trades": 870,
+            "net_profit_usd": 37247.36089683443,
+            "net_return_pct": 37.24736089683443,
+            "win_rate": 0.4862068965517241,
+            "profit_factor": 1.3709356911564905,
+            "ev_R": 0.18372332484825035,
+            "ev_R_ci95": [
+              0.10379412386231006,
+              0.2647625692628793
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 39.314942528735635,
+            "max_drawdown_pct": 3.012883852337778,
+            "sharpe_per_trade": 0.15244535895214745,
+            "psr_vs_0": 0.9999970723409732,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 124
+            }
+          },
+          "net": {
+            "trades": 865,
+            "net_profit_usd": -7345.869789967678,
+            "net_return_pct": -7.3458697899676775,
+            "win_rate": 0.4393063583815029,
+            "profit_factor": 0.9181108124510644,
+            "ev_R": -0.04305886809431416,
+            "ev_R_ci95": [
+              -0.11371062892420382,
+              0.024971636788877514
+            ],
+            "commission_usd": 18675.089999999997,
+            "avg_bars_held": 37.104046242774565,
+            "max_drawdown_pct": 7.345869789967677,
+            "sharpe_per_trade": -0.040619350798365705,
+            "psr_vs_0": 0.11752470511818969,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 129
+            }
+          }
+        },
+        {
+          "k": 3.0,
+          "mode": "reversal",
+          "signals": 1023,
+          "gross": {
+            "trades": 880,
+            "net_profit_usd": -20235.192120910226,
+            "net_return_pct": -20.235192120910227,
+            "win_rate": 0.3568181818181818,
+            "profit_factor": 0.7988889658023413,
+            "ev_R": -0.1273014148480057,
+            "ev_R_ci95": [
+              -0.2053259942238905,
+              -0.04739020217617868
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 36.095454545454544,
+            "max_drawdown_pct": 26.502711963187004,
+            "sharpe_per_trade": -0.1105001423463544,
+            "psr_vs_0": 0.0007745353083036871,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 113,
+              "daily_budget_insufficient": 1
+            }
+          },
+          "net": {
+            "trades": 886,
+            "net_profit_usd": -43651.156752378236,
+            "net_return_pct": -43.651156752378235,
+            "win_rate": 0.31038374717832956,
+            "profit_factor": 0.5272762831756256,
+            "ev_R": -0.32334853454206847,
+            "ev_R_ci95": [
+              -0.3839835633251088,
+              -0.25085506160260235
+            ],
+            "commission_usd": 15432.9,
+            "avg_bars_held": 32.93905191873589,
+            "max_drawdown_pct": 45.97913684574892,
+            "sharpe_per_trade": -0.32733925915125706,
+            "psr_vs_0": 5.583644715559046e-18,
+            "rejects": {
+              "rollover_blackout": 29,
+              "symbol_already_open": 106,
+              "daily_budget_insufficient": 2
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "continuation",
+          "signals": 266,
+          "gross": {
+            "trades": 249,
+            "net_profit_usd": 19554.63727330923,
+            "net_return_pct": 19.55463727330923,
+            "win_rate": 0.5582329317269076,
+            "profit_factor": 1.8226239084150198,
+            "ev_R": 0.3606339876169539,
+            "ev_R_ci95": [
+              0.21591487327487838,
+              0.5092975795291437
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 35.57429718875502,
+            "max_drawdown_pct": 1.8717224624320807,
+            "sharpe_per_trade": 0.2979990901823459,
+            "psr_vs_0": 0.9999975520300406,
+            "rejects": {
+              "symbol_already_open": 11,
+              "rollover_blackout": 6
+            }
+          },
+          "net": {
+            "trades": 248,
+            "net_profit_usd": 4418.1795509065405,
+            "net_return_pct": 4.41817955090654,
+            "win_rate": 0.5120967741935484,
+            "profit_factor": 1.179597545424634,
+            "ev_R": 0.0884573097709859,
+            "ev_R_ci95": [
+              -0.04532844385407403,
+              0.2184697806425548
+            ],
+            "commission_usd": 5653.200000000001,
+            "avg_bars_held": 35.53225806451613,
+            "max_drawdown_pct": 2.0897734951134996,
+            "sharpe_per_trade": 0.08298028629132953,
+            "psr_vs_0": 0.9040309035176333,
+            "rejects": {
+              "symbol_already_open": 12,
+              "rollover_blackout": 6
+            }
+          }
+        },
+        {
+          "k": 3.5,
+          "mode": "reversal",
+          "signals": 266,
+          "gross": {
+            "trades": 250,
+            "net_profit_usd": -10230.623689964323,
+            "net_return_pct": -10.230623689964323,
+            "win_rate": 0.324,
+            "profit_factor": 0.6703334416724529,
+            "ev_R": -0.2149919336663762,
+            "ev_R_ci95": [
+              -0.34379097103772965,
+              -0.08238913282981254
+            ],
+            "commission_usd": 0.0,
+            "avg_bars_held": 32.544,
+            "max_drawdown_pct": 11.730836251832189,
+            "sharpe_per_trade": -0.19204602742481958,
+            "psr_vs_0": 0.0024582182346840997,
+            "rejects": {
+              "symbol_already_open": 10,
+              "rollover_blackout": 6
+            }
+          },
+          "net": {
+            "trades": 250,
+            "net_profit_usd": -17163.87376095183,
+            "net_return_pct": -17.163873760951827,
+            "win_rate": 0.28,
+            "profit_factor": 0.4600294633911956,
+            "ev_R": -0.3762004321684274,
+            "ev_R_ci95": [
+              -0.48248765387052306,
+              -0.26720942932946634
+            ],
+            "commission_usd": 4992.469999999999,
+            "avg_bars_held": 29.62,
+            "max_drawdown_pct": 17.624101787122342,
+            "sharpe_per_trade": -0.3877371578159079,
+            "psr_vs_0": 1.3471361507853513e-07,
+            "rejects": {
+              "symbol_already_open": 10,
+              "rollover_blackout": 6
+            }
+          }
+        }
+      ],
+      "probability_model": {
+        "oos_events": 48576,
+        "base_rate": 0.3808670948616601,
+        "auc": 0.5113888377806901,
+        "brier": 0.23598021344523662,
+        "brier_base_rate": 0.23580735091329932,
+        "brier_skill": -0.0007330667651699319,
+        "ece": 0.017428532520420606
+      }
+    }
+  ],
+  "runtime_sec": 48.9
+}

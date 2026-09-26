@@ -1,0 +1,71 @@
+# IC Markets Raw Spread (MT5) instrument specifications.
+# STATUS: UNVERIFIED unless `verified_source` is filled. The official icmarkets.com pages were
+# blocked by this sandbox's egress policy on 2026-09-26. Values below come from secondary
+# sources (broker-review sites) and common MT5 contract conventions and MUST be checked
+# against the live MT5 symbol specification ("Specification" in Market Watch) before any
+# final claim. Commission in account currency (USD) per 1.00 lot per side.
+
+[EURUSD]
+asset_class = "fx"
+contract_size = 100000
+digits = 5
+tick_size = 0.00001
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 3.50
+quote_ccy = "USD"
+typical_raw_spread = 0.00002      # research placeholder; replaced by measured spreads
+status = "UNVERIFIED"
+verified_source = ""
+
+[GBPUSD]
+asset_class = "fx"
+contract_size = 100000
+digits = 5
+tick_size = 0.00001
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 3.50
+quote_ccy = "USD"
+typical_raw_spread = 0.00004
+status = "UNVERIFIED"
+verified_source = ""
+
+[USDJPY]
+asset_class = "fx"
+contract_size = 100000
+digits = 3
+tick_size = 0.001
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 3.50
+quote_ccy = "JPY"                  # P&L converted to USD at the current USDJPY rate
+typical_raw_spread = 0.003
+status = "UNVERIFIED"
+verified_source = ""
+
+[XAUUSD]
+asset_class = "metal"
+contract_size = 100                # troy ounces per lot
+digits = 2
+tick_size = 0.01
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 3.50 # UNVERIFIED: metals commission schedule may differ
+quote_ccy = "USD"
+typical_raw_spread = 0.10
+status = "UNVERIFIED"
+verified_source = ""
+
+[XAGUSD]
+asset_class = "metal"
+contract_size = 5000               # troy ounces per lot
+digits = 3
+tick_size = 0.001
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 3.50 # UNVERIFIED
+quote_ccy = "USD"
+typical_raw_spread = 0.020
+status = "UNVERIFIED"
+verified_source = ""

@@ -1,0 +1,84 @@
+{
+ "experiment": "exp007_validation_confirm",
+ "period": [
+  "2024-01-01",
+  "2025-07-01"
+ ],
+ "spec_commit": "28465a3ed63a6dbd4766a24374dbf65a1c8f295b",
+ "spec": {
+  "registered_utc": "2026-09-26T20:40:00Z",
+  "purpose": "DOCUMENTATION-ONLY out-of-sample look. The edge gate already FAILED on the development period (EXP006: best net EV +0.021R, CI [-0.017, +0.059], DSR 0.00 after 317 market trials). This candidate cannot be accepted regardless of the validation outcome; the look measures whether the dev-period sign persists out of sample.",
+  "rules_frozen_from": "experiments/exp006_strategy_wf_dev.py (signals_for defaults: stop 1.0 x expected move, target 1.5 x, time exit at H) + qe/events.py + qe/backtest.py at this commit",
+  "candidates": [
+   {
+    "symbol": "XAUUSD",
+    "family": "H11_impulse_k5_active_fade",
+    "H": 30,
+    "why": "highest dev-period net EV among EXP006 candidates"
+   }
+  ]
+ },
+ "results": [
+  {
+   "symbol": "XAUUSD",
+   "family": "H11_impulse_k5_active_fade",
+   "H": 30,
+   "why": "highest dev-period net EV among EXP006 candidates",
+   "variants": {
+    "base": {
+     "trades": 784,
+     "net_profit_usd": -8295.407726627343,
+     "net_return_pct": -8.295407726627344,
+     "win_rate": 0.461734693877551,
+     "profit_factor": 0.8577595649966356,
+     "ev_R": -0.05515799739843492,
+     "ev_R_ci95": [
+      -0.11015623046821672,
+      0.00026755238870410336
+     ],
+     "commission_usd": 1977.3600000000001,
+     "avg_bars_held": 22.107142857142858,
+     "max_drawdown_pct": 9.80846197858646,
+     "sharpe_per_trade": -0.06495910210045637,
+     "psr_vs_0": 0.036320973022190374,
+     "dsr": 3.531830743354825e-23,
+     "dd_median": 9.950280229222852,
+     "dd_p95": 16.198314951282832,
+     "dd_p99": 18.966185003802046,
+     "by_year_R": {
+      "2024": -35.2,
+      "2025": -8.05
+     },
+     "variant": "base"
+    },
+    "stress_spread2x": {
+     "trades": 779,
+     "net_profit_usd": -10799.56132129577,
+     "net_return_pct": -10.79956132129577,
+     "win_rate": 0.4544287548138639,
+     "profit_factor": 0.8153210815197461,
+     "ev_R": -0.07313217342203805,
+     "ev_R_ci95": [
+      -0.12722908122985135,
+      -0.017246300319886217
+     ],
+     "commission_usd": 1930.53,
+     "avg_bars_held": 21.887034659820284,
+     "max_drawdown_pct": 11.789929493614466,
+     "sharpe_per_trade": -0.08616768188857755,
+     "psr_vs_0": 0.009115975118539399,
+     "dsr": 2.161218952638291e-25,
+     "dd_median": 12.263809788940721,
+     "dd_p95": 18.388816402628844,
+     "dd_p99": 20.867678364941202,
+     "by_year_R": {
+      "2024": -47.62,
+      "2025": -9.35
+     },
+     "variant": "stress_spread2x"
+    }
+   },
+   "accepted": false
+  }
+ ]
+}
