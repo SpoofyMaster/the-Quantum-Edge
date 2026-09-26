@@ -79,3 +79,12 @@ def test_store_guard(tmp_path, monkeypatch, cfg):
     assert got.index.max() < pd.Timestamp("2025-07-01", tz="UTC")
     with pytest.raises(FinalTestLocked):
         store.load_m1("EURUSD", "2025-06-25", "2025-07-03", cfg=cfg)
+
+
+def test_spread_model_widens_at_rollover():
+    from qe.data.store import apply_spread_model
+    idx = pd.DatetimeIndex(["2024-01-15 22:00", "2024-01-16 14:00"], tz="UTC")  # 17:00 NY, 09:00 NY
+    df = pd.DataFrame({c: 1.1 for c in ["bo", "bh", "bl", "bc"]}, index=idx)
+    out = apply_spread_model(df, 0.00002)
+    sp = (out.ac - out.bc).to_numpy()
+    assert sp[0] == pytest.approx(0.00008) and sp[1] == pytest.approx(0.00002)

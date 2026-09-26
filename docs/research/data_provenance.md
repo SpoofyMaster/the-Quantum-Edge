@@ -1,6 +1,24 @@
 # Historical Data Provenance & Quality Report
 
-## Current status (2026-09-26): BLOCKED — no market data acquired
+## Update 2026-09-26 (Day 2): data path via GitHub Actions
+
+The research workflow (`.github/workflows/research.yml`) runs on GitHub-hosted runners, which have
+unrestricted internet access. Data is downloaded into the repo-private **Actions cache**. It is never
+committed. Only aggregated results and logs are pushed to the `ci-results` branch.
+
+Connectivity probe from the runner (logs/probe.log on `ci-results`):
+- `datafeed.dukascopy.com` returned **HTTP 503** (107 bytes) for both candle and tick files.
+  Dukascopy refuses these cloud IPs, so the preferred bid/ask source is unavailable for now.
+- `www.histdata.com` returned **HTTP 200**, so HistData M1 is used: BID only, EST without DST,
+  converted to UTC.
+
+Consequence: **spreads are not observed.** The ask side is modelled as
+`typical_raw_spread × NY-hour multiplier` (`qe/data/store.py::NY_HOUR_SPREAD_MULT`, an explicit
+assumption). All cost conclusions must be stress-tested with the spread scaled ×2 and ×3, and
+re-checked against IC Markets MT5 spread exports (`tools/mql5/ExportM1WithSpread.mq5`) when the user
+provides them.
+
+## Original status (2026-09-26, Day 1): BLOCKED — no market data acquired
 
 The sandbox egress policy returned HTTP 403 for every candidate data host that was tested:
 

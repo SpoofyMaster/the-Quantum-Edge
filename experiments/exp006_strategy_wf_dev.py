@@ -43,9 +43,11 @@ COST_FEATS = ["spread_rel", "vol_regime_60", "rv_ratio_15_240", "range_z", "tv_z
 
 
 def candidates(exp005: dict, max_n: int = 6) -> list[tuple[str, str, int, str]]:
-    surv = [(s, f, int(h), "fdr_survivor") for s, f, h, _, _ in exp005.get("fdr", {}).get("survivors", [])]
+    # only cells significant in the HYPOTHESISED direction; strongest edge-over-cost first
+    surv = sorted([(x, s, f, int(h)) for s, f, h, x, _ in exp005.get("fdr", {}).get("survivors", []) if x > 0],
+                  reverse=True)
     if surv:
-        return surv[:max_n]
+        return [(s, f, h, "fdr_survivor") for _, s, f, h in surv[:max_n]]
     cells = []
     for s, fams in exp005["symbols"].items():
         for f, cell in fams.items():
@@ -126,6 +128,12 @@ def main():
                     row["variants"][name] = evaluate(tr[keep], name, count_trials("market_dev"))
                     row["variants"][name]["oos_scored_trades"] = int(scored.sum())
                     row["variants"][name + "_unfiltered_same_oos_window"] = evaluate(tr[scored], "unfiltered_oos", count_trials("market_dev"))
+        # cost stress: whole modelled spread profile x2 (bid-only data) — signals unchanged
+        df2 = load_m1(sym, DEV_START, DEV_END, cfg=cfg, spread_scale=2.0)
+        tr2, _ = backtest.run({sym: df2}, {sym: sig}, inst, cfg, backtest.BacktestConfig(**base_cfg))
+        register_trial(EXP, {"symbol": sym, "family": fam, "H": H, "variant": "stress_spread2x"}, {}, "market_dev")
+        row["variants"]["stress_spread2x"] = evaluate(tr2, "stress_spread2x", count_trials("market_dev")) if len(tr2) else {"trades": 0}
+        del df2
         out["results"].append(row)
         print(json.dumps({k: v for k, v in row.items() if k != "variants"}),
               {k: (v.get("trades"), v.get("ev_R"), v.get("ev_R_ci95")) for k, v in row["variants"].items()}, flush=True)
