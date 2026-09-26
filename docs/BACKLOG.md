@@ -41,7 +41,7 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [x] V-3 Per-year breakdowns (EXP006/007); session split built into families
 - [ ] V-4 Probability of Backtest Overfitting (CSCV)
 - [x] T-1 Pine v6 research prototype + dashboard (pine/quantum_edge_impulse_reversion.pine) — NOT compiled; demo/paper only
-- [?] Q-1 MQL5 EA — requires explicit human approval after validation
+- [x] Q-1 MQL5 EA — APPROVED by the project owner on 2026-09-26 for Strategy Tester/demo testing; implemented as mql5/QuantumEdgeImpulseReversion.mq5 (NOT compiled; real accounts log-only). [?] U-4 User: compile + run the tester per mql5/README.md and send the report + QE_tester_summary.csv
 
 ## Day 2 outcome and next research cycle (needs user input or new data)
 - [x] EXP005 event study (275 cells, FDR), EXP006 executable strategies + stress + meta-labels, EXP007 pre-registered validation look, EXP008 SNR frontier

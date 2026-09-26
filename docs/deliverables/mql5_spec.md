@@ -1,7 +1,9 @@
 # MQL5 Expert Advisor — Technical Specification (conditional)
 
-**Status: specification only. No EA code has been or will be written without explicit human
-approval** (project rule). The research does **not** currently justify asking for that approval
+**Status (updated 2026-09-26): implemented** as `mql5/QuantumEdgeImpulseReversion.mq5` after the
+project owner explicitly approved MQL5 development for Strategy Tester/demo testing. Deviation from
+§1: real accounts are log-only with no override (research phase). Original status: specification only,
+no EA code without explicit human approval (project rule). The research does **not** currently justify asking for that approval
 (FINAL_REPORT). This document exists so that, if a future research cycle validates an edge, the
 implementation is unambiguous and matches the Python and Pine signals.
 
