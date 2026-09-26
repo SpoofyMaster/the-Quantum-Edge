@@ -55,10 +55,12 @@ def build_features(df: pd.DataFrame, seasonal: bool = True) -> pd.DataFrame:
     rng_ = (df.bh + df.ah) / 2 - (df.bl + df.al) / 2
     f["range_z"] = rng_ / rng_.rolling(60, min_periods=40).mean()
     f["close_loc"] = ((df.bc + df.ac) / 2 - (df.bl + df.al) / 2) / rng_.replace(0, np.nan)
-    # activity proxy: signed tick-volume imbalance over 15 bars
-    sv = np.sign(r1) * df.volume
-    f["tv_imbalance_15"] = sv.rolling(15, min_periods=10).sum() / df.volume.rolling(15, min_periods=10).sum()
-    f["tv_z"] = df.volume / df.volume.rolling(240, min_periods=160).mean()
+    # activity proxy: signed tick-volume imbalance over 15 bars (NaN when the source has no volume,
+    # e.g. HistData, so these columns can never silently carry a constant)
+    vol = df.volume.where(df.volume.abs().sum() > 0)
+    sv = np.sign(r1) * vol
+    f["tv_imbalance_15"] = sv.rolling(15, min_periods=10).sum() / vol.rolling(15, min_periods=10).sum()
+    f["tv_z"] = vol / vol.rolling(240, min_periods=160).mean()
     # spread relative to its own recent median (liquidity deterioration)
     sp = spread(df)
     f["spread_rel"] = sp / sp.rolling(1440, min_periods=240).median()

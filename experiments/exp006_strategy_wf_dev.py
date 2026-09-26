@@ -69,7 +69,9 @@ def signals_for(df, f, mask, d, H):
 
 def meta_filter(trades, f, cfg, feats, margin=0.03):
     """Walk-forward P(R>0) on causal features at decision time; returns kept-trade mask + OOS stats."""
-    X = f.reindex(trades.decision_time)[feats].to_numpy()
+    F = f.reindex(trades.decision_time)[feats]
+    F = F.loc[:, F.notna().mean() > 0.9]  # drop features the data source cannot support (e.g. volume)
+    X = F.to_numpy()
     y = (trades.R.to_numpy() > 0).astype(int)
     t = pd.DatetimeIndex(trades.decision_time)
     ends = pd.Series(pd.DatetimeIndex(trades.exit_time), index=t)

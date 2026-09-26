@@ -21,3 +21,8 @@ def test_features_finite_after_warmup(small_bars):
     # seasonal features need >= 4 prior weeks; small_bars has < 3 weeks, so test the rest here
     f = build_features(small_bars, seasonal=False).iloc[3000:]
     assert f.notna().mean().min() > 0.95
+
+
+def test_volume_features_nan_without_volume(small_bars):
+    f = build_features(small_bars.assign(volume=0.0), seasonal=False)
+    assert f["tv_z"].isna().all() and f["tv_imbalance_15"].isna().all()
