@@ -1,3 +1,3 @@
-200 0.640369s histdata
-503 107 bytes 14.197673s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5
-503 107 bytes 0.420551s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5
+200 0.889841s histdata
+200 11346 bytes 14.305613s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5
+200 24495 bytes 12.850963s https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5

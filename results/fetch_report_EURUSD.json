@@ -1,0 +1,398 @@
+{
+ "2020-01": {
+  "bars": 31653,
+  "sha256": "c6b4d35d2ee7b05035a38e36c0f2f1dd86aaf3ce0bbcda7a885f5a0886d128c4",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-02": {
+  "bars": 28705,
+  "sha256": "ea50a484907c89012f564370b3e9c0280679b1e57e6b834c30edbe43f07a3bc0",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-03": {
+  "bars": 31705,
+  "sha256": "d89f88b45e06fd8d54894f8b809cb93c3626b39b0a853d38e17608a68d25a22d",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-04": {
+  "bars": 31615,
+  "sha256": "46372e25979e7b3739567ad687d960e6eaf997d9fb5bf80ac88242da933123c3",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-05": {
+  "bars": 30165,
+  "sha256": "e6b7140573cdc28813972002fcedf63abc71ddf3ee0c4ba3f4052cf6ce789ced",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-06": {
+  "bars": 31585,
+  "sha256": "873fcd6b4cd75f41f0752f5074524029240652f68dce147aa28483bf833e4ead",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-07": {
+  "bars": 32850,
+  "sha256": "413175cca7037deb19ef374e2db4527c2dd314f0f102060b6fffb101011a31af",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-08": {
+  "bars": 30173,
+  "sha256": "0f7fb50c8255ffbb9c3714da98bc12881a79b44e69ecfcb869c0c1ff669e69f6",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-09": {
+  "bars": 31419,
+  "sha256": "352d9cfbf3fbb4762342bd3cc2aaa8d1b4cc9292dbc4125f0d54ae3f1b61a320",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-10": {
+  "bars": 31394,
+  "sha256": "82d3530944d6581925db1f7e80b44b0045c19eccde0658700383cc674f018e21",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-11": {
+  "bars": 29095,
+  "sha256": "f969416b7ba07b43d710e5220ab5a6ad50f2542347375a24cdae7c817af7a45c",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2020-12": {
+  "bars": 31916,
+  "sha256": "bd51beb557731e117b462d039514008b1329f314fff8e774e30d17a79aafb003",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:17+00:00"
+ },
+ "2021-01": {
+  "bars": 28775,
+  "sha256": "6124867b946e1a5d2471d7626ed1e9a032e11bc418d64ba08ebb0d9e497349b0",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-02": {
+  "bars": 28613,
+  "sha256": "473aab686360e16b838913aeabd91ad4684dd32ef8d5dd6b0618fd12c4c57cf9",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-03": {
+  "bars": 32871,
+  "sha256": "e77bf01d47eb0c23cbfdbb64ff3f48708c55eb1c402bb5d043b5b6bfa5a8a521",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-04": {
+  "bars": 31140,
+  "sha256": "5621623788e152ee1dc630b4aef0fca574d7bdb8518037f9f1c467e478b6ce51",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-05": {
+  "bars": 28870,
+  "sha256": "1479c841a7c24500253377f5fd96526c5c7f8b26ddc555ea2d0aa09e794bcfca",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-06": {
+  "bars": 31255,
+  "sha256": "7129de0163609a2dcde4573a5cbfcaf01826c17c8ee700686c6b9b56ca6ccf22",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-07": {
+  "bars": 31277,
+  "sha256": "46f21903d692d264446a8fa6fd50653b884154b1c0f9be694587c62f9397517e",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-08": {
+  "bars": 31215,
+  "sha256": "95cb337bff0f509e054ed7e7fef1c222f092a91938b45004a7a6ce27523a15bf",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-09": {
+  "bars": 31269,
+  "sha256": "2e50bdc16b701c8cb45b9af8632953b3e2828acbc9fabc7866ad02393078c0d8",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-10": {
+  "bars": 29946,
+  "sha256": "b6ddc96efcc920525badca411b45437ba3fd2784f05b1b31435f263ad98b643b",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-11": {
+  "bars": 31466,
+  "sha256": "7c2e7943a3553299643bd01b5e19f4ddec773e8fbf3d8a3d559f36f720952b40",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2021-12": {
+  "bars": 32745,
+  "sha256": "b61e83b5de5bc9826299a63a0fcf8ff20ec39dd8f84ac5a60460ff3000d84b40",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:25+00:00"
+ },
+ "2022-01": {
+  "bars": 30172,
+  "sha256": "f0c2d5bbfa3ace2af7008d05705c653c648ca53fa091d160351fec3d303e7601",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-02": {
+  "bars": 28690,
+  "sha256": "2226c61ee26ba3ba70ed7bf72cbd5ca554faa24408c8b762cefee4fb73b33b11",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-03": {
+  "bars": 32974,
+  "sha256": "6fef9ff7a7835328381b9274acf6f4624845bd662fc3ff67fcb3dbff4780d4b0",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-04": {
+  "bars": 30008,
+  "sha256": "85a9169977304785c700ffc2690247638e47977c3f7417219405c9fc149f6527",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-05": {
+  "bars": 31631,
+  "sha256": "847b790f4bfeffe2d8d026f0fffe9f150d5e49d9fed1b2787d92c2e5e2dfd803",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-06": {
+  "bars": 31527,
+  "sha256": "41fc15ea404cbf7233b50ce9b6048e74d3a37a5fe6ec098eb1d4a319a6d01681",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-07": {
+  "bars": 30124,
+  "sha256": "3d25ae874ce4daa3e9665e1cea2f4269054039b86dd6ed554b09a115ad6491e4",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-08": {
+  "bars": 33036,
+  "sha256": "6983a2c685fc065eefadfffd77a15042d9f14b2efd490ea2da6315b6b0566a65",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-09": {
+  "bars": 31478,
+  "sha256": "b42582e9ac2cdf242053ccf750d9d6dae31e88b32c8c443d80e7e329d17c5392",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-10": {
+  "bars": 30261,
+  "sha256": "b9bd6a472cf56be2d029462e29f03f9a5cc59458ce0feab89b340712e9799414",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-11": {
+  "bars": 31537,
+  "sha256": "f6db80aab2be0bbc0ddec6cb0e790f866ba1ec8b623e8684e07bd478185b9787",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2022-12": {
+  "bars": 31367,
+  "sha256": "623f0ba2e7da4ea760bfbe8fcd3c69a939858de62e238b7a74a73288722f6fcc",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:32+00:00"
+ },
+ "2023-01": {
+  "bars": 31523,
+  "sha256": "065ea60ea19aedfb836680e5d39405882354a5aedbbdd47dc27c7468a08b4231",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-02": {
+  "bars": 25670,
+  "sha256": "216625e2904493a5ccadc20d153abe9352644ab94c8841c0c99bc0cf0c096da4",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-03": {
+  "bars": 23206,
+  "sha256": "3ce91292a77bd9bbdec6dad0b25f9e1f05d89388e910247cd760c568d6cce348",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-04": {
+  "bars": 19933,
+  "sha256": "58dba1986718901cbb73841a32e8591953f0c4ed67f14f19c59ab914aa375295",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-05": {
+  "bars": 23294,
+  "sha256": "01c411cd8692433a290d35583efdc077ad182fb36de8254b0b3d8add4198759e",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-06": {
+  "bars": 22133,
+  "sha256": "7f411b295fedf1fdfe3c5232f9642ed74653ad95a1764edce1dae3d9ac5c367d",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-07": {
+  "bars": 21806,
+  "sha256": "39c3ed6abeb97bef81ff38aa6252e4f2a2b6c9f04136ca05196326119e4125ae",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-08": {
+  "bars": 32987,
+  "sha256": "4d8b4a15fe49201055af16b8763cf0b3d93855daaddd1a1996f2a96c5b60455a",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-09": {
+  "bars": 29832,
+  "sha256": "1742e5775fff5a38415bc302e6e6d63a4689c448a9a156003c93d9e7e775afb7",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-10": {
+  "bars": 31762,
+  "sha256": "4e3ea8c2534b4345ae68ac264957e76a841ee0fa144835c46ed2fc069f92f170",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-11": {
+  "bars": 31501,
+  "sha256": "cbad4d0f8f60503829ea026be19cf344300468ce750ebbb45552405cef2fc21b",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2023-12": {
+  "bars": 28931,
+  "sha256": "d2bd474e15a6dfc95e8db7088784c6fefacbe8657281100407d3b2675b085334",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:40+00:00"
+ },
+ "2024-01": {
+  "bars": 31403,
+  "sha256": "39e2c670cb8b8873ba3d0405f9845d064d1f1f9548752c4e2bbf7701d0a80978",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-02": {
+  "bars": 30144,
+  "sha256": "d06881a92b57ae03fe58eee6540fdff9a14552a84bdc02a4df72e17c6c88c061",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-03": {
+  "bars": 30084,
+  "sha256": "4fa8baaaf2c1925749ed79729f1c17c1d5966078a7a9a8d1ccb09ca72aa792fe",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-04": {
+  "bars": 31451,
+  "sha256": "7f07d45e213b6f7534e5a9c4b286983fbec1863b3a15b02d332d3f05c8c09cf8",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-05": {
+  "bars": 32718,
+  "sha256": "1f276f229661c8a69db2db69e2d3b10f018e3f8799a1fe8b3816f7cb300d7f6d",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-06": {
+  "bars": 28655,
+  "sha256": "3817e25ccce43fe8f4d64f8146e7052b3f3221c646a2042032ef1d425866ebcb",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-07": {
+  "bars": 32842,
+  "sha256": "15fc22a57ebd8702376eed951729b69a9c6c710c78cec1b3dacdbee607d4c257",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-08": {
+  "bars": 31456,
+  "sha256": "2fecf0920e778c3cfde220ec4cf8d401e869369011b42350de3e9437f5a141cc",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-09": {
+  "bars": 30188,
+  "sha256": "5b65f6c3c3197d88b977d793e9d2ecc42f77061df7194c069ffeaf1dc0fe8098",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-10": {
+  "bars": 33008,
+  "sha256": "622f2e8be78819b9f5157b6e87c0f9493d0acc39c6ba9c501fe78abb96c553d5",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-11": {
+  "bars": 30016,
+  "sha256": "ea27dac4ebfaa8fb20cf75e88420972aed311a011e6fec6b78d9b3176e0b6121",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2024-12": {
+  "bars": 30414,
+  "sha256": "8eefc96e3f4821bd9ab65506e535256d170d1db3e38511105cb5f4689f0f8280",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:47+00:00"
+ },
+ "2025-01": {
+  "bars": 31604,
+  "sha256": "e2db490326a5586d202e87f40b2cfc15db57cf9abcb17be1f7b9d4d62c412fdf",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ },
+ "2025-02": {
+  "bars": 28731,
+  "sha256": "8c992aee1cdfb660ff8da3dab1af5a9c300001fa8bbbc5fa15a04b7713632533",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ },
+ "2025-03": {
+  "bars": 30228,
+  "sha256": "918c08de6d954a0455412fcb3992f47df77ff70424b47e2e65e4756ac9ef2bb0",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ },
+ "2025-04": {
+  "bars": 31612,
+  "sha256": "2fd3f6ff929dfbfdcaba2bf3ff5403d0c0ea91fc72df945803382648970bf5ce",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ },
+ "2025-05": {
+  "bars": 31516,
+  "sha256": "7c10c6357d7b45898fc3344776ec02454be8b2317f700eba44bff1a89150621d",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ },
+ "2025-06": {
+  "bars": 30287,
+  "sha256": "4ab03506d5b258db7887a3b1c81419ba55339e2b65997fed2a2f6e9dd6fc83f3",
+  "source": "histdata.com M1 BID (ask assumed)",
+  "fetched_utc": "2026-09-26T20:13:54+00:00"
+ }
+}
