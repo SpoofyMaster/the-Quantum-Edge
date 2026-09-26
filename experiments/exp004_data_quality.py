@@ -34,6 +34,7 @@ def analyse(sym: str, cfg: dict, inst) -> dict:
     df = load_m1(sym, cfg["splits"]["data_start"], cfg=cfg)
     pip = PIP[sym]
     out = {"months_available": len(available_months(sym)), "bars": int(len(df)),
+           "spread_source": df["spread_source"].value_counts().to_dict() if "spread_source" in df else {},
            "first": str(df.index[0]), "last": str(df.index[-1])}
     out["quality_by_year"] = {str(y): quality_report(g) for y, g in df.groupby(df.index.year)}
     out["close_range_by_year"] = {str(y): [_r(g.bc.min(), 4), _r(g.bc.max(), 4)] for y, g in df.groupby(df.index.year)}
@@ -74,7 +75,9 @@ def analyse(sym: str, cfg: dict, inst) -> dict:
 def main():
     cfg, instruments = load_research(), load_instruments()
     syms = [s for s in instruments if available_months(s)]
-    res = {"experiment": EXP, "data": "Dukascopy M1 BID/ASK candles (proxy for IC Markets)", "symbols": {}}
+    res = {"experiment": EXP, "data": "M1 bars from the source in each symbol's spread_source field "
+                                      "('quoted' = Dukascopy bid/ask; 'assumed' = HistData bid + modelled spread, "
+                                      "spread statistics then carry NO information)", "symbols": {}}
     for s in syms:
         print("analysing", s, flush=True)
         res["symbols"][s] = analyse(s, cfg, instruments[s])
