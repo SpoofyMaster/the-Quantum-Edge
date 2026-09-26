@@ -16,19 +16,32 @@ positive in ≥ 2 of 3 calendar sub-periods, and no collapse under +50% cost or 
 | M-04 | The pipeline can detect a planted continuation edge. | **PARTIAL (synthetic)** | exp001: a planted drift of 0.2σ/min for 20 min after a 3σ impulse gives a gross EV of +0.36R (CI [0.22, 0.51]) at k=3.5. Net EV is only +0.09R (CI [−0.05, 0.22]) on 1 year of one symbol, so it is **not significant**. The unconditional logistic model (events every 5 bars) did **not** detect it (AUC 0.511 vs 0.510 null), because the edge affects only about 2% of bars. |
 | M-05 | Round-trip cost is a first-order constraint at M1 stop sizes. | **VERIFIED (arithmetic, unverified specs)** | [exp003](../../results/exp003_cost_in_R_table.json): EURUSD cost is ≈0.22R at a 5-pip stop and 0.09R at 12 pips. XAUUSD cost is ≈0.38R at a 5-point ($0.50) stop. A 1.5R target with a 5-pip stop needs a win rate of ≥ 48.8% on EURUSD. |
 
-## Market hypotheses (to test on real data once it is available)
+## Market hypotheses — status after EXP005 (dev period 2020-01 → 2023-12, HistData M1, modelled spreads)
 
-| ID | Statement (measurable) | Horizon | Source | Status |
-|---|---|---|---|---|
-| H-01 | After a de-seasonalised 5-min impulse > k·σ **during London/NY/overlap**, continuation probability > 50% + cost hurdle. | 15–60 min | Andersen-Bollerslev seasonality + informed-flow theory | HYPOTHESIS |
-| H-02 | The same impulse **in Asia / late NY** mean-reverts (liquidity-driven, not information-driven). | 5–30 min | Elaut et al. 2018 (informed vs liquidity) | HYPOTHESIS |
-| H-03 | The first 15–30 min London-open range break predicts direction until the NY open. | 60–120 min | Gao et al. 2018 (analogue), session-transition flow | HYPOTHESIS |
-| H-04 | Sweep of the previous FX-day high/low followed by a close back inside the range → reversal. | 15–90 min | Osler 2003 (stop clustering) | HYPOTHESIS |
-| H-05 | Break of a round number (00/50 levels) with range expansion → continuation. | 5–30 min | Osler 2003 | HYPOTHESIS |
-| H-06 | Approach to an untouched round number without expansion → stall/reversal. | 5–30 min | Osler 2003 | HYPOTHESIS |
-| H-07 | High efficiency ratio + rising realised vol ratio (trending regime) raises continuation probability, conditional on H-01. | 15–60 min | Regime literature | HYPOTHESIS |
-| H-08 | USD drift into and reversal after the London 16:00 fix. | 30–60 min | Krohn, Mueller & Whelan 2024 | HYPOTHESIS |
-| H-09 | XAUUSD/XAGUSD impulses led by the USD leg (DXY proxy from EURUSD+USDJPY) continue more than idiosyncratic metal moves. | 15–60 min | Cross-asset | HYPOTHESIS |
-| H-10 | Trading suspension when spread > 3× its hourly median, or within ±N min of tier-1 news, improves net EV. | — | ABDV 2003; execution risk | HYPOTHESIS |
+EXP005 ([results](../../results/exp005_event_study_dev.json)) measures the signed forward mid move from the
+next-bar open, in units of round-trip cost, for H ∈ {5, 15, 30, 60, 120} min. It covers 275 cells
+(5 symbols × 11 families × 5 horizons), with Benjamini–Hochberg FDR at q ≤ 0.10 across all of them.
 
-All market hypotheses are **BLOCKED on data** (see [data_provenance.md](data_provenance.md)).
+| ID | Statement (measurable) | Status | Evidence (dev period only) |
+|---|---|---|---|
+| H-01 | After a de-seasonalised 5-min impulse > k·σ in London/NY, price **continues**. | **REJECTED** | Significantly **negative** on EURUSD, GBPUSD, XAUUSD, XAGUSD for k = 3/4/5 and H = 5–60 (q ≤ 0.05). Example: XAUUSD k=5 at H=30 is −1.51× cost. USDJPY is not significant. |
+| H-02 | The same impulse in Asia / late NY **reverts**. | **SUPPORTED on dev, pending validation** | EURUSD k=5 at H=120: +1.59 pips = 1.32× cost, CI [0.93, 2.24], q = 0.0001. GBPUSD k=3 at H=120: 0.66× cost. XAUUSD k=3 at H=30: 0.40× cost. |
+| H-03 | London-open 30-min range break continues. | REJECTED (no evidence) | No FDR survivor. Best cell is USDJPY H=60 at 0.66× cost, CI includes 0. |
+| H-04 | Previous-FX-day high/low sweep reverts. | REJECTED (no evidence) | No survivor. |
+| H-05 | Round-number break with range expansion continues. | REJECTED | Where significant, the sign is *negative* (GBPUSD, XAUUSD, XAGUSD). |
+| H-06 | Stall at untouched round numbers. | NOT TESTED | Deprioritised after H-05. |
+| H-07 | Trending-regime filter improves continuation. | MOOT | Continuation itself is rejected (H-01). |
+| H-08 | USD strength into the 16:00 London fix, weakness after. | REJECTED (no evidence) | No survivor on any symbol. |
+| H-09 | USD-led metal impulses continue. | NOT TESTED | Continuation is rejected generally. |
+| H-10 | Spread/news suspension improves net EV. | BLOCKED | Needs observed spreads and a news calendar. |
+| **H-11** | **Fade** a de-seasonalised 5-min impulse > k·σ in London/NY (mean reversion within 15–60 min). | **GENERATED from dev data → EXP006, then one-shot validation (EXP007)** | This is the mirror image of H-01's rejection. It is data-snooped by construction, so only the untouched validation period can support it. |
+
+Caveats that apply to every row:
+- HistData is bid-only, so spreads are **modelled**, not observed.
+- 2023 has about 48k missing minutes.
+- Mid prices are bid + half the modelled spread.
+- Short-horizon reversal is also the signature of **bad-print noise** in retail data feeds. Measuring
+  from the *next* bar's open removes single-print bounce-backs, but multi-bar data errors could remain.
+  Confirmation on a second, independent data source (Dukascopy or IC Markets MT5 export) is required
+  before any real-money consideration.
+

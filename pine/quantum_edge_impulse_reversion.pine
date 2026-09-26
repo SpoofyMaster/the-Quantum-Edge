@@ -1,0 +1,191 @@
+//@version=6
+// ============================================================================================
+// PROJECT QUANTUM EDGE — Impulse Reversion prototype (M1)             RESEARCH / PAPER ONLY
+// Status: NOT YET COMPILED ON TRADINGVIEW (written in a sandbox without TradingView access).
+//
+// Signal parity with the Python research code:
+//   seasonal sigma  = qe/features.py::seasonal_sigma  (NY-local 5-min time-of-week buckets,
+//                     median over the previous 20 weeks, >= 4 weeks required, x sqrt(pi/2))
+//   impulse_ds5     = log-return over 5 bars / sqrt(sum of seasonal sigma^2 over the last 5 bars)
+//   events          = qe/events.py::events_impulse  (first bar with |impulse| > k)
+//     mode "Active fade"   (H-11): London or New York session, trade AGAINST the impulse
+//     mode "Quiet revert"  (H-02): outside London/NY and outside the rollover blackout
+//   exits           = experiments/exp006: stop = stopMult x max(seasonal, realised sigma) x sqrt(H)
+//                     x price; target = targetMult x the same (0 = none); time exit after H minutes
+// Known parity gaps: TradingView chart prices are one feed (usually bid), not IC Markets bid/ask;
+// spread is approximated with the Properties > Slippage setting; the chart may load fewer bars
+// than the 20-week seasonal window (the script needs >= 4 full weeks before it can trade).
+// Risk: 0.20% of equity per trade incl. commission, 1.00% daily loss lockout (FX day = 17:00 NY),
+// no pyramiding, forced exit before the rollover blackout, max holding 120 minutes.
+// ============================================================================================
+strategy("QE Impulse Reversion (research)", overlay = true, pyramiding = 0, initial_capital = 100000,
+     currency = currency.USD, default_qty_type = strategy.fixed, default_qty_value = 1,
+     commission_type = strategy.commission.cash_per_contract, commission_value = 0.000035,
+     slippage = 2, process_orders_on_close = false, calc_on_every_tick = false, max_bars_back = 500)
+// commission_value: USD per UNIT per side. FX (100k contract, $3.50/lot/side) = 0.000035.
+// XAUUSD (100 oz) = 0.035 ; XAGUSD (5000 oz) = 0.0007. Change it in Properties for metals. UNVERIFIED.
+
+// ---------------- inputs ----------------
+grpS = "Signal"
+mode       = input.string("Active fade", "Mode", options = ["Active fade", "Quiet revert"], group = grpS)
+kThr       = input.float(5.0, "Impulse threshold k (de-seasonalised sigma)", minval = 1.0, step = 0.5, group = grpS)
+holdH      = input.int(30, "Holding horizon H (minutes)", minval = 5, maxval = 120, group = grpS)
+stopMult   = input.float(1.0, "Stop multiple of expected move", minval = 0.25, step = 0.25, group = grpS)
+targetMult = input.float(1.5, "Target multiple (0 = time exit only)", minval = 0.0, step = 0.25, group = grpS)
+grpR = "Risk (never raise above research limits)"
+riskPct    = input.float(0.20, "Risk per trade % (incl. commission)", minval = 0.01, maxval = 0.20, step = 0.01, group = grpR)
+dayLossPct = input.float(1.00, "Max planned daily loss %", minval = 0.1, maxval = 1.0, step = 0.1, group = grpR)
+contract   = input.float(100000, "Contract size (units per lot)", group = grpR, tooltip = "FX 100000, XAUUSD 100, XAGUSD 5000")
+lotStep    = input.float(0.01, "Lot step", group = grpR)
+commLotSide = input.float(3.50, "Commission USD per lot per side (UNVERIFIED)", group = grpR)
+grpD = "Display"
+showDash   = input.bool(true, "Show dashboard", group = grpD)
+
+// ---------------- constants ----------------
+int NB = 2016          // 5-minute buckets per week
+int W  = 20            // weeks of seasonal history
+float SQRT_PI_2 = math.sqrt(math.pi / 2.0)
+
+// ---------------- NY local time helpers ----------------
+tz = "America/New_York"
+nyDow  = dayofweek(time, tz)                 // 1 = Sunday ... 7 = Saturday
+nyH    = hour(time, tz)
+nyM    = minute(time, tz)
+bucket = (nyDow - 1) * 288 + int((nyH * 60 + nyM) / 5)
+localMs = timestamp("UTC", year(time, tz), month(time, tz), dayofmonth(time, tz), nyH, nyM)
+weekId  = int(math.floor((math.floor(localMs / 86400000.0) - 10958) / 7.0))   // weeks start Sunday; 10958 = 2000-01-02
+
+// ---------------- seasonal sigma (time-of-week, previous 20 weeks) ----------------
+var array<float> hist   = array.new<float>(NB * W, na)
+var array<float> curSum = array.new<float>(NB, 0.0)
+var array<int>   curCnt = array.new<int>(NB, 0)
+var int curWeek = na
+var int weeksSeen = 0
+
+r1 = math.log(close) - math.log(close[1])
+absr = math.abs(r1)
+
+if na(curWeek)
+    curWeek := weekId
+else if weekId != curWeek
+    // store the finished week's bucket means, NaN where the bucket had no bars
+    slot = curWeek % W
+    for b = 0 to NB - 1
+        c = curCnt.get(b)
+        hist.set(b * W + slot, c > 0 ? curSum.get(b) / c : na)
+        curSum.set(b, 0.0)
+        curCnt.set(b, 0)
+    // weeks with no bars at all (gaps) must also be NaN
+    if weekId - curWeek > 1
+        for wk = curWeek + 1 to math.min(weekId - 1, curWeek + W)
+            s2 = wk % W
+            for b = 0 to NB - 1
+                hist.set(b * W + s2, na)
+    weeksSeen += 1
+    curWeek := weekId
+
+// expectation for this bar uses ONLY previous weeks (the current week is still accumulating)
+vals = array.new<float>()
+for j = 0 to W - 1
+    v = hist.get(bucket * W + j)
+    if not na(v)
+        vals.push(v)
+seasSigma = vals.size() >= 4 ? vals.median() * SQRT_PI_2 : na
+
+// accumulate the current bar AFTER computing the expectation (causal)
+if not na(absr)
+    curSum.set(bucket, curSum.get(bucket) + absr)
+    curCnt.set(bucket, curCnt.get(bucket) + 1)
+
+// ---------------- features ----------------
+e2 = seasSigma * seasSigma
+sumE2_5 = math.sum(e2, 5)
+impulse = (math.log(close) - math.log(close[5])) / math.sqrt(sumE2_5)
+rv60 = ta.stdev(r1, 60, false)
+
+// ---------------- sessions ----------------
+inLondon  = not na(time(timeframe.period, "0800-1630", "Europe/London"))
+inNewYork = not na(time(timeframe.period, "0800-1700", tz))
+inBlackout = not na(time(timeframe.period, "1645-1730", tz))
+active = inLondon or inNewYork
+fxDay = dayofmonth(time + 7 * 3600000, tz)   // 17:00 NY rolls to the next FX day
+
+// ---------------- events ----------------
+over = math.abs(impulse) > kThr
+trigger = over and not over[1] and not na(impulse)
+sessOk = mode == "Active fade" ? active : (not active and not inBlackout)
+dir = -math.sign(impulse)                       // both modes trade AGAINST the impulse
+signal = trigger and sessOk and not inBlackout and timeframe.period == "1"
+
+// ---------------- risk engine ----------------
+var float dayStartEq = strategy.initial_capital
+var bool  lockout = false
+if ta.change(fxDay) != 0
+    dayStartEq := strategy.equity
+    lockout := false
+dayLossCash = math.max(0.0, dayStartEq - strategy.equity)
+dayLimit = dayStartEq * dayLossPct / 100.0
+if dayLossCash >= dayLimit
+    lockout := true
+
+usdPerQuote = request.currency_rate(syminfo.currency, "USD")
+sigmaUse = math.max(nz(seasSigma), nz(rv60))
+moveDist = sigmaUse * math.sqrt(holdH) * close
+stopDist = stopMult * moveDist
+riskCash = strategy.equity * riskPct / 100.0
+perUnitRisk = stopDist * usdPerQuote + 2.0 * commLotSide / contract
+rawUnits = perUnitRisk > 0 ? riskCash / perUnitRisk : 0.0
+lotUnits = lotStep * contract
+units = math.floor(rawUnits / lotUnits) * lotUnits
+plannedRisk = units * perUnitRisk
+openRisk = strategy.position_size != 0 ? plannedRisk : 0.0
+budgetOk = dayLossCash + math.max(plannedRisk, riskCash) <= dayLimit
+canTrade = signal and strategy.position_size == 0 and not lockout and budgetOk and units > 0 and moveDist > 0
+
+var float tradeStop = na
+if canTrade
+    tradeStop := stopDist
+    stopTicks = math.round(stopDist / syminfo.mintick)
+    tgtTicks = targetMult > 0 ? math.round(targetMult * moveDist / syminfo.mintick) : na
+    if dir > 0
+        strategy.entry("QE-L", strategy.long, qty = units)
+        strategy.exit("QE-Lx", "QE-L", loss = stopTicks, profit = tgtTicks)
+    else
+        strategy.entry("QE-S", strategy.short, qty = units)
+        strategy.exit("QE-Sx", "QE-S", loss = stopTicks, profit = tgtTicks)
+
+// time exit (H minutes incl. the entry bar) and rollover protection
+heldMin = strategy.position_size != 0 ? (time - strategy.opentrades.entry_time(0)) / 60000.0 : 0.0
+if strategy.position_size != 0 and (heldMin >= holdH - 1 or heldMin >= 119 or inBlackout)
+    strategy.close_all(comment = inBlackout ? "rollover" : "time")
+
+// ---------------- visuals ----------------
+plotshape(canTrade and dir > 0, "Long", shape.triangleup, location.belowbar, color.new(color.teal, 0), size = size.tiny)
+plotshape(canTrade and dir < 0, "Short", shape.triangledown, location.abovebar, color.new(color.maroon, 0), size = size.tiny)
+bgcolor(inBlackout ? color.new(color.gray, 85) : na, title = "Rollover blackout")
+bgcolor(lockout ? color.new(color.red, 90) : na, title = "Daily lockout")
+
+var table dash = table.new(position.top_right, 2, 11, bgcolor = color.new(color.black, 15), border_width = 1)
+if showDash and barstate.islast
+    table.cell(dash, 0, 0, "QE research prototype", text_color = color.yellow)
+    table.cell(dash, 1, 0, "PAPER ONLY", text_color = color.yellow)
+    table.cell(dash, 0, 1, "Mode / k / H", text_color = color.white)
+    table.cell(dash, 1, 1, mode + " / " + str.tostring(kThr) + " / " + str.tostring(holdH) + "m", text_color = color.white)
+    table.cell(dash, 0, 2, "Seasonal weeks loaded", text_color = color.white)
+    table.cell(dash, 1, 2, str.tostring(weeksSeen) + (weeksSeen < 4 ? " (need 4: NO TRADES)" : ""), text_color = weeksSeen < 4 ? color.red : color.white)
+    table.cell(dash, 0, 3, "Impulse (sigma)", text_color = color.white)
+    table.cell(dash, 1, 3, str.tostring(impulse, "#.##"), text_color = color.white)
+    table.cell(dash, 0, 4, "Session", text_color = color.white)
+    table.cell(dash, 1, 4, inBlackout ? "ROLLOVER BLACKOUT" : active ? "active (LDN/NY)" : "quiet", text_color = color.white)
+    table.cell(dash, 0, 5, "Day P&L %", text_color = color.white)
+    table.cell(dash, 1, 5, str.tostring(100 * (strategy.equity - dayStartEq) / dayStartEq, "#.###"), text_color = color.white)
+    table.cell(dash, 0, 6, "Daily lockout", text_color = color.white)
+    table.cell(dash, 1, 6, lockout ? "LOCKED" : "open", text_color = lockout ? color.red : color.lime)
+    table.cell(dash, 0, 7, "Open risk USD", text_color = color.white)
+    table.cell(dash, 1, 7, str.tostring(openRisk, "#.##"), text_color = color.white)
+    table.cell(dash, 0, 8, "Position / held min", text_color = color.white)
+    table.cell(dash, 1, 8, str.tostring(strategy.position_size) + " / " + str.tostring(heldMin, "#"), text_color = color.white)
+    table.cell(dash, 0, 9, "Closed trades", text_color = color.white)
+    table.cell(dash, 1, 9, str.tostring(strategy.closedtrades), text_color = color.white)
+    table.cell(dash, 0, 10, "Data", text_color = color.white)
+    table.cell(dash, 1, 10, "TradingView feed ≠ IC Markets bid/ask", text_color = color.orange)
