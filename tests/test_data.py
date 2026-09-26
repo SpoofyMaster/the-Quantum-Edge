@@ -44,3 +44,38 @@ def test_quality_report_on_synthetic(small_bars):
 def test_quality_report_flags_gap(small_bars):
     q = quality_report(small_bars.drop(small_bars.index[100:110]))
     assert q["intraweek_gaps"] == 1 and q["intraweek_missing_minutes"] == 10
+
+
+def test_candle_roundtrip_and_canonical():
+    from qe.data.dukascopy import (candles_to_canonical, check_candle_order, decode_candles_bi5,
+                                   encode_candles_bi5)
+    day = datetime(2024, 1, 2)
+    idx = pd.DatetimeIndex(["2024-01-02 00:00", "2024-01-02 00:01", "2024-01-02 00:02"], tz="UTC")
+    bid = pd.DataFrame({"open": [2050.10, 2050.20, 2050.0], "high": [2050.5, 2050.3, 2050.0],
+                        "low": [2050.0, 2049.9, 2050.0], "close": [2050.2, 2050.0, 2050.0],
+                        "volume": [1.5, 2.0, 0.0]}, index=idx)
+    ask = bid.copy()
+    ask[["open", "high", "low", "close"]] += 0.15
+    b = decode_candles_bi5(encode_candles_bi5(bid, "XAUUSD", day), "XAUUSD", day)
+    a = decode_candles_bi5(encode_candles_bi5(ask, "XAUUSD", day), "XAUUSD", day)
+    np.testing.assert_allclose(b.high.values, bid.high.values)
+    assert (b.index == idx).all() and check_candle_order(b) == 0.0
+    c = candles_to_canonical(b, a.assign(volume=0.0))
+    assert len(c) == 2  # filler bar with zero volume on both sides dropped
+    assert (c.ac - c.bc).round(6).eq(0.15).all()
+
+
+def test_store_guard(tmp_path, monkeypatch, cfg):
+    from qe.data import store
+    from qe.synthetic import generate
+    from qe.validation import FinalTestLocked
+    monkeypatch.delenv("QE_UNLOCK_FINAL_TEST", raising=False)
+    monkeypatch.setattr(store, "M1_DIR", tmp_path)
+    df = generate(start="2025-06-25", end="2025-07-03", seed=1)
+    (tmp_path / "EURUSD").mkdir()
+    for m, g in df.groupby(df.index.strftime("%Y-%m")):
+        g.to_parquet(tmp_path / "EURUSD" / f"{m}.parquet")
+    got = store.load_m1("EURUSD", "2025-06-25", cfg=cfg)
+    assert got.index.max() < pd.Timestamp("2025-07-01", tz="UTC")
+    with pytest.raises(FinalTestLocked):
+        store.load_m1("EURUSD", "2025-06-25", "2025-07-03", cfg=cfg)

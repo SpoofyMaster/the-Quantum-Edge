@@ -71,3 +71,71 @@ def ticks_to_m1(ticks: pd.DataFrame) -> pd.DataFrame:
     out = out.dropna(subset=["bo"])
     out["spread_source"] = "quoted"
     return out
+
+
+# ---------------------------------------------------------------------------------------------
+# Daily M1 candle files (one request per day and side instead of 24 hourly tick files).
+#   URL  .../{SYMBOL}/{YYYY}/{MM-1:02d}/{DD:02d}/{BID|ASK}_candles_min_1.bi5
+#   body LZMA stream of 24-byte big-endian records:
+#        uint32 seconds_since_day_start, uint32 open, uint32 close, uint32 low, uint32 high, float32 volume
+# The field order (open, close, low, high) is validated on every decoded file by
+# `check_candle_order`; a violation aborts the download instead of silently corrupting bars.
+# ---------------------------------------------------------------------------------------------
+_CANDLE = np.dtype([("s", ">u4"), ("o", ">u4"), ("c", ">u4"), ("l", ">u4"), ("h", ">u4"), ("v", ">f4")])
+
+
+def _utc_day(day) -> pd.Timestamp:
+    ts = pd.Timestamp(day)
+    return (ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")).normalize()
+
+
+def candle_url(symbol: str, day: datetime, side: str) -> str:
+    return (f"https://datafeed.dukascopy.com/datafeed/{symbol}/{day.year}/{day.month - 1:02d}/"
+            f"{day.day:02d}/{side.upper()}_candles_min_1.bi5")
+
+
+def decode_candles_bi5(payload: bytes, symbol: str, day: datetime) -> pd.DataFrame:
+    cols = ["open", "high", "low", "close", "volume"]
+    if not payload:
+        return pd.DataFrame(columns=cols, index=pd.DatetimeIndex([], tz="UTC", name="time"))
+    raw = lzma.decompress(payload)
+    if len(raw) % _CANDLE.itemsize:
+        raise ValueError("corrupt candle payload: length not a multiple of 24")
+    arr = np.frombuffer(raw, dtype=_CANDLE)
+    p = POINT[symbol]
+    base = _utc_day(day)
+    idx = pd.DatetimeIndex(base + pd.to_timedelta(arr["s"].astype(np.int64), unit="s"), name="time")
+    return pd.DataFrame({"open": arr["o"] / p, "high": arr["h"] / p, "low": arr["l"] / p,
+                         "close": arr["c"] / p, "volume": arr["v"].astype(float)}, index=idx)[cols]
+
+
+def encode_candles_bi5(df: pd.DataFrame, symbol: str, day: datetime) -> bytes:
+    """Inverse of decode_candles_bi5 (tests only)."""
+    p = POINT[symbol]
+    base = _utc_day(day)
+    secs = ((df.index - base) / pd.Timedelta(seconds=1)).astype(np.int64)
+    rec = np.empty(len(df), dtype=_CANDLE)
+    rec["s"] = secs
+    for k, col in (("o", "open"), ("c", "close"), ("l", "low"), ("h", "high")):
+        rec[k] = np.round(df[col].to_numpy() * p).astype(np.uint32)
+    rec["v"] = df["volume"].to_numpy(np.float32)
+    return lzma.compress(rec.tobytes(), format=lzma.FORMAT_ALONE)
+
+
+def check_candle_order(df: pd.DataFrame, tol: float = 1e-9) -> float:
+    """Fraction of bars violating low <= min(open, close) <= max(open, close) <= high."""
+    if df.empty:
+        return 0.0
+    bad = (df.high + tol < df[["open", "close"]].max(axis=1)) | (df.low - tol > df[["open", "close"]].min(axis=1))
+    return float(bad.mean())
+
+
+def candles_to_canonical(bid: pd.DataFrame, ask: pd.DataFrame) -> pd.DataFrame:
+    """Join BID and ASK candles into the canonical schema; drop filler bars (zero bid volume)."""
+    j = bid.join(ask, how="inner", lsuffix="_b", rsuffix="_a")
+    out = pd.DataFrame({"bo": j.open_b, "bh": j.high_b, "bl": j.low_b, "bc": j.close_b,
+                        "ao": j.open_a, "ah": j.high_a, "al": j.low_a, "ac": j.close_a,
+                        "volume": j.volume_b + j.volume_a}, index=j.index)
+    out = out[(j.volume_b > 0) | (j.volume_a > 0)]
+    out["spread_source"] = "quoted"
+    return out

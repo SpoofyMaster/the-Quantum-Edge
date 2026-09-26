@@ -1,0 +1,87 @@
+name: research
+# Runs a research experiment on real market data. The sandbox used for development cannot reach
+# data vendors, so data is fetched here into the (repo-private) Actions cache and NEVER committed.
+# Only aggregated results (results/*.json) are pushed to the `ci-results` branch.
+on:
+  workflow_dispatch:
+    inputs:
+      experiment:
+        description: "experiment script in experiments/ (without .py)"
+        required: true
+        default: "exp004_data_quality"
+      symbols:
+        description: "comma-separated symbols to fetch"
+        default: "EURUSD,GBPUSD,USDJPY,XAUUSD,XAGUSD"
+      start:
+        default: "2020-01-01"
+      end:
+        description: "exclusive; the final-test period (>= 2025-07-01) stays locked"
+        default: "2025-07-01"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: research
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      EXPERIMENT: ${{ inputs.experiment }}
+      SYMBOLS: ${{ inputs.symbols }}
+      START: ${{ inputs.start }}
+      END: ${{ inputs.end }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Validate inputs
+        run: |
+          [[ "$EXPERIMENT" =~ ^exp[0-9]{3}_[a-z0-9_]+$ ]] || { echo "bad experiment name"; exit 1; }
+          [[ "$SYMBOLS" =~ ^[A-Z,]+$ ]] || { echo "bad symbols"; exit 1; }
+          [[ "$START$END" =~ ^[0-9-]+$ ]] || { echo "bad dates"; exit 1; }
+          test -f "experiments/$EXPERIMENT.py"
+      - name: Restore market-data cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: m1-v1-${{ github.run_id }}
+          restore-keys: m1-v1-
+      - name: Fetch missing months (Dukascopy)
+        run: python scripts/fetch_dukascopy_m1.py "$SYMBOLS" "$START" "$END"
+      - name: Save market-data cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: m1-v1-${{ github.run_id }}
+      - name: Run experiment
+        run: python "experiments/$EXPERIMENT.py"
+      - name: Publish aggregated results to ci-results branch
+        if: always()
+        run: |
+          set -e
+          mkdir -p /tmp/out/results
+          cp results/*.json /tmp/out/results/ 2>/dev/null || true
+          cp data/fetch_report_*.json /tmp/out/results/ 2>/dev/null || true
+          git config user.name "quantum-edge-ci"
+          git config user.email "actions@users.noreply.github.com"
+          git reset -q --hard
+          git clean -fdq
+          if git fetch origin ci-results 2>/dev/null; then
+            git checkout -B ci-results origin/ci-results
+          else
+            git checkout --orphan ci-results
+            git rm -rf -q .
+          fi
+          mkdir -p results
+          cp /tmp/out/results/*.json results/
+          git add results
+          git commit -q -m "CI results: $EXPERIMENT (run ${{ github.run_id }})" || echo "nothing to commit"
+          git push origin ci-results
