@@ -27,11 +27,11 @@ OUT = ROOT / "data" / "m1"
 UA = {"User-Agent": "Mozilla/5.0 (research; quantum-edge)"}
 
 
-def fetch(url: str, tries: int = 6) -> bytes:
+def fetch(url: str, tries: int = 4) -> bytes:
     err = None
     for k in range(tries):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=40) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=20) as r:
                 return r.read()
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -39,7 +39,8 @@ def fetch(url: str, tries: int = 6) -> bytes:
             err = e
         except Exception as e:  # noqa: BLE001  (timeouts, resets)
             err = e
-        time.sleep(min(60, 2 ** k))
+        print(f"retry {k + 1}/{tries} {url}: {err}", flush=True)
+        time.sleep(min(30, 2 ** k))
     raise RuntimeError(f"failed {url}: {err}")
 
 

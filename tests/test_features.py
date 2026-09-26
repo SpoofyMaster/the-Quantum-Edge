@@ -18,5 +18,6 @@ def test_features_are_causal(small_bars):
 
 
 def test_features_finite_after_warmup(small_bars):
-    f = build_features(small_bars).iloc[3000:]
+    # seasonal features need >= 4 prior weeks; small_bars has < 3 weeks, so test the rest here
+    f = build_features(small_bars, seasonal=False).iloc[3000:]
     assert f.notna().mean().min() > 0.95

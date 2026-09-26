@@ -12,7 +12,30 @@ from .data.schema import mid, spread
 from .sessions import fx_trading_day
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def seasonal_sigma(df: pd.DataFrame, weeks: int = 20, min_weeks: int = 4, bucket_min: int = 5) -> pd.Series:
+    """Causal expected 1-minute return sigma for each bar's time-of-week.
+
+    Buckets are `bucket_min` minutes of the week in NEW YORK local time (DST-aware; aligns with the
+    17:00 NY FX-day boundary and US data releases). For every (week, bucket) the mean |r| is
+    computed; the expectation for week w is the median over the previous `weeks` weeks (w excluded),
+    converted to sigma via E|r| = sigma * sqrt(2/pi). Uses only strictly earlier weeks -> causal.
+    """
+    m = np.log(mid(df))
+    absr = m.diff().abs()
+    ny = df.index.tz_convert("America/New_York")
+    local = ny.tz_localize(None)
+    week = ((local - pd.Timestamp("2000-01-02")).days // 7).to_numpy()  # weeks start Sunday (NY)
+    dow_from_sun = (np.asarray(ny.dayofweek) + 1) % 7
+    bucket = dow_from_sun * (1440 // bucket_min) + (np.asarray(ny.hour) * 60 + np.asarray(ny.minute)) // bucket_min
+    tab = pd.DataFrame({"w": week, "b": bucket, "a": absr.to_numpy()}).groupby(["w", "b"])["a"].mean().unstack("b")
+    tab = tab.reindex(range(int(tab.index.min()), int(tab.index.max()) + 1))
+    exp = tab.rolling(weeks, min_periods=min_weeks).median().shift(1) * np.sqrt(np.pi / 2)
+    key = pd.MultiIndex.from_arrays([week, bucket])
+    vals = exp.stack(future_stack=True).reindex(key).to_numpy()
+    return pd.Series(vals, index=df.index, name="seasonal_sigma")
+
+
+def build_features(df: pd.DataFrame, seasonal: bool = True) -> pd.DataFrame:
     m = np.log(mid(df))
     r1 = m.diff()
     f = pd.DataFrame(index=df.index)
@@ -56,4 +79,13 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     tod = (df.index.hour * 60 + df.index.minute).values / 1440.0
     f["tod_sin"] = np.sin(2 * np.pi * tod)
     f["tod_cos"] = np.cos(2 * np.pi * tod)
+    if seasonal:
+        e = seasonal_sigma(df)
+        e2 = e ** 2
+        f["seasonal_sigma"] = e
+        # impulse relative to what is NORMAL for this time of week (not just recent vol)
+        f["impulse_ds5"] = f["ret_5"] / np.sqrt(e2.rolling(5, min_periods=5).sum())
+        f["impulse_ds15"] = f["ret_15"] / np.sqrt(e2.rolling(15, min_periods=15).sum())
+        # volatility regime: realised vs seasonal expectation over the last 60 minutes
+        f["vol_regime_60"] = rv60 / np.sqrt(e2.rolling(60, min_periods=40).mean())
     return f.replace([np.inf, -np.inf], np.nan)

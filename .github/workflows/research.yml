@@ -53,6 +53,12 @@ jobs:
           path: data
           key: m1-v1-${{ github.run_id }}
           restore-keys: m1-v1-
+      - name: Probe Dukascopy connectivity
+        run: |
+          for u in "https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/BID_candles_min_1.bi5" \
+                   "https://datafeed.dukascopy.com/datafeed/EURUSD/2020/00/06/10h_ticks.bi5"; do
+            curl -sS -m 30 -A "Mozilla/5.0" -o /tmp/probe.bin -w "%{http_code} %{size_download} bytes %{time_total}s $u\n" "$u" || echo "curl failed: $u"
+          done
       - name: Fetch missing months (Dukascopy)
         run: python scripts/fetch_dukascopy_m1.py "$SYMBOLS" "$START" "$END"
       - name: Save market-data cache
