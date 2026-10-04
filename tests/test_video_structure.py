@@ -60,7 +60,7 @@ def test_zigzag_simple_sequence():
 def test_mtf_condition_classification(mtf, cond, direction):
     co = pd.Timestamp("2024-03-06 02:00", tz="UTC")
     g = gold_frame(co, mtf + [(30, mtf[-1][1])])
-    t = g.index.asi8
+    t = g.index.as_unit("ns").asi8
     ctx = mtf_context(t, g.bo.to_numpy(), g.bh.to_numpy(), g.bl.to_numpy(), g.bc.to_numpy(), co.value, Params())
     assert ctx.condition == cond
     if direction:
@@ -71,7 +71,7 @@ def test_mtf_condition_classification(mtf, cond, direction):
 def test_mtf_context_undefined_without_enough_history():
     co = pd.Timestamp("2024-03-06 02:00", tz="UTC")
     g = gold_frame(co, [(-100, 2000.0), (0, 2001.0), (10, 2001.0)])
-    ctx = mtf_context(g.index.asi8, g.bo.to_numpy(), g.bh.to_numpy(), g.bl.to_numpy(), g.bc.to_numpy(), co.value,
+    ctx = mtf_context(g.index.as_unit("ns").asi8, g.bo.to_numpy(), g.bh.to_numpy(), g.bl.to_numpy(), g.bc.to_numpy(), co.value,
                       Params())
     assert ctx.condition == UNDEFINED and not ctx.tradable
 
@@ -79,7 +79,7 @@ def test_mtf_context_undefined_without_enough_history():
 def test_location_levels_half_and_condition_aware():
     co = pd.Timestamp("2024-03-06 02:00", tz="UTC")
     g = gold_frame(co, MTF_BEAR_TR + [(30, 2012.5)])
-    ctx = mtf_context(g.index.asi8, g.bo.to_numpy(), g.bh.to_numpy(), g.bl.to_numpy(), g.bc.to_numpy(), co.value,
+    ctx = mtf_context(g.index.as_unit("ns").asi8, g.bo.to_numpy(), g.bh.to_numpy(), g.bl.to_numpy(), g.bc.to_numpy(), co.value,
                       Params())
     hs, le = ctx.last_down_leg
     ls, he = ctx.last_up_leg

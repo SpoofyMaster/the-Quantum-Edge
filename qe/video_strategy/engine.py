@@ -5,7 +5,7 @@ Decisions are taken at the close of M1 bar t using bars <= t only. Fills happen 
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 
 import numpy as np
 import pandas as pd
@@ -444,7 +444,7 @@ def run(gold: pd.DataFrame, dxy: pd.DataFrame | None, params_list: list[Params],
     if len(strengths) != 1:
         raise ValueError("all trackers must share pivot_strength")
     n_piv = strengths.pop()
-    times = gold.index.asi8.astype(np.int64)
+    times = gold.index.as_unit("ns").asi8.astype(np.int64)   # pandas 3 defaults to microsecond indexes
     book = Book(*(gold[c].to_numpy(float) for c in ("bo", "bh", "bl", "bc", "ao", "ah", "al", "ac")))
     g = make_arrays(times, book.bo, book.bh, book.bl, book.bc, n_piv)
     atr = atr_sma(book.bh, book.bl, book.bc, params_list[0].atr_period_m1)
@@ -539,7 +539,7 @@ def run(gold: pd.DataFrame, dxy: pd.DataFrame | None, params_list: list[Params],
         pending[2]["equity_after"] = rm.equity
         trades.append(pending[2])
     tdf = pd.DataFrame(trades)
-    sdf = pd.DataFrame([s.__dict__ for s in setups])
+    sdf = pd.DataFrame([s.__dict__ for s in setups], columns=[f.name for f in fields(SetupRecord)])
     return RunResult(tdf, sdf, counters)
 
 
