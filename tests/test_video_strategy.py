@@ -70,8 +70,9 @@ def test_run_exit_stop_first_gap_and_time():
 
 def test_trend_context_is_rejected(cfg, instruments):
     co = ts("2024-03-07 02:00")
-    ex = _build("trend", co, MTF_TREND_UP[:-1] + [(0, 2000.0)], T05_CANDLE,
-                mirror(MTF_TREND_UP, 1988.0, 104.0), mirror(T05_CANDLE, 2000.0, 104.0), [Params()], {})
+    candle = [(m, p - 12.0) for m, p in T05_CANDLE]            # continue from the history's last price (1988)
+    ex = _build("trend", co, MTF_TREND_UP, candle,
+                mirror(MTF_TREND_UP, 1988.0, 104.0), mirror(candle, 1988.0, 104.0), [Params()], {})
     r = run(ex.gold, ex.dxy, ex.params, instruments["XAUUSD"], cfg)
     row = r.setups[r.setups.candle_open == co].iloc[0]
     assert row.reason == "INV_CONTEXT_TREND" and r.trades.empty
