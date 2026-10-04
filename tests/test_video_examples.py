@@ -79,3 +79,16 @@ def test_t06_dxy_shift_is_required_in_full_mode(cfg, instruments):
     assert full.trades.empty and row.reason == "INV_DXY_NO_INVERSION"
     mirror_only = _run(ex2, cfg, instruments, [Params(dxy_mode="MIRROR_DIRECTION")])
     assert len(mirror_only.trades) == 1
+
+
+@pytest.mark.parametrize("name, direction", [("T-01", 1), ("T-02", -1), ("T-03", 0), ("T-04", -1), ("T-05", 0),
+                                             ("T-06", 1)])
+def test_h1_and_m15_mode_reproduces_the_authors_decisions(name, direction, cfg, instruments):
+    """CandleMode H1_AND_M15 (closest to what the video shows): same decision as the author on all six examples."""
+    ex = fx.ALL[name]()
+    r = _run(ex, cfg, instruments, [Params(), m15_preset()])
+    t = r.trades[r.trades.signal_time >= ex.candle_open] if len(r.trades) else r.trades
+    if direction == 0:
+        assert t.empty
+    else:
+        assert len(t) == 1 and t.iloc[0].direction == direction and t.iloc[0].outcome == 1
