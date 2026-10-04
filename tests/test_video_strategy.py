@@ -133,3 +133,16 @@ def test_risk_per_trade_and_one_position(cfg, instruments):
     t = r.trades.sort_values("entry_time")
     assert (t.entry_time.iloc[1:].values > t.exit_time.iloc[:-1].values).all()    # never two positions at once
     assert (t.minutes <= 120).all()
+
+
+def test_performance_report_fields():
+    from qe.video_strategy.report import performance
+    et = pd.date_range("2024-01-02 02:00", periods=6, freq="1D", tz="UTC")
+    tr = pd.DataFrame({"entry_time": et, "exit_time": et + pd.Timedelta(minutes=9), "direction": [1, -1, 1, 1, -1, 1],
+                       "pnl_usd": [200.0, -200.0, -200.0, 150.0, -200.0, 300.0], "R": [1.0, -1.0, -1.0, 0.75, -1.0, 1.5]})
+    p = performance(tr)
+    assert p["trades"] == 6 and p["win_rate"] == pytest.approx(0.5)
+    assert p["gross_profit"] == 650 and p["gross_loss"] == 600 and p["profit_factor"] == pytest.approx(650 / 600)
+    assert p["max_consecutive_losses"] == 2 and p["avg_duration_min"] == pytest.approx(10)
+    assert p["max_drawdown_usd"] == pytest.approx(400)
+    assert p["by_session"]["ASIA"]["trades"] == 6 and set(p["by_year"]) == {"2024"}

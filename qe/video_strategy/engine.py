@@ -604,7 +604,12 @@ def _execute(tr: CandleTracker, b: Book, g: Arrays, atr: np.ndarray, t: int, dir
     risk_d = (entry - sl) * direction
     if reward <= 0 or risk_d <= 0:
         return {"reason": INV_TARGET_REACHED, "release": cancel_release}
-    size = size_position(inst, rm.equity, rm.risk_per_trade_pct, entry, sl, slip / inst.tick_size)
+    size_ref = entry
+    if p.entry_mode == "PULLBACK_50":
+        # the limit is re-anchored while pending; size for the worst admissible limit (B can not pass the target level)
+        worst = tp_level + 0.5 * (E - tp_level)
+        size_ref = worst if direction == SELL else worst + spread
+    size = size_position(inst, rm.equity, rm.risk_per_trade_pct, size_ref, sl, slip / inst.tick_size)
     if size.lots <= 0:
         return {"reason": SAFE_SIZE}
     ok, why = rm.check_new_order(inst.symbol, direction, size.planned_risk_usd)

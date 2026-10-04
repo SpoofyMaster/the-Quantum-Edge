@@ -69,3 +69,18 @@ quote_ccy = "USD"
 typical_raw_spread = 0.020
 status = "UNVERIFIED"
 verified_source = ""
+
+# ---- Correlation inputs for the video strategy (research/STRATEGY_RULEBOOK.md COR-5). Not traded. ----
+[UDXUSD]
+# HistData "UDX/USD" = US Dollar Index (ICE DXY) M1, bid-only. Only used as the DXY series; never traded.
+asset_class = "index"
+contract_size = 1
+digits = 3
+tick_size = 0.001
+min_lot = 0.01
+lot_step = 0.01
+commission_per_lot_side_usd = 0.0
+quote_ccy = "USD"
+typical_raw_spread = 0.0
+status = "UNVERIFIED"
+verified_source = ""
