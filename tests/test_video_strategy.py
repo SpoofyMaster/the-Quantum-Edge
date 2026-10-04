@@ -144,5 +144,5 @@ def test_performance_report_fields():
     assert p["trades"] == 6 and p["win_rate"] == pytest.approx(0.5)
     assert p["gross_profit"] == 650 and p["gross_loss"] == 600 and p["profit_factor"] == pytest.approx(650 / 600)
     assert p["max_consecutive_losses"] == 2 and p["avg_duration_min"] == pytest.approx(10)
-    assert p["max_drawdown_usd"] == pytest.approx(400)
+    assert p["max_drawdown_usd"] == pytest.approx(450)          # equity path 200, 0, -200, -50, -250, 50
     assert p["by_session"]["ASIA"]["trades"] == 6 and set(p["by_year"]) == {"2024"}
