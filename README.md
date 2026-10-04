@@ -21,3 +21,13 @@ python experiments/exp001_pipeline_null_and_power.py  # synthetic pipeline valid
 - Out of sample, the best candidate lost money: 2024–2025H1 net −0.055R per trade.
 - Read [`docs/deliverables/FINAL_REPORT.md`](docs/deliverables/FINAL_REPORT.md). No live trading;
   MQL5 not started (needs approval, not recommended).
+
+## Project B — video strategy reconstruction (2026-10-04)
+Reverse-engineering of *"I Made $1.4M Trading Gold, Here's What Actually Works"* (tomtrades,
+<https://www.youtube.com/watch?v=xSVlVpXLuV0>): a gold reversal of an hourly candle's overextension, taken only when DXY
+mirrors the entry model at the same time.
+- Research: [`research/`](research/) — transcript map, rulebook, trade database, ambiguities, formal spec, pseudocode,
+  replication test, [screenshots](research/screenshots/).
+- EA (MQL5, **not yet compiled**, tester/demo only): [`mql5/VideoStrategyEA/`](mql5/VideoStrategyEA/).
+- Python reference + tests: [`qe/video_strategy/`](qe/video_strategy/), `tests/test_video_*.py`.
+- Reports: [`reports/`](reports/) — compilation, backtest (EXP009), video-vs-EA validation.

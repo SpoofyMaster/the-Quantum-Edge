@@ -52,3 +52,23 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [ ] N-1 Re-run EXP005/006 with observed spreads once U-2 data exists (new trial family; validation already used once for H-11 only)
 - [ ] N-2 New information sources for new hypotheses: economic-calendar surprises; order-flow data
 - [ ] N-3 Retry Dukascopy from CI with low concurrency (503 may be rate-limiting); reconcile vs HistData (D-4b)
+
+## Video strategy reconstruction — tomtrades "I Made $1.4M Trading Gold" (session 2026-10-04, journal day03)
+- [x] VS-1 Access the video: metadata, chapters, full auto-captions, storyboard frames. Video stream blocked (YouTube
+  bot-check / HTTP 403 from the sandbox) → frames are 320×180 only; prices/times unreadable.
+- [x] VS-2 Research docs in `research/`: transcript map, supplementary definitions (S1–S9, same author), rulebook,
+  trade database (6 examples), ambiguity register (21 items), algorithm spec, pseudocode, Phase-14 replication test.
+- [x] VS-3 Python reference `qe/video_strategy/` + tests (structure, causality, 6 video-example fixtures) — CI green.
+- [x] VS-4 MQL5 EA `mql5/VideoStrategyEA/` (9 files) — **NOT compiled**; mechanical check `tools/mql5_static_check.py` passes.
+- [x] VS-5 EXP009 pre-registered reference backtest: **REJECTED** (V0 −0.164R, CI [−0.262, −0.061]; DXY gate adds
+  nothing; M15 variant 0 trades) — `reports/BACKTEST_REPORT.md`.
+- [?] U-5 User: compile `mql5/VideoStrategyEA` in MetaEditor; send the full Errors tab (errors + warnings).
+- [?] U-6 User: Strategy Tester (XAUUSD M1, real ticks, 2020-01 → 2025-06): defaults + `PULLBACK_50`, `M15`,
+  `H1_AND_M15`; send the tester report and `VSEA_trades_*.csv` / `VSEA_events_*.csv` from Common/Files.
+- [?] U-7 User decision on the two CRITICAL ambiguities: default entry (A-01: BREAK vs PULLBACK_50) and candle mode
+  (A-07: H1 vs H1_AND_M15).
+- [?] U-8 User (optional): a higher-resolution copy of the video or the exact dates/times of the "Monday" and
+  "Wednesday" live trades, for a real-price replay (those dates are in the locked final-test period → freeze first).
+- [ ] VS-6 Tick-built 10-second bars for the "shift within the shift" refinement (A-17).
+- [ ] VS-7 Check IC Markets MT5 for a dollar-index symbol; else confirm the six synthetic-DXY components are listed.
+- [ ] VS-8 Python ↔ EA parity run on the same MT5-exported data once U-6 exists (compare signal times and reason codes).

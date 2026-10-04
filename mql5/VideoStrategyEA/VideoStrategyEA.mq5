@@ -527,7 +527,7 @@ void UpdatePanel(void)
      {
       CCandleTracker *t0 = GetPointer(g_trk[0]);
       string dx = "n/a";
-      if(VsValid(t0.xOpen))
+      if(VsValid(t0.xOpen) && g_dxy.n > 0 && VsValid(g_dxy.c[g_dxy.n - 1]))
          dx = StringFormat("since open %+.3f | shift up %s / down %s", g_dxy.c[g_dxy.n - 1] - t0.xOpen,
                            t0.xShiftUp >= 0 ? "yes" : "no", t0.xShiftDn >= 0 ? "yes" : "no");
       g_vis.PanelSet(4, "DXY: " + dx);
