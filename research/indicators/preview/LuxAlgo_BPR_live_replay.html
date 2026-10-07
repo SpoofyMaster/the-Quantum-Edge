@@ -1,0 +1,833 @@
+<title>BPR Live Replay</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Condensed:wght@500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a trading-terminal workbench. Chart dominates, controls and live state sit in a side rail, rules below. */
+:root {
+  --bg: #f3f5f8; --panel: #ffffff; --fg: #18212d; --muted: #5a6779; --line: #dde3ea; --grid: #e8ecf1;
+  --accent: #2b63c6; --accent-fg: #ffffff;
+  --candle-up: #18212d; --candle-dn: #6b7889; --forming: #c27a00;
+  --bull: #00e676; --bull-brk: #808000; --bear: #ff5252; --bear-brk: #ff0000;
+  --chart-bg: #ffffff;
+  --font-display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --pill-ok-bg: #e3f6ec; --pill-ok-fg: #12643a; --pill-warn-bg: #fff2d6; --pill-warn-fg: #7a4a00;
+  --pill-off-bg: #eceff3; --pill-off-fg: #4b5563;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1218; --panel: #131a22; --fg: #dde5ee; --muted: #8796a8; --line: #232e3a; --grid: #1b2430;
+    --accent: #6c9fff; --accent-fg: #0d1218;
+    --candle-up: #dde5ee; --candle-dn: #7d8b9c; --forming: #f0a530;
+    --chart-bg: #0f151c;
+    --pill-ok-bg: #12301f; --pill-ok-fg: #7ee2a8; --pill-warn-bg: #3a2a0c; --pill-warn-fg: #f6c66a;
+    --pill-off-bg: #1f2833; --pill-off-fg: #a7b3c2;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1218; --panel: #131a22; --fg: #dde5ee; --muted: #8796a8; --line: #232e3a; --grid: #1b2430;
+  --accent: #6c9fff; --accent-fg: #0d1218;
+  --candle-up: #dde5ee; --candle-dn: #7d8b9c; --forming: #f0a530;
+  --chart-bg: #0f151c;
+  --pill-ok-bg: #12301f; --pill-ok-fg: #7ee2a8; --pill-warn-bg: #3a2a0c; --pill-warn-fg: #f6c66a;
+  --pill-off-bg: #1f2833; --pill-off-fg: #a7b3c2;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1320px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 40px; display: grid; gap: 18px; }
+header { display: grid; gap: 4px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; text-wrap: balance; margin: 0; letter-spacing: 0.01em; }
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.2rem; }
+h3 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); font-weight: 600; }
+.sub { color: var(--muted); max-width: 72ch; margin: 0; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button, select, input[type="number"] {
+  font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 6px 10px; min-height: 34px;
+}
+button { cursor: pointer; }
+button:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; min-width: 84px; }
+button:focus-visible, select:focus-visible, input:focus-visible, label.file:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sep { width: 1px; height: 24px; background: var(--line); }
+.readout { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); font-size: 0.85rem; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+.chartbox { background: var(--chart-bg); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; min-width: 0; }
+.chartbox canvas { display: block; width: 100%; height: 560px; touch-action: pan-y; }
+@media (max-width: 600px) { .chartbox canvas { height: 360px; } }
+.chartfoot { display: flex; flex-wrap: wrap; gap: 14px; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 0.8rem; color: var(--muted); }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 18px; height: 10px; border-radius: 2px; display: inline-block; }
+.rail { display: grid; gap: 14px; min-width: 0; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; display: grid; gap: 10px; min-width: 0; align-content: start; }
+.form { display: grid; grid-template-columns: 1fr auto; gap: 8px 10px; align-items: center; }
+.form label { color: var(--fg); }
+.form select, .form input[type="number"] { width: 112px; }
+.check { display: flex; align-items: center; gap: 8px; }
+.zones { display: grid; gap: 6px; }
+.zone { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; font-size: 0.85rem; }
+.zone .px { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.dot { width: 10px; height: 10px; border-radius: 2px; }
+.pill { font-size: 0.72rem; padding: 1px 8px; border-radius: 999px; font-weight: 600; letter-spacing: 0.02em; white-space: nowrap; }
+.pill.ok { background: var(--pill-ok-bg); color: var(--pill-ok-fg); }
+.pill.warn { background: var(--pill-warn-bg); color: var(--pill-warn-fg); }
+.pill.off { background: var(--pill-off-bg); color: var(--pill-off-fg); }
+.empty { color: var(--muted); font-size: 0.85rem; }
+.log { font-family: var(--font-mono); font-size: 0.78rem; max-height: 220px; overflow: auto; display: grid; gap: 3px; font-variant-numeric: tabular-nums; }
+.log .pending { color: var(--forming); }
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.rules .card p { margin: 0; color: var(--fg); }
+code, .mono { font-family: var(--font-mono); font-size: 0.85em; }
+pre { margin: 0; white-space: pre-wrap; font-family: var(--font-mono); font-size: 0.8rem; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; overflow-x: auto; }
+label.file { position: relative; overflow: hidden; display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; min-height: 34px; cursor: pointer; background: var(--panel); }
+label.file input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+footer { color: var(--muted); font-size: 0.8rem; max-width: 90ch; }
+.note { color: var(--muted); font-size: 0.8rem; margin: 0; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>BPR Live Replay</h1>
+    <p class="sub">Balance Price Range from <em>ICT Concepts [LuxAlgo]</em>, replayed tick by tick with the same rules as the MT5 indicator. The forming candle is recalculated on every tick and can repaint until it closes, as on TradingView.</p>
+  </header>
+
+  <div class="toolbar" role="group" aria-label="Replay controls">
+    <button id="play" class="primary" type="button">Play</button>
+    <button id="stepTick" type="button">+1 tick</button>
+    <button id="stepBar" type="button">+1 bar</button>
+    <button id="restart" type="button">Restart</button>
+    <span class="sep" aria-hidden="true"></span>
+    <label for="speed" class="readout">Speed</label>
+    <select id="speed">
+      <option value="4">4 ticks/s</option>
+      <option value="12" selected>12 ticks/s</option>
+      <option value="40">40 ticks/s</option>
+      <option value="150">150 ticks/s</option>
+    </select>
+    <span class="sep" aria-hidden="true"></span>
+    <label for="seed" class="readout">Seed</label>
+    <input id="seed" type="number" value="38" min="1" max="99999" style="width:90px">
+    <button id="newData" type="button">New data</button>
+    <label class="file" title="MT5 bars export (Ctrl+U → Bars → Export) or the indicator's parity CSV">Load CSV<input id="csv" type="file" accept=".csv,.txt,text/csv,text/plain"></label>
+    <span id="status" class="readout" aria-live="polite"></span>
+  </div>
+
+  <div class="main">
+    <div class="chartbox">
+      <canvas id="chart" aria-label="Candlestick chart with Balance Price Range boxes"></canvas>
+      <div class="chartfoot">
+        <span class="key"><span class="sw" style="background:rgba(0,230,118,.25);border:1px solid rgba(0,230,118,.7)"></span>BPR up</span>
+        <span class="key"><span class="sw" style="background:rgba(255,82,82,.25);border:1px solid rgba(255,82,82,.7)"></span>BPR down</span>
+        <span class="key"><span class="sw" style="border:1px dashed var(--muted)"></span>price entered</span>
+        <span class="key"><span class="sw" style="border:1px dotted var(--muted)"></span>broken</span>
+        <span class="key"><span class="sw" style="border:1px solid var(--forming)"></span>forming candle</span>
+        <span id="dataLabel"></span>
+      </div>
+    </div>
+
+    <div class="rail">
+      <section class="card" aria-labelledby="hSettings">
+        <h3 id="hSettings">Indicator inputs</h3>
+        <div class="form">
+          <label for="mode">Mode</label>
+          <select id="mode"><option>Present</option><option>Historical</option></select>
+          <label for="length">Length (body average)</label>
+          <input id="length" type="number" min="3" max="10" value="5">
+          <label for="fvgMode">Gap type</label>
+          <select id="fvgMode"><option value="FVG">FVG</option><option value="IFVG">IFVG</option></select>
+          <label for="visBoxes">Visible boxes</label>
+          <input id="visBoxes" type="number" min="1" max="20" value="2">
+        </div>
+        <label class="check"><input id="liveBar" type="checkbox" checked> Process forming candle (repaints)</label>
+        <label class="check"><input id="showFvg" type="checkbox"> Show the underlying FVGs</label>
+        <label class="check"><input id="showDisp" type="checkbox"> Show displacement candles</label>
+        <label class="check"><input id="fib" type="checkbox"> Fibonacci between last BPRs</label>
+        <label class="check"><input id="fibExt" type="checkbox"> Extend Fibonacci lines</label>
+      </section>
+
+      <section class="card" aria-labelledby="hZones">
+        <h3 id="hZones">Live BPR state</h3>
+        <div id="zones" class="zones"></div>
+      </section>
+
+      <section class="card" aria-labelledby="hLog">
+        <h3 id="hLog">Events (closed bars)</h3>
+        <div id="log" class="log"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="rules" aria-label="How the BPR is calculated">
+    <div class="card">
+      <h2>1 · Displacement candle</h2>
+      <p>Body larger than the average body of the last <span class="mono">Length</span> candles, and each wick shorter than 36 % of the body.</p>
+      <pre>body > sma(body, len)
+high − max(o,c) < 0.36·body
+min(o,c) − low  < 0.36·body</pre>
+    </div>
+    <div class="card">
+      <h2>2 · Fair value gap</h2>
+      <p>The candle after a bullish displacement leaves a gap above the candle before it. The box spans the gap. Bearish is the mirror image.</p>
+      <pre>bull: low[0] > high[2]  → box high[2] … low[0]
+bear: high[0] < low[2]  → box high[0] … low[2]</pre>
+    </div>
+    <div class="card">
+      <h2>3 · Balance price range</h2>
+      <p>On every bar, the newest bullish and newest bearish gap are compared. If one gap's bottom sits inside the other gap, a BPR box is drawn.</p>
+      <pre>green: dn.bot < up.bot < dn.top → up.bot … dn.top
+red:   up.bot < dn.bot < up.top → dn.bot … up.top</pre>
+    </div>
+    <div class="card">
+      <h2>4 · Support, resistance, break</h2>
+      <p>Close above the box bottom on the creation bar makes it support (breaks when a low trades below the bottom). Otherwise it is resistance (breaks when a high trades above the top). Active boxes extend 8 bars to the right.</p>
+      <pre>pos +1: low < top → dashed; low < bottom → broken
+pos −1: high > bottom → dashed; high > top → broken</pre>
+    </div>
+  </section>
+
+  <footer>
+    Logic ported from <em>ICT Concepts [LuxAlgo]</em> (Pine v5), © LuxAlgo, licensed CC BY-NC-SA 4.0 (non-commercial, share-alike). The synthetic candles are generated in your browser for illustration and are not market data. With a loaded CSV, the intrabar path of each candle is simulated (open → extremes → close), so repaint behaviour on the forming candle is illustrative.
+  </footer>
+</div>
+
+<script>
+// LuxAlgo BPR engine (JavaScript port, used by the live preview page).
+// Derived from the FVG / Balance Price Range logic of "ICT Concepts [LuxAlgo]" (Pine v5), (c) LuxAlgo.
+// Licence: CC BY-NC-SA 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/ (non-commercial, share-alike).
+// This is a port; changes vs. the original are listed in research/indicators/LUXALGO_BPR_SPEC.md section 10.
+// Parity with the Python reference (qe/indicators/luxalgo_bpr.py) is checked by tools/luxbpr_preview/parity_test.js.
+// ENGINE-BEGIN
+const LuxBPR = (() => {
+  const DEFAULTS = {
+    mode: 'Present', presentBars: 500, length: 5, percBody: 0.36, showFVG: true, bpr: true,
+    fvgMode: 'FVG', visBoxes: 2, bxBack: 10, ext: 8,
+  };
+
+  const emptyZone = () => ({ box: null, active: false, pos: null });
+
+  function perStartFor(lastBarIndex, p) {
+    return p.mode === 'Present' ? lastBarIndex - p.presentBars : null;
+  }
+
+  class Engine {
+    constructor(params, perStart) {
+      this.p = Object.assign({}, DEFAULTS, params || {});
+      this.perStart = perStart === undefined ? null : perStart;
+      this.fu = []; this.fd = []; this.bu = []; this.bd = [];
+      // Pine barstate.isfirst (lines 598-604)
+      for (let i = 0; i < this.p.visBoxes; i++) {
+        this.fu.unshift(emptyZone());
+        this.fd.unshift(emptyZone());
+        if (this.p.bpr) { this.bu.unshift(emptyZone()); this.bd.unshift(emptyZone()); }
+      }
+      this.hist = [];        // recent bars with their features, oldest first
+      this.events = [];      // [bar, kind, what]
+      this.last = null;
+      this.dispUp = false; this.dispDn = false;
+    }
+
+    clone() {
+      const e = Object.create(Engine.prototype);
+      e.p = this.p; e.perStart = this.perStart;
+      const cz = (z) => ({ box: z.box ? Object.assign({}, z.box) : null, active: z.active, pos: z.pos });
+      e.fu = this.fu.map(cz); e.fd = this.fd.map(cz); e.bu = this.bu.map(cz); e.bd = this.bd.map(cz);
+      e.hist = this.hist.slice();          // records are never mutated after push
+      e.events = this.events.slice();
+      e.last = this.last; e.dispUp = this.dispUp; e.dispDn = this.dispDn;
+      return e;
+    }
+
+    process(n, o, h, l, c) {
+      const p = this.p;
+      if (this.last !== null && n !== this.last + 1) throw new Error('bars must be consecutive');
+      const body = Math.abs(c - o), mx = Math.max(c, o), mn = Math.min(c, o);
+      // meanBody = sma(body, len): oldest first, na during warm-up (line 130)
+      let mean = null;
+      if (this.hist.length >= p.length - 1) {
+        let s = 0.0;
+        for (let k = p.length - 1; k >= 1; k--) s += this.hist[this.hist.length - k].body;
+        s += body;
+        mean = s / p.length;
+      }
+      const lBody = (h - mx < body * p.percBody) && (mn - l < body * p.percBody);           // lines 548-550
+      const dispUp = mean !== null && body > mean && lBody && c > o;                           // line 552
+      const dispDn = mean !== null && body > mean && lBody && c < o;                           // line 553
+      const b1 = this.hist.length >= 1 ? this.hist[this.hist.length - 1] : null;               // bar n-1
+      const b2 = this.hist.length >= 2 ? this.hist[this.hist.length - 2] : null;               // bar n-2
+      const fvg = p.fvgMode === 'FVG';
+      const imbUp = !!(b1 && b1.dispUp && b2 && (fvg ? l > b2.h : l < b2.h));                  // line 565
+      const imbDn = !!(b1 && b1.dispDn && b2 && (fvg ? h < b2.l : h > b2.l));                  // line 566
+      const prevImbUp = !!(b1 && b1.imbUp), prevImbDn = !!(b1 && b1.imbDn);
+      const per = this.perStart === null || n >= this.perStart;                                // line 122
+
+      // Bullish FVG (lines 606-624)
+      if (imbUp && per && p.showFVG) {
+        if (prevImbUp) {
+          const z = this.fu[0];
+          if (z.box) {                                       // QUIRK 3: na box -> no-op
+            z.box.left = n - 2; z.box.top = l; z.box.right = n + 8; z.box.bottom = b2.h;   // QUIRK 1, 2
+            this.events.push([n, 'FVG_UP', 'update']);
+          }
+        } else {
+          this.fu.unshift({ box: { left: n - 2, top: fvg ? l : b2.h, right: n, bottom: fvg ? b2.h : l,
+            border: 'solid', brokenFill: false }, active: true, pos: null });
+          this.fu.pop();
+          this.events.push([n, 'FVG_UP', 'new']);
+        }
+      }
+      // Bearish FVG (lines 626-644)
+      if (imbDn && per && p.showFVG) {
+        if (prevImbDn) {
+          const z = this.fd[0];
+          if (z.box) {
+            z.box.left = n - 2; z.box.top = b2.l; z.box.right = n + 8; z.box.bottom = h;
+            this.events.push([n, 'FVG_DN', 'update']);
+          }
+        } else {
+          this.fd.unshift({ box: { left: n - 2, top: fvg ? b2.l : h, right: n, bottom: fvg ? h : b2.l,
+            border: 'solid', brokenFill: false }, active: true, pos: null });
+          this.fd.pop();
+          this.events.push([n, 'FVG_DN', 'new']);
+        }
+      }
+      // Balance Price Range (lines 647-697)
+      if (p.bpr && this.fu.length > 0 && this.fd.length > 0) {
+        const up = this.fu[0].box, dn = this.fd[0].box;
+        if (up && dn) {                                      // na boxes: every comparison is false
+          const left = Math.min(up.left, dn.left), right = Math.max(up.right, dn.right);
+          if (up.bottom < dn.top && dn.bottom < up.bottom) {
+            const z0 = this.bu[0];
+            if (z0.box && left === z0.box.left) {            // QUIRK 6: identity by left edge
+              if (z0.active) z0.box.right = right;           // QUIRK 8: overwritten below
+            } else {
+              const pos = c > up.bottom ? 1 : (c < dn.top ? -1 : 0);
+              this.bu.unshift({ box: { left, top: dn.top, right, bottom: up.bottom, border: 'solid', brokenFill: false },
+                active: true, pos });                        // QUIRK 4
+              this.bu.pop();
+              this.events.push([n, 'BPR_UP', 'new']);
+            }
+          }
+          if (dn.bottom < up.top && up.bottom < dn.bottom) {
+            const z0 = this.bd[0];
+            if (z0.box && left === z0.box.left) {
+              if (z0.active) z0.box.right = right;
+            } else {
+              const pos = c > dn.bottom ? 1 : (c < up.top ? -1 : 0);
+              this.bd.unshift({ box: { left, top: up.top, right, bottom: dn.bottom, border: 'solid', brokenFill: false },
+                active: true, pos });
+              this.bd.pop();
+              this.events.push([n, 'BPR_DN', 'new']);
+            }
+          }
+        }
+      }
+      // FVG breaks (lines 700-724)
+      const lastI = (arr) => Math.min(p.bxBack, arr.length - 1);
+      for (let i = 0; i <= lastI(this.fu); i++) {
+        const z = this.fu[i];
+        if (!z.active) continue;
+        z.box.right = n + 8;
+        if (l < z.box.top && !p.bpr) z.box.border = 'dashed';
+        if (l < z.box.bottom) {
+          if (!p.bpr) { z.box.brokenFill = true; z.box.border = 'dotted'; }
+          z.box.right = n; z.active = false;
+          this.events.push([n, 'FVG_UP', 'broken']);
+        }
+      }
+      for (let i = 0; i <= lastI(this.fd); i++) {
+        const z = this.fd[i];
+        if (!z.active) continue;
+        z.box.right = n + 8;
+        if (h > z.box.bottom && !p.bpr) z.box.border = 'dashed';
+        if (h > z.box.top) {
+          if (!p.bpr) { z.box.brokenFill = true; z.box.border = 'dotted'; }
+          z.box.right = n; z.active = false;
+          this.events.push([n, 'FVG_DN', 'broken']);
+        }
+      }
+      // BPR breaks (lines 726-769)
+      if (p.bpr) {
+        const loop = (arr, kind) => {
+          for (let i = 0; i <= lastI(arr); i++) {
+            const z = arr[i];
+            if (!z.active) continue;
+            z.box.right = n + 8;
+            if (z.pos === -1) {
+              if (h > z.box.bottom) z.box.border = 'dashed';
+              if (h > z.box.top) {
+                z.box.brokenFill = true; z.box.border = 'dotted'; z.box.right = n; z.active = false;
+                this.events.push([n, kind, 'broken']);
+              }
+            } else if (z.pos === 1) {
+              if (l < z.box.top) z.box.border = 'dashed';
+              if (l < z.box.bottom) {
+                z.box.brokenFill = true; z.box.border = 'dotted'; z.box.right = n; z.active = false;
+                this.events.push([n, kind, 'broken']);
+              }
+            }
+          }
+        };
+        loop(this.bu, 'BPR_UP');
+        loop(this.bd, 'BPR_DN');
+      }
+      this.hist.push({ n, o, h, l, c, body, dispUp, dispDn, imbUp, imbDn });
+      const keep = Math.max(p.length, 3) + 2;
+      if (this.hist.length > keep) this.hist.splice(0, this.hist.length - keep);
+      this.last = n; this.dispUp = dispUp; this.dispDn = dispDn;
+    }
+
+    // Fibonacci between the last BPR up and the last BPR down (lines 976-990, 1093-1118)
+    fib() {
+      if (!(this.bu.length > 0 && this.bd.length > 0)) return null;
+      const up = this.bu[0].box, dn = this.bd[0].box;
+      if (!up || !dn) return null;
+      const dnFirst = up.left > dn.left, dnBottm = up.top > dn.top;
+      const x1 = dnFirst ? dn.left : up.left;
+      const x2 = dnFirst ? up.right : dn.right;
+      const y1 = dnFirst ? (dnBottm ? dn.bottom : dn.top) : (dnBottm ? up.top : up.bottom);
+      const y2 = dnFirst ? (dnBottm ? up.top : up.bottom) : (dnBottm ? dn.bottom : dn.top);
+      const rt = Math.max(x1, x2);
+      const zero = rt === x1 ? y1 : y2, one = rt === x1 ? y2 : y1;
+      const df = one - zero;
+      const levels = {};
+      for (const k of [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.618]) levels[k] = zero + df * k;
+      levels[1] = one;
+      return { x1, y1, x2, y2, rt, zero, one, levels, lineEnd: rt + 50 };
+    }
+  }
+
+  return { DEFAULTS, Engine, perStartFor };
+})();
+// ENGINE-END
+// Synthetic OHLC + intrabar tick paths for the BPR live preview (illustration only, not market data).
+// SYNTH-BEGIN
+const Synth = (() => {
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  const round2 = (x) => Math.round(x * 100) / 100;
+
+  // Bars: a mean-reverting random walk with occasional large-body "displacement" candles.
+  function bars(seed, count, start = 2350.0, sigma = 1.6) {
+    const r = mulberry32(seed);
+    const gauss = () => {
+      let u = 0, v = 0;
+      while (u === 0) u = r();
+      while (v === 0) v = r();
+      return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+    };
+    const out = [];
+    let close = start, anchor = start, drift = 0;
+    for (let i = 0; i < count; i++) {
+      if (r() < 0.03) drift = (r() - 0.5) * 0.8 * sigma;
+      anchor += drift * 0.5;
+      const open = round2(close + (r() < 0.15 ? gauss() * 0.15 * sigma : 0));
+      let body;
+      let wickScale;
+      if (r() < 0.16) {                                   // displacement candle
+        const dir = (r() < 0.5 ? -1 : 1) * (open > anchor + 6 * sigma ? -1 : 1) * (open < anchor - 6 * sigma ? -1 : 1);
+        body = dir * (2.0 + 2.5 * r()) * sigma;
+        wickScale = 0.08;
+      } else {
+        body = gauss() * 0.9 * sigma + drift + (anchor - open) * 0.02;
+        wickScale = 0.7;
+      }
+      const c = round2(open + body);
+      const hi = round2(Math.max(open, c) + Math.abs(gauss()) * wickScale * sigma * (wickScale < 0.5 ? Math.abs(body) / sigma * 0.5 : 1));
+      const lo = round2(Math.min(open, c) - Math.abs(gauss()) * wickScale * sigma * (wickScale < 0.5 ? Math.abs(body) / sigma * 0.5 : 1));
+      out.push({ o: open, h: hi, l: lo, c });
+      close = c;
+    }
+    return out;
+  }
+
+  // Tick path inside one bar: open -> first extreme -> second extreme -> close, with noise, bounded by [l, h].
+  // Returns `ticks` forming states {o,h,l,c}; the last one equals the final bar.
+  function path(bar, ticks, seed) {
+    const r = mulberry32(seed);
+    const highFirst = bar.c < bar.o ? r() < 0.7 : r() < 0.3;
+    const pts = [bar.o, highFirst ? bar.h : bar.l, highFirst ? bar.l : bar.h, bar.c];
+    const seg = [0, Math.floor(ticks * 0.3), Math.floor(ticks * 0.7), ticks - 1];
+    const prices = [];
+    for (let s = 0; s < 3; s++) {
+      for (let t = seg[s]; t < seg[s + 1]; t++) {
+        const f = (t - seg[s]) / Math.max(1, seg[s + 1] - seg[s]);
+        const base = pts[s] + (pts[s + 1] - pts[s]) * f;
+        const noise = (r() - 0.5) * (bar.h - bar.l) * 0.15;
+        prices.push(Math.min(bar.h, Math.max(bar.l, round2(base + noise))));
+      }
+    }
+    prices.push(bar.c);
+    const states = [];
+    let hi = bar.o, lo = bar.o;
+    for (let t = 0; t < prices.length; t++) {
+      hi = Math.max(hi, prices[t]); lo = Math.min(lo, prices[t]);
+      states.push({ o: bar.o, h: hi, l: lo, c: prices[t] });
+    }
+    states[states.length - 1] = { o: bar.o, h: bar.h, l: bar.l, c: bar.c };
+    return states;
+  }
+  return { mulberry32, bars, path };
+})();
+// SYNTH-END
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const TICKS = 12;
+  const S = {
+    bars: [], times: null, source: 'synthetic', label: '', seed: 38,
+    committed: null, display: null, cursor: 0, tick: 0, pathCache: new Map(),
+    playing: false, timer: null, lastLogLen: 0,
+  };
+
+  function params() {
+    return {
+      mode: $('mode').value,
+      length: Math.min(10, Math.max(3, parseInt($('length').value, 10) || 5)),
+      fvgMode: $('fvgMode').value,
+      visBoxes: Math.min(20, Math.max(1, parseInt($('visBoxes').value, 10) || 2)),
+      bpr: true, showFVG: true,
+    };
+  }
+
+  function pathFor(i) {
+    if (!S.pathCache.has(i)) S.pathCache.set(i, Synth.path(S.bars[i], TICKS, S.seed * 100003 + i));
+    return S.pathCache.get(i);
+  }
+
+  function rebuild(keepCursor) {
+    const p = params();
+    const last = S.bars.length - 1;
+    const per = LuxBPR.perStartFor(last, Object.assign({}, LuxBPR.DEFAULTS, p));
+    const cursor = keepCursor ? S.cursor : Math.max(0, S.bars.length - 160);
+    const e = new LuxBPR.Engine(p, per);
+    for (let i = 0; i < cursor; i++) { const b = S.bars[i]; e.process(i, b.o, b.h, b.l, b.c); }
+    S.committed = e; S.cursor = cursor; if (!keepCursor) S.tick = 0;
+    refreshDisplay(); renderLog(true); draw();
+  }
+
+  function formingBar() {
+    if (S.cursor >= S.bars.length) return null;
+    return pathFor(S.cursor)[S.tick];
+  }
+
+  function refreshDisplay() {
+    const fb = formingBar();
+    if (fb && $('liveBar').checked) {
+      const d = S.committed.clone();
+      d.process(S.cursor, fb.o, fb.h, fb.l, fb.c);
+      S.display = d;
+    } else {
+      S.display = S.committed;
+    }
+  }
+
+  function stepTick() {
+    if (S.cursor >= S.bars.length) { setPlaying(false); return; }
+    S.tick++;
+    if (S.tick >= TICKS) {
+      const b = S.bars[S.cursor];
+      S.committed.process(S.cursor, b.o, b.h, b.l, b.c);
+      S.cursor++; S.tick = 0;
+    }
+    refreshDisplay(); renderLog(false); draw();
+  }
+
+  function stepBar() {
+    if (S.cursor >= S.bars.length) return;
+    const b = S.bars[S.cursor];
+    S.committed.process(S.cursor, b.o, b.h, b.l, b.c);
+    S.cursor++; S.tick = 0;
+    refreshDisplay(); renderLog(false); draw();
+  }
+
+  function setPlaying(on) {
+    S.playing = on;
+    $('play').textContent = on ? 'Pause' : 'Play';
+    if (S.timer) { clearInterval(S.timer); S.timer = null; }
+    if (on) S.timer = setInterval(stepTick, 1000 / parseFloat($('speed').value));
+  }
+
+  // ---------- data ----------
+  function loadSynthetic() {
+    S.seed = Math.max(1, parseInt($('seed').value, 10) || 38);
+    S.bars = Synth.bars(S.seed, 600); S.times = null; S.source = 'synthetic';
+    S.label = 'Synthetic candles, seed ' + S.seed;
+    S.pathCache.clear(); rebuild(false);
+  }
+
+  function parseCsv(text) {
+    const lines = text.split(/\r?\n/).filter((x) => x.trim().length);
+    const bars = [], times = [];
+    if (lines.some((x) => x.startsWith('BAR,'))) {
+      for (const ln of lines) {
+        if (!ln.startsWith('BAR,')) continue;
+        const f = ln.split(',');
+        bars.push({ o: +f[3], h: +f[4], l: +f[5], c: +f[6] }); times.push(new Date(+f[2] * 1000));
+      }
+      return { bars, times };
+    }
+    const delim = lines[0].includes('\t') ? '\t' : (lines[0].split(';').length > lines[0].split(',').length ? ';' : ',');
+    const head = lines[0].split(delim).map((x) => x.replace(/[<>"]/g, '').trim().toLowerCase());
+    let io = head.indexOf('open'), ih = head.indexOf('high'), il = head.indexOf('low'), ic = head.indexOf('close');
+    let start = 1;
+    if (io < 0 || ih < 0 || il < 0 || ic < 0) { io = 1; ih = 2; il = 3; ic = 4; start = isNaN(parseFloat(head[1])) ? 1 : 0; }
+    const id = head.indexOf('date'), it = head.indexOf('time');
+    for (let k = start; k < lines.length; k++) {
+      const f = lines[k].split(delim);
+      const b = { o: parseFloat(f[io]), h: parseFloat(f[ih]), l: parseFloat(f[il]), c: parseFloat(f[ic]) };
+      if ([b.o, b.h, b.l, b.c].some((v) => !isFinite(v))) continue;
+      bars.push(b);
+      times.push(id >= 0 ? (f[id] + (it >= 0 ? ' ' + f[it] : '')) : null);
+    }
+    return { bars, times };
+  }
+
+  $('csv').addEventListener('change', (ev) => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      const { bars, times } = parseCsv(String(rd.result));
+      if (bars.length < 20) { $('status').textContent = 'Could not read candles from that file. Expected open, high, low, close columns.'; return; }
+      setPlaying(false);
+      S.bars = bars; S.times = times; S.source = 'csv'; S.label = file.name + ', ' + bars.length + ' candles';
+      S.pathCache.clear(); rebuild(false);
+      $('status').textContent = 'Loaded ' + bars.length + ' candles.';
+    };
+    rd.readAsText(file);
+  });
+
+  // ---------- side panel ----------
+  const fmt = (x) => {
+    const d = S.source === 'synthetic' ? 2 : Math.min(6, Math.max(2, decimals()));
+    return x.toFixed(d);
+  };
+  let decCache = null;
+  function decimals() {
+    if (decCache !== null) return decCache;
+    let d = 2;
+    for (const b of S.bars.slice(0, 50)) { const s = String(b.c); const k = s.includes('.') ? s.split('.')[1].length : 0; d = Math.max(d, k); }
+    decCache = d; return d;
+  }
+
+  function zoneStatus(z) {
+    if (!z.active) return ['broken', 'off'];
+    if (z.box.border === 'dashed') return ['price inside', 'warn'];
+    return ['active', 'ok'];
+  }
+
+  function renderZones() {
+    const el = $('zones');
+    const rows = [];
+    const add = (arr, kind) => arr.forEach((z, i) => {
+      if (!z.box) return;
+      const [txt, cls] = zoneStatus(z);
+      rows.push({ kind, i, z, txt, cls });
+    });
+    add(S.display.bu, 'up'); add(S.display.bd, 'dn');
+    rows.sort((a, b) => b.z.box.left - a.z.box.left);
+    if (!rows.length) { el.innerHTML = '<p class="empty">No BPR yet. A BPR needs one bullish and one bearish gap that overlap.</p>'; return; }
+    el.innerHTML = rows.map((r) => {
+      const col = r.kind === 'up' ? 'var(--bull)' : 'var(--bear)';
+      const role = r.z.pos === 1 ? 'support' : 'resistance';
+      return '<div class="zone"><span class="dot" style="background:' + col + '"></span>' +
+        '<span><span class="px">' + fmt(r.z.box.bottom) + ' – ' + fmt(r.z.box.top) + '</span><br><span class="readout">' +
+        (r.kind === 'up' ? 'BPR up' : 'BPR down') + ' · ' + role + ' · bars ' + r.z.box.left + '–' + r.z.box.right + '</span></span>' +
+        '<span class="pill ' + r.cls + '">' + r.txt + '</span></div>';
+    }).join('');
+  }
+
+  const KIND = { BPR_UP: 'BPR up', BPR_DN: 'BPR down', FVG_UP: 'FVG up', FVG_DN: 'FVG down' };
+  function renderLog(full) {
+    const el = $('log');
+    const ev = S.committed.events.filter((e) => e[1].startsWith('BPR') || $('showFvg').checked);
+    const lines = ev.slice(-60).reverse().map((e) => '<div>bar ' + e[0] + ' · ' + KIND[e[1]] + ' ' + e[2] + '</div>');
+    const pend = S.display !== S.committed
+      ? S.display.events.slice(S.committed.events.length).filter((e) => e[1].startsWith('BPR') || $('showFvg').checked)
+      : [];
+    const pl = pend.map((e) => '<div class="pending">forming bar ' + e[0] + ' · ' + KIND[e[1]] + ' ' + e[2] + ' (until close)</div>');
+    el.innerHTML = pl.concat(lines).join('') || '<p class="empty">Events appear here as bars close.</p>';
+    renderZones();
+    const fb = formingBar();
+    $('status').textContent = S.cursor >= S.bars.length ? 'End of data.' :
+      'bar ' + S.cursor + ' · tick ' + (S.tick + 1) + '/' + TICKS + (fb ? ' · last ' + fmt(fb.c) : '');
+    $('dataLabel').textContent = S.label + (params().mode === 'Present' ? ' · Present mode: gaps only in the last 501 candles' : '');
+  }
+
+  // ---------- chart ----------
+  const cv = $('chart');
+  const ctx = cv.getContext('2d');
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function rgba(hex, a) {
+    const h = hex.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((x) => x + x).join('') : h, 16);
+    return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
+  }
+  function niceStep(range, target) {
+    const raw = range / target, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const r = raw / mag;
+    return (r < 1.5 ? 1 : r < 3 ? 2 : r < 7 ? 5 : 10) * mag;
+  }
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const C = { bg: css('--chart-bg'), grid: css('--grid'), muted: css('--muted'), up: css('--candle-up'), dn: css('--candle-dn'),
+      forming: css('--forming'), bull: css('--bull'), bullBrk: css('--bull-brk'), bear: css('--bear'), bearBrk: css('--bear-brk'), fg: css('--fg') };
+    ctx.fillStyle = C.bg; ctx.fillRect(0, 0, W, H);
+    if (!S.display) return;
+    const axisW = 64, axisH = 22, padT = 10;
+    const plotW = W - axisW, plotH = H - axisH - padT;
+    const nVis = W < 600 ? 50 : 80, future = 12;
+    const lastShown = Math.min(S.cursor, S.bars.length - 1);
+    const from = Math.max(0, lastShown - nVis + 1);
+    const slots = nVis + future, slot = plotW / slots;
+    const xOf = (i) => (i - from + 0.5) * slot;
+    const fb = formingBar();
+    const barAt = (i) => (i === S.cursor ? fb : S.bars[i]);
+
+    const showFvg = $('showFvg').checked;
+    const boxes = [];
+    const pushZones = (arr, kind) => arr.forEach((z) => { if (z.box) boxes.push({ z, kind }); });
+    pushZones(S.display.bu, 'bu'); pushZones(S.display.bd, 'bd');
+    if (showFvg) { pushZones(S.display.fu, 'fu'); pushZones(S.display.fd, 'fd'); }
+
+    let lo = Infinity, hi = -Infinity;
+    for (let i = from; i <= lastShown; i++) { const b = barAt(i); if (!b) continue; lo = Math.min(lo, b.l); hi = Math.max(hi, b.h); }
+    for (const bx of boxes) if (bx.z.box.right >= from) { lo = Math.min(lo, bx.z.box.top, bx.z.box.bottom); hi = Math.max(hi, bx.z.box.top, bx.z.box.bottom); }
+    const fib = $('fib').checked ? S.display.fib() : null;
+    if (!isFinite(lo)) return;
+    const pad = (hi - lo) * 0.06 || 1;
+    lo -= pad; hi += pad;
+    const yOf = (p) => padT + (hi - p) / (hi - lo) * plotH;
+
+    // grid + price axis
+    const step = niceStep(hi - lo, 7);
+    ctx.font = '11px ' + css('--font-mono'); ctx.textBaseline = 'middle';
+    for (let p = Math.ceil(lo / step) * step; p <= hi; p += step) {
+      const y = Math.round(yOf(p)) + 0.5;
+      ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
+      ctx.fillStyle = C.muted; ctx.textAlign = 'left';
+      ctx.fillText(p.toFixed(step < 0.01 ? 5 : step < 1 ? 2 : 1), plotW + 8, y);
+    }
+    // bar index axis
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    const every = slot < 6 ? 20 : 10;
+    for (let i = Math.ceil(from / every) * every; i < from + slots; i += every) {
+      const x = xOf(i);
+      ctx.fillStyle = C.muted; ctx.fillText(String(i), x, H - axisH + 5);
+      ctx.strokeStyle = C.grid; ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, padT); ctx.lineTo(Math.round(x) + 0.5, H - axisH); ctx.stroke();
+    }
+
+    ctx.save();
+    ctx.beginPath(); ctx.rect(0, 0, plotW, H - axisH); ctx.clip();
+
+    // boxes (Pine: fill 90 transparency, border/text 65, broken fill 95)
+    for (const { z, kind } of boxes) {
+      const b = z.box;
+      if (b.right < from) continue;
+      const base = kind === 'bu' || kind === 'fu' ? C.bull : C.bear;
+      const brk = kind === 'bu' || kind === 'fu' ? C.bullBrk : C.bearBrk;
+      const x1 = xOf(b.left) - slot / 2, x2 = xOf(b.right) - slot / 2;
+      const y1 = yOf(Math.max(b.top, b.bottom)), y2 = yOf(Math.min(b.top, b.bottom));
+      ctx.fillStyle = b.brokenFill ? rgba(brk, 0.05) : rgba(base, kind[0] === 'f' ? 0.06 : 0.10);
+      ctx.fillRect(x1, y1, x2 - x1, Math.max(1, y2 - y1));
+      ctx.strokeStyle = rgba(base, kind[0] === 'f' ? 0.25 : 0.35);
+      ctx.lineWidth = 1;
+      ctx.setLineDash(b.border === 'dashed' ? [6, 4] : b.border === 'dotted' ? [1.5, 3] : []);
+      ctx.strokeRect(Math.round(x1) + 0.5, Math.round(y1) + 0.5, Math.round(x2 - x1), Math.round(Math.max(1, y2 - y1)));
+      ctx.setLineDash([]);
+      if (kind[0] === 'b' || showFvg) {
+        ctx.fillStyle = rgba(base, 0.65); ctx.font = '600 10px ' + css('--font-body'); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(kind[0] === 'b' ? 'BPR' : params().fvgMode, (x1 + x2) / 2, (y1 + y2) / 2);
+      }
+    }
+
+    // Fibonacci between last BPRs
+    if (fib) {
+      const ext = $('fibExt').checked;
+      const line = (xa, ya, xb, yb, col, dash, extend) => {
+        ctx.strokeStyle = col; ctx.setLineDash(dash); ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(xOf(xa), yOf(ya)); ctx.lineTo(extend ? plotW : xOf(xb), yOf(yb)); ctx.stroke(); ctx.setLineDash([]);
+      };
+      const silver = '#b2b5be', orange = '#ff9800', yellow = '#ffeb3b', green = '#4caf50';
+      line(fib.x1, fib.y1, fib.x2, fib.y2, rgba(silver, 0.5), [6, 4], false);
+      line(fib.rt, fib.zero, fib.rt, fib.levels[1.618], rgba(silver, 0.5), [1.5, 3], false);
+      const lv = [[0, silver, 0.95], [0.236, orange, 0.75], [0.382, yellow, 0.75], [0.5, green, 0.75], [0.618, yellow, 0.75], [0.786, orange, 0.75], [1, silver, 0.95], [1.618, yellow, 0.75]];
+      for (const [k, col, a] of lv) line(fib.rt, fib.levels[k], fib.lineEnd, fib.levels[k], rgba(col, a), [], ext);
+    }
+
+    // candles
+    const cw = Math.max(1, slot * 0.62);
+    for (let i = from; i <= lastShown; i++) {
+      const b = barAt(i); if (!b) continue;
+      const x = xOf(i);
+      const isForm = i === S.cursor;
+      const up = b.c >= b.o;
+      const col = isForm ? C.forming : (up ? C.up : C.dn);
+      ctx.strokeStyle = col; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(Math.round(x) + 0.5, yOf(b.h)); ctx.lineTo(Math.round(x) + 0.5, yOf(b.l)); ctx.stroke();
+      const yt = yOf(Math.max(b.o, b.c)), yb = yOf(Math.min(b.o, b.c));
+      if (up) { ctx.fillStyle = C.bg; ctx.fillRect(x - cw / 2, yt, cw, Math.max(1, yb - yt)); ctx.strokeRect(Math.round(x - cw / 2) + 0.5, Math.round(yt) + 0.5, Math.round(cw), Math.round(Math.max(1, yb - yt))); }
+      else { ctx.fillStyle = col; ctx.fillRect(x - cw / 2, yt, cw, Math.max(1, yb - yt)); }
+    }
+    // displacement markers (Pine plotshape labelup / labeldown)
+    if ($('showDisp').checked) {
+      const per = S.committed.perStart;
+      const e = new LuxBPR.Engine(params(), per);
+      const start = Math.max(0, from - 12);
+      for (let i = start; i <= lastShown; i++) {
+        const b = barAt(i); if (!b) continue;
+        e.process(i, b.o, b.h, b.l, b.c);
+        if (i < from || (per !== null && i < per)) continue;
+        if (e.dispUp) { ctx.fillStyle = '#00e676'; tri(xOf(i), yOf(b.l) + 10, 1); }
+        if (e.dispDn) { ctx.fillStyle = '#ff5252'; tri(xOf(i), yOf(b.h) - 10, -1); }
+      }
+    }
+    // "now" marker
+    if (S.cursor < S.bars.length) {
+      const x = Math.round(xOf(S.cursor) + slot / 2) + 0.5;
+      ctx.strokeStyle = rgba(C.forming.startsWith('#') ? C.forming : '#c27a00', 0.5); ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(x, padT); ctx.lineTo(x, H - axisH); ctx.stroke(); ctx.setLineDash([]);
+    }
+    ctx.restore();
+  }
+  function tri(x, y, dir) {
+    ctx.beginPath(); ctx.moveTo(x, y - 4 * dir); ctx.lineTo(x - 4, y + 3 * dir); ctx.lineTo(x + 4, y + 3 * dir); ctx.closePath(); ctx.fill();
+  }
+
+  // ---------- wiring ----------
+  $('play').addEventListener('click', () => setPlaying(!S.playing));
+  $('stepTick').addEventListener('click', () => { setPlaying(false); stepTick(); });
+  $('stepBar').addEventListener('click', () => { setPlaying(false); stepBar(); });
+  $('restart').addEventListener('click', () => { setPlaying(false); rebuild(false); });
+  $('speed').addEventListener('change', () => { if (S.playing) setPlaying(true); });
+  $('newData').addEventListener('click', () => { setPlaying(false); decCache = null; loadSynthetic(); });
+  for (const id of ['mode', 'length', 'fvgMode', 'visBoxes']) $(id).addEventListener('change', () => rebuild(true));
+  for (const id of ['liveBar', 'showFvg', 'showDisp', 'fib', 'fibExt']) $(id).addEventListener('change', () => { refreshDisplay(); renderLog(false); draw(); });
+  window.addEventListener('resize', draw);
+  if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', draw);
+  new MutationObserver(draw).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  loadSynthetic();
+  // advance a few ticks so the first frame shows a forming candle
+  for (let k = 0; k < 5; k++) stepTick();
+})();
+</script>
