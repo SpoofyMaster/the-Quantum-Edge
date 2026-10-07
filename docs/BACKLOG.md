@@ -84,3 +84,8 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [?] U-10 User (optional): run with `InpExportCSV=true`, send `MQL5/Files/LuxAlgo_BPR_<symbol>_<period>.csv` →
   `python tools/luxbpr_parity.py <file>`.
 - [?] U-11 User (optional): TradingView screenshot (same symbol/timeframe, BPR on) for a visual cross-check.
+- [x] LX-5 Owner sketch "BPR retest long" read and turned into an execution playbook
+  (`research/indicators/BPR_RETEST_PLAYBOOK.md`), registered as **H-13 HYPOTHESIS**.
+- [?] LX-6 EXP010: pre-registered backtest of H-13 (dev 2020–2023, one validation look 2024-01 → 2025-06) — needs
+  the owner's go-ahead and the U-9 compile; entry rule (R1 front-run / R3 confirmation) and BPR definition
+  (indicator box vs manual sell-off ∩ rally overlap) to be fixed before data is loaded.
