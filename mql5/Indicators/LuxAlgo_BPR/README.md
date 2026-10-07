@@ -9,7 +9,7 @@ on the chart. It also ports two related features: the "Show Displacement" marker
 BPR".
 
 The calculation follows the specification in `research/indicators/LUXALGO_BPR_SPEC.md`, including the
-unexpected behaviours that the specification calls QUIRK 1–10. The port copies those behaviours on purpose so
+unexpected behaviours that the specification calls QUIRKS 1–11. The port copies those behaviours on purpose so
 that it matches the Pine script exactly. The Python reference in `qe/indicators/luxalgo_bpr.py` follows the
 same specification.
 
@@ -56,7 +56,7 @@ second copy on the same chart would overwrite or delete the first copy's boxes.
 | **Fair Value Gaps** | | |
 | `InpShowFVG` | true | Pine `Show FVGs`. With false, no FVG is ever created, so no BPR can exist either. |
 | `InpBPR` | **true** | Pine `Balance Price Range` (Pine default: false). When it is on, the BPR boxes are drawn and the FVG boxes are hidden, as in Pine; the FVGs are still computed because they produce the BPRs. When it is off, the FVG boxes are drawn. |
-| `InpFvgType` | FVG | Pine `Options`. **FVG**: the gap between the wicks of bar n-2 and bar n. **IFVG** (implied FVG): the overlap of those wicks. |
+| `InpFvgType` | FVG | Pine `Options`. **FVG**: the gap between the wicks of bar n-2 and bar n. **IFVG**: the box from bar n's low up to bar n-2's high (bullish; mirrored for bearish). It is usually the overlap of those wicks. |
 | `InpVisibleBoxes` | 2 | Pine `# Visible FVG's` (1–20, clamped). This is the number of zones kept per direction, for FVGs and for BPRs. It also changes the results, because only these zones are tracked. |
 | `InpShowFVGinBPRmode` | false | Debug option, not in Pine. When BPR is on, it also draws the FVG boxes, so you can see which two gaps formed a BPR. In BPR mode, Pine never restyles FVG boxes, so they stay solid even after they break. |
 | **Style** | | |

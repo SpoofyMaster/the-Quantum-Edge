@@ -72,3 +72,15 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [ ] VS-6 Tick-built 10-second bars for the "shift within the shift" refinement (A-17).
 - [ ] VS-7 Check IC Markets MT5 for a dollar-index symbol; else confirm the six synthetic-DXY components are listed.
 - [ ] VS-8 Python ↔ EA parity run on the same MT5-exported data once U-6 exists (compare signal times and reason codes).
+
+## Indicator port — "ICT Concepts [LuxAlgo]" Balance Price Range (session 2026-10-07, journal day04)
+- [x] LX-1 Parameter reference of the whole script (`research/indicators/ICT_CONCEPTS_PARAMETERS.md`) and exact
+  BPR spec, revision 2 after an independent re-derivation (`research/indicators/LUXALGO_BPR_SPEC.md`).
+- [x] LX-2 Python reference `qe/indicators/luxalgo_bpr.py` + 42 scenario tests.
+- [x] LX-3 MT5 indicator `mql5/Indicators/LuxAlgo_BPR/` (live forming-bar emulation, Fibonacci-BPR, alert, parity
+  export) — **NOT compiled**. Logic checked bar by bar against the reference via the C++ harness test.
+- [x] LX-4 Browser live replay `research/indicators/preview/LuxAlgo_BPR_live_replay.html` (+ JS parity test).
+- [?] U-9 User: compile `LuxAlgo_BPR.mq5` in MetaEditor; send all compiler messages.
+- [?] U-10 User (optional): run with `InpExportCSV=true`, send `MQL5/Files/LuxAlgo_BPR_<symbol>_<period>.csv` →
+  `python tools/luxbpr_parity.py <file>`.
+- [?] U-11 User (optional): TradingView screenshot (same symbol/timeframe, BPR on) for a visual cross-check.

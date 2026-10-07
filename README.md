@@ -31,3 +31,14 @@ mirrors the entry model at the same time.
 - EA (MQL5, **not yet compiled**, tester/demo only): [`mql5/VideoStrategyEA/`](mql5/VideoStrategyEA/).
 - Python reference + tests: [`qe/video_strategy/`](qe/video_strategy/), `tests/test_video_*.py`.
 - Reports: [`reports/`](reports/) — compilation, backtest (EXP009), video-vs-EA validation.
+
+## Project C — Balance Price Range indicator from "ICT Concepts [LuxAlgo]" (2026-10-07)
+A port of the FVG / Balance Price Range logic of the TradingView script *ICT Concepts [LuxAlgo]* (© LuxAlgo,
+CC BY-NC-SA 4.0: non-commercial, share-alike). It is a charting tool, not a strategy.
+- Parameters of the whole script: [`research/indicators/ICT_CONCEPTS_PARAMETERS.md`](research/indicators/ICT_CONCEPTS_PARAMETERS.md).
+- How the BPR is calculated, exactly: [`research/indicators/LUXALGO_BPR_SPEC.md`](research/indicators/LUXALGO_BPR_SPEC.md).
+- MT5 indicator (live on chart, **not yet compiled**): [`mql5/Indicators/LuxAlgo_BPR/`](mql5/Indicators/LuxAlgo_BPR/).
+- Python reference + tests: [`qe/indicators/luxalgo_bpr.py`](qe/indicators/luxalgo_bpr.py), `tests/test_luxalgo_bpr.py`,
+  `tests/test_luxbpr_*`.
+- Browser replay: [`research/indicators/preview/LuxAlgo_BPR_live_replay.html`](research/indicators/preview/LuxAlgo_BPR_live_replay.html)
+  (open it locally; rebuild with `python tools/luxbpr_preview/build.py`).
