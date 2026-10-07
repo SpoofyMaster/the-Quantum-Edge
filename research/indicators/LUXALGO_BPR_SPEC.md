@@ -104,8 +104,10 @@ On every bar `n`, after the series above:
    - Otherwise `unshift` a new entry with the §3 coordinates, `active = true`, `pos = na`, and `pop` the oldest.
    - **QUIRK 1.** The update always writes the FVG-mode geometry, even in IFVG mode.
      - **Consequence.** In IFVG mode the box becomes inverted (`top < bottom`), and the same bar's break loop
-       (step 5) **always** breaks it. For a bullish box, `bottom = high[2] > low` by the IFVG condition. Every IFVG
-       chain update therefore ends with `right = n`, `active = false`.
+       (step 5) **always** breaks it. For a bullish box, `bottom = high[2] > low` by the IFVG condition.
+       - The first chain update (the 2nd bar of a chain) therefore ends with `right = n`, `active = false`.
+       - Later updates of the same chain hit an entry that is already broken (QUIRK 2). They leave it inactive
+         with `right = n+8`.
    - **QUIRK 2.** An entry that is already broken still receives the new geometry and `right = n+8`, but stays
      inactive. It is then frozen at that `n+8`.
      - Because of QUIRK 1, this happens only in **IFVG chains of 3 or more bars**.
@@ -248,7 +250,7 @@ What can change during the bar:
 
 | Item | Behaviour while the bar forms |
 |---|---|
-| Breaks of committed boxes | Monotone: high only rises and low only falls, so a box broken on one tick is still broken at the close. |
+| Breaks of committed boxes | In FVG mode, monotone: high only rises and low only falls, so a box broken on one tick is still broken at the close. In IFVG mode, a new gap can appear on a later tick (next row). The BPR it creates is unshifted, and that can pop a committed zone an earlier tick showed as broken, or push it past index 10 (QUIRK 11). That zone then vanishes or shows as active at the close. |
 | A new gap in FVG mode | Can disappear, but cannot appear late. |
 | A new gap in IFVG mode | Can appear, but cannot disappear. |
 | A forming-bar FVG's top/bottom | Changes tick by tick. |

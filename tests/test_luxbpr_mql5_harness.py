@@ -87,6 +87,7 @@ CASES = [
     (15, 1500, 1100, 0, 4, 0, 4, 1, 1, 1, 200, 2, -1, 0.01),   # Present, 200-bar window
     (16, 1500, 900, 1, 5, 0, 3, 1, 1, 1, 500, 2, -1, 0.5),     # coarse prices: ties at box edges
     (17, 1500, 900, 1, 5, 1, 3, 1, 1, 1, 500, 2, -1, 0.5),     # coarse prices, IFVG
+    (18, 1200, 800, 0, 5, 0, 3, 1, 1, 1, 300, 2, 1000, 0.01),  # Present + reload: the window stays anchored by time
 ]
 
 
@@ -131,9 +132,10 @@ def test_mql5_logic_matches_python_reference(harness, case, tmp_path):
 
     summary = [r for r in recs if r["t"] == "A"][0]
     assert summary["load"] == 0  # never alert on history
-    if reload_at < 0:
-        new_live = sum(1 for e in eng.events if e[1].startswith("BPR") and e[2] == "new" and k - 1 <= e[0] <= n_bars - 2)
-        assert summary["total"] == new_live
+    assert summary["perStart"] == (per_start if mode == 0 else summary["perStart"])
+    # one alert per new BPR on every bar that closed after loading, also across a full reload
+    new_live = sum(1 for e in eng.events if e[1].startswith("BPR") and e[2] == "new" and k - 1 <= e[0] <= n_bars - 2)
+    assert summary["total"] == (new_live if bpr else 0)
     if bpr and show:
         assert any(e[1].startswith("BPR") and e[2] == "new" for e in eng.events)
 

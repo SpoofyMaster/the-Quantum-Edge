@@ -56,6 +56,11 @@ inline string StringSubstr(const string &s, int a) { return s.substr(a); }
 inline int StringReplace(string &s, const string &f, const string &r) { int n = 0; size_t p = 0;
   while((p = s.find(f, p)) != string::npos) { s.replace(p, f.size(), r); p += r.size(); n++; } return n; }
 inline int PeriodSeconds() { return 60; }
+static datetime g_now = 0;                       // set by the driver before each OnCalculate
+inline datetime TimeCurrent() { return g_now; }
+enum { TERMINAL_DATA_PATH = 200, CHARTEVENT_CHART_CHANGE = 9 };
+inline string TerminalInfoString(int) { return "."; }
+template<typename T> int CopyTime(const string &, int, int, int, T *) { return -1; }  // OnChartEvent is not driven
 inline long long ChartGetInteger(long, int) { return 0; }
 inline void ChartRedraw(long = 0) {}
 inline void Alert(const string &m) { g_alerts++; g_lastAlert = m; }

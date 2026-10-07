@@ -112,7 +112,7 @@ input bool             InpFibExtend        = false;            // Extend lines (
 input group "Live / alerts / export"
 input bool             InpLiveBar          = true;             // Process forming bar like Pine realtime (repaints until close)
 input bool             InpAlertNewBPR      = false;            // Alert on a NEW BPR created on a CLOSED bar (live bars only)
-input bool             InpExportCSV        = false;            // Write the parity export file (MQL5/Files) once after loading
+input bool             InpExportCSV        = false;            // Write the parity export file after each full calculation (path in Experts log)
 
 //+------------------------------------------------------------------+
 //| State structures (simple structs only; copied field by field)    |
@@ -207,7 +207,11 @@ int        g_nextBar    = 0;          // next CLOSED bar to commit
 int        g_lastTotal  = 0;          // rates_total at the previous call
 datetime   g_firstTime  = 0;          // time of bar 0 at the previous call
 bool       g_initDone   = false;      // a full calculation has completed
-bool       g_exportDone = false;      // parity export already written since OnInit
+datetime   g_anchorTime = 0;          // Present: time of the forming bar at the first full calculation after OnInit
+datetime   g_lastCommittedTime = 0;   // time of the last committed bar at the end of the previous call (alerts)
+datetime   g_lastFormTime = 0;        // time of the forming bar at the previous call (background re-render)
+bool       g_lastWasTmp = false;      // the last rendered state was the forming-bar copy
+color      g_lastBg     = clrNONE;    // chart background used by the last render
 
 //+------------------------------------------------------------------+
 //| Small helpers                                                    |
@@ -920,8 +924,10 @@ void RenderSlot(const int kind, const int slot, const bool visible, const ZoneS 
    if(g_zc[ci].drawn && g_zc[ci].t1 == t1 && g_zc[ci].t2 == t2 &&
       g_zc[ci].p1 == z.box.top && g_zc[ci].p2 == z.box.bottom &&
       g_zc[ci].fillClr == fillClr && g_zc[ci].lineClr == lineClr &&
-      g_zc[ci].style == z.box.border && g_zc[ci].active == z.active && g_zc[ci].pos == posVal)
-      return;                                                   // nothing changed
+      g_zc[ci].style == z.box.border && g_zc[ci].active == z.active && g_zc[ci].pos == posVal &&
+      ObjectFind(0, baseName + "_F") >= 0 && ObjectFind(0, baseName + "_B") >= 0 &&
+      ObjectFind(0, baseName + "_T") >= 0)
+      return;                                                   // nothing changed and still on the chart
 
    bool   isBpr = (kind == LXB_KIND_BU || kind == LXB_KIND_BD);
    string txt   = isBpr ? "BPR" : FvgTypeName();
@@ -935,7 +941,11 @@ void RenderSlot(const int kind, const int slot, const bool visible, const ZoneS 
    LxbDrawRect(baseName + "_F", t1, z.box.top, t2, z.box.bottom, fillClr, true, true, STYLE_SOLID, tip);
    LxbDrawRect(baseName + "_B", t1, z.box.top, t2, z.box.bottom, lineClr, false, false,
             BorderToStyle(z.box.border), tip);
-   datetime tc = (datetime)(((long)t1 + (long)t2) / 2);
+   // Pine centres box text in bar-index space (xloc.bar_index), so a weekend or session gap inside the box
+   // does not pull the label off-centre.
+   datetime tc = IdxToTime((z.box.left + z.box.right) / 2, rates_total, tm);
+   if(((z.box.left + z.box.right) % 2) != 0)
+      tc = (datetime)((long)tc + (long)(PeriodSeconds() / 2));
    LxbDrawText(baseName + "_T", tc, (z.box.top + z.box.bottom) / 2.0, txt, lineClr, tip);
 
    g_zc[ci].drawn   = true;
@@ -1010,7 +1020,8 @@ void RenderFib(const StateS &s, const int rates_total, const datetime &tm[], con
    datetime tend = IdxToTime(rt + LXB_FIB_LEN, rates_total, tm);    // rt + plus
 
    if(g_fc.drawn && g_fc.tx1 == tx1 && g_fc.tx2 == tx2 && g_fc.trt == trt && g_fc.tend == tend &&
-      g_fc.y1 == y1 && g_fc.y2 == y2 && g_fc.f0 == f0 && g_fc.f1 == f1 && g_fc.bg == bg)
+      g_fc.y1 == y1 && g_fc.y2 == y2 && g_fc.f0 == f0 && g_fc.f1 == f1 && g_fc.bg == bg &&
+      ObjectFind(0, LXB_PREFIX + "FIB_0") >= 0 && ObjectFind(0, LXB_PREFIX + "FIB_DIAG") >= 0)
       return;
 
    color silver50 = BlendColor(C'178,181,190', 50, bg);
@@ -1051,6 +1062,7 @@ void RenderState(const StateS &s, const int rates_total, const datetime &tm[])
    int   i;
    color bg       = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
    bool  showFvg  = (!InpBPR || InpShowFVGinBPRmode);
+   g_lastBg       = bg;
    bool  showBpr  = InpBPR;
 
    for(i = 0; i < LXB_MAXB; i++)
@@ -1092,7 +1104,7 @@ string ExportFileName()
    string tf = EnumToString(_Period);                        // e.g. "PERIOD_M1"
    if(StringFind(tf, "PERIOD_") == 0)
       tf = StringSubstr(tf, 7);
-   return("LuxAlgo_BPR_" + sym + "_" + tf + ".csv");
+   return("LuxAlgo_BPR_" + sym + "_" + tf + "_" + ModeName() + ".csv");
   }
 
 string ZoneLine(const int kind, const int slot, const int count, const ZoneS &z)
@@ -1161,7 +1173,10 @@ void WriteExport(const int rates_total, const datetime &tm[], const double &o[],
    for(i = 0; i < g_state.nBd; i++)
       FileWriteString(fh, ZoneLine(LXB_KIND_BD, i, g_state.nBd, g_state.bd[i]) + "\n");
    FileClose(fh);
-   Print("LuxAlgo_BPR: parity export written to MQL5/Files/", fname, " (bars ", firstIdx, "..", lastCommitted, ")");
+   // FileOpen writes to the sandbox of the running program: <data folder>\MQL5\Files, or the agent's folder
+   // in the Strategy Tester. TERMINAL_DATA_PATH resolves to the right one in both cases.
+   Print("LuxAlgo_BPR: parity export written to ", TerminalInfoString(TERMINAL_DATA_PATH), "\\MQL5\\Files\\",
+         fname, " (bars ", firstIdx, "..", lastCommitted, ")");
   }
 
 //+------------------------------------------------------------------+
@@ -1195,6 +1210,45 @@ void AlertNewBpr(const StateS &s, const bool up, const int n, const datetime &tm
                 " zone " + DoubleToString(bottom, _Digits) + " - " + DoubleToString(top, _Digits) +
                 " pos " + IntegerToString(pos) + (active ? "" : " (already broken on its creation bar)");
    Alert(msg);
+  }
+
+// A committed bar alerts only if it closed after the previous OnCalculate call and is recent. This suppresses
+// alerts for history (first calculation after OnInit), for bars back-filled after an outage, and for Friday's
+// last bar that is only committed by Monday's first tick. It applies to full and incremental calculations alike.
+bool AlertFresh(const int n, const datetime &tm[])
+  {
+   if(g_lastCommittedTime == 0)
+      return(false);
+   if(tm[n] <= g_lastCommittedTime)
+      return(false);
+   return((long)tm[n] >= (long)TimeCurrent() - 2 * (long)PeriodSeconds());
+  }
+
+void AlertsForBar(const int n, const bool du, const bool dd, const datetime &tm[])
+  {
+   if(!InpAlertNewBPR || !InpBPR || !AlertFresh(n, tm))
+      return;
+   if(du)
+      AlertNewBpr(g_state, true, n, tm);
+   if(dd)
+      AlertNewBpr(g_state, false, n, tm);
+  }
+// Last index i with tm[i] <= t (tm ascending); -1 if t is before the first bar.
+int FindTimeIndex(const datetime &tm[], const int rates_total, const datetime t)
+  {
+   int lo_ = 0;
+   int hi_ = rates_total - 1;
+   if(rates_total <= 0 || tm[0] > t)
+      return(-1);
+   while(lo_ < hi_)
+     {
+      int mid = (lo_ + hi_ + 1) / 2;
+      if(tm[mid] <= t)
+         lo_ = mid;
+      else
+         hi_ = mid - 1;
+     }
+   return(lo_);
   }
 
 //+------------------------------------------------------------------+
@@ -1235,7 +1289,11 @@ int OnInit()
    g_lastTotal = 0;
    g_firstTime = 0;
    g_initDone  = false;
-   g_exportDone = false;
+   g_anchorTime = 0;
+   g_lastCommittedTime = 0;
+   g_lastFormTime = 0;
+   g_lastWasTmp = false;
+   g_lastBg    = clrNONE;
    return(INIT_SUCCEEDED);
   }
 
@@ -1243,6 +1301,27 @@ void OnDeinit(const int reason)
   {
    ObjectsDeleteAll(0, LXB_PREFIX);
    ChartRedraw(0);
+  }
+
+// The fill colours are blended with the chart background. When the user changes the background, re-render
+// the last state at once instead of waiting for the next tick (which can be days away on a closed market).
+void OnChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+  {
+   if(id != CHARTEVENT_CHART_CHANGE || !g_initDone || g_lastTotal < 3)
+      return;
+   color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+   if(bg == g_lastBg)
+      return;
+   datetime t[];
+   ArraySetAsSeries(t, false);
+   if(CopyTime(_Symbol, _Period, 0, g_lastTotal, t) != g_lastTotal)
+      return;                                                   // data not ready: the next tick redraws
+   if(t[g_lastTotal - 1] != g_lastFormTime)
+      return;                                                   // a new bar arrived: the next tick redraws
+   if(g_lastWasTmp)
+      RenderState(g_tmp, g_lastTotal, t);
+   else
+      RenderState(g_state, g_lastTotal, t);
   }
 
 //+------------------------------------------------------------------+
@@ -1284,7 +1363,16 @@ int OnCalculate(const int rates_total,
       //--- FULL recalculation: new history, history shifted (bar 0 changed) or first call.
       // Pine last_bar_index is fixed at load: anchor the Present window now (spec s.7).
       ResetState(g_state);
-      g_perStart  = formingBar - g_presentBars;
+      // Anchor by TIME, not by index: the first full calculation after OnInit fixes the forming bar's time
+      // (Pine last_bar_index at load). Later full recalculations (older history loaded by scrolling back, a
+      // resync after a reconnect, Max-bars trimming) find that bar again, so the window does not move.
+      // Re-anchoring happens only in OnInit: attach, input change or timeframe change, like a TradingView reload.
+      int anchorIdx = formingBar;
+      if(g_anchorTime == 0)
+         g_anchorTime = tm[formingBar];
+      else
+         anchorIdx = FindTimeIndex(tm, rates_total, g_anchorTime);
+      g_perStart  = anchorIdx - g_presentBars;
       // Present mode starts at max(0, g_perStart). This is exact, not an approximation:
       // for n < g_perStart, per(n) is false, so steps 2-3 (the only writers of FVG entries) are
       // skipped and FVG_UP / FVG_DN keep only the na entries of barstate.isfirst. Step 4 needs both
@@ -1300,8 +1388,9 @@ int OnCalculate(const int rates_total,
 
       for(n = g_procStart; n <= lastClosed; n++)
         {
-         ProcessBar(g_state, n, op, hi, lo, cl, du, dd);       // history: never alerts
+         ProcessBar(g_state, n, op, hi, lo, cl, du, dd);
          SetDispl(n, op, hi, lo, cl);
+         AlertsForBar(n, du, dd, tm);                           // only bars that closed since the last call
         }
       g_nextBar   = IMax(g_procStart, formingBar);
       g_firstTime = tm[0];
@@ -1311,12 +1400,10 @@ int OnCalculate(const int rates_total,
       ResetDrawCache();
       g_dirty = true;
 
-      // Parity export: once per load (OnInit), after the initial full calculation.
-      if(InpExportCSV && !g_exportDone)
-        {
+      // Parity export: rewritten after every full calculation, so it always matches the history on the chart
+      // (the first pass can run on a partial history that MT5 completes later).
+      if(InpExportCSV)
          WriteExport(rates_total, tm, op, hi, lo, cl);
-         g_exportDone = true;
-        }
      }
    else
      {
@@ -1325,18 +1412,15 @@ int OnCalculate(const int rates_total,
         {
          ProcessBar(g_state, n, op, hi, lo, cl, du, dd);
          SetDispl(n, op, hi, lo, cl);
-         if(InpAlertNewBPR && InpBPR)
-           {
-            if(du)
-               AlertNewBpr(g_state, true, n, tm);
-            if(dd)
-               AlertNewBpr(g_state, false, n, tm);
-           }
+         AlertsForBar(n, du, dd, tm);
         }
       if(formingBar > g_nextBar)
          g_nextBar = formingBar;
      }
    g_lastTotal = rates_total;
+   g_lastFormTime = tm[formingBar];
+   if(lastClosed >= 0)
+      g_lastCommittedTime = tm[lastClosed];
 
    //--- forming bar: Pine realtime rollback = run it on a copy of the committed state (spec s.7).
    if(InpLiveBar && formingBar >= g_procStart)
@@ -1344,12 +1428,14 @@ int OnCalculate(const int rates_total,
       CopyState(g_tmp, g_state);
       ProcessBar(g_tmp, formingBar, op, hi, lo, cl, du, dd);
       SetDispl(formingBar, op, hi, lo, cl);
+      g_lastWasTmp = true;
       RenderState(g_tmp, rates_total, tm);
      }
    else
      {
       g_bufUp[formingBar] = EMPTY_VALUE;
       g_bufDn[formingBar] = EMPTY_VALUE;
+      g_lastWasTmp = false;
       RenderState(g_state, rates_total, tm);
      }
 

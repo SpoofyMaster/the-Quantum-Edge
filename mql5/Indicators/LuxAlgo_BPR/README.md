@@ -40,40 +40,41 @@ This is a charting tool. It does not trade, and nothing in it is evidence of a t
 5. Leave the defaults to get the Pine behaviour with BPR enabled.
 
 Attach **only one instance per chart**. All instances name their objects with the same prefix `LXBPR_`, so a
-second copy on the same chart would overwrite or delete the first copy's boxes.
+second copy on the same chart would overwrite or delete the first copy's boxes. If boxes are deleted from outside
+(a second copy removed, or "delete all objects"), the indicator redraws them on the next tick.
 
 ## 3. Inputs
 
-| Input | Default | Meaning |
-|---|---|---|
-| **Mode** | | |
-| `InpMode` | Present | Pine `Mode`. **Present**: FVGs are created only on the last `InpPresentBars` + 1 bars. The window is anchored when the indicator loads (see section 6). **Historical**: the whole chart history is used. |
-| `InpPresentBars` | 500 | Size of the Present window. The value 500 is hard-coded in Pine (`last_bar_index - bar_index <= 500`). Keep 500 for parity. |
-| **Market structure** | | |
-| `InpLength` | 5 | Pine `Length` (3–10; values outside are clamped). It is the period of the average body size `meanBody = SMA(|close-open|, Length)` used to detect displacement candles. |
-| **Displacement** | | |
-| `InpShowDisplacement` | false | Pine `Show Displacement`. Draws an up arrow under bullish displacement candles and a down arrow over bearish ones, inside the Present window only. A displacement candle has a body larger than `meanBody`, and both wicks are smaller than 36 % of the body. |
-| **Fair Value Gaps** | | |
-| `InpShowFVG` | true | Pine `Show FVGs`. With false, no FVG is ever created, so no BPR can exist either. |
-| `InpBPR` | **true** | Pine `Balance Price Range` (Pine default: false). When it is on, the BPR boxes are drawn and the FVG boxes are hidden, as in Pine; the FVGs are still computed because they produce the BPRs. When it is off, the FVG boxes are drawn. |
-| `InpFvgType` | FVG | Pine `Options`. **FVG**: the gap between the wicks of bar n-2 and bar n. **IFVG**: the box from bar n's low up to bar n-2's high (bullish; mirrored for bearish). It is usually the overlap of those wicks. |
-| `InpVisibleBoxes` | 2 | Pine `# Visible FVG's` (1–20, clamped). This is the number of zones kept per direction, for FVGs and for BPRs. It also changes the results, because only these zones are tracked. |
-| `InpShowFVGinBPRmode` | false | Debug option, not in Pine. When BPR is on, it also draws the FVG boxes, so you can see which two gaps formed a BPR. In BPR mode, Pine never restyles FVG boxes, so they stay solid even after they break. |
-| **Style** | | |
-| `InpBullColor` | `C'0,230,118'` (#00E676) | Bullish FVG / BPR_UP colour. |
-| `InpBullBreakColor` | `C'128,128,0'` (#808000) | Fill of a broken bullish zone. |
-| `InpBearColor` | `C'255,82,82'` (#FF5252) | Bearish FVG / BPR_DN colour. |
-| `InpBearBreakColor` | `C'255,0,0'` (#FF0000) | Fill of a broken bearish zone. |
-| `InpFillTransp` | 90 | Fill transparency in Pine units (0 = opaque, 100 = invisible). |
-| `InpBorderTransp` | 65 | Transparency of the border and the label. |
-| `InpBreakTransp` | 95 | Transparency of a broken zone's fill. |
-| **Fibonacci** | | |
-| `InpFib` | NONE | Pine `Fibonacci between last:`. **BPR** draws the Pine Fibonacci set between the latest BPR_UP and the latest BPR_DN. It needs BPR on and at least one zone of each kind. |
-| `InpFibExtend` | false | Pine `Extend lines`. Extends the 8 level lines to the right. |
-| **Live / alerts / export** | | |
-| `InpLiveBar` | true | Processes the forming bar like a Pine realtime bar: the zones can appear, change and disappear until the bar closes (repaint). With false, only closed bars are used, so nothing repaints, but the chart lags by one bar. |
-| `InpAlertNewBPR` | false | Raises a popup `Alert` when a **new BPR is created on a closed bar**. It fires only for bars that close after the indicator loaded, never for history. The message gives the zone, its `pos`, and whether the creation bar already broke it. |
-| `InpExportCSV` | false | Writes the parity export file once, right after the first full calculation (section 7). |
+| Input | Shown in MT5 as | Default | Meaning |
+|---|---|---|---|
+| **Mode** | | | |
+| `InpMode` | Mode (Pine i_mode) | Present | Pine `Mode`. **Present**: FVGs are created only on the last `InpPresentBars` + 1 bars. The window is anchored when the indicator loads (see section 6). **Historical**: the whole chart history is used. |
+| `InpPresentBars` | Present mode: bars back from the load-time last bar | 500 | Size of the Present window. The value 500 is hard-coded in Pine (`last_bar_index - bar_index <= 500`). Keep 500 for parity. |
+| **Market structure** | | | |
+| `InpLength` | Length (3..10): period of the body SMA (Pine len) | 5 | Pine `Length` (3–10; values outside are clamped). It is the period of the average body size `meanBody = SMA(|close-open|, Length)` used to detect displacement candles. |
+| **Displacement** | | | |
+| `InpShowDisplacement` | Show Displacement (Pine sDispl) | false | Pine `Show Displacement`. Draws an up arrow under bullish displacement candles and a down arrow over bearish ones, inside the Present window only. A displacement candle has a body larger than `meanBody`, and both wicks are smaller than 36 % of the body. |
+| **Fair Value Gaps** | | | |
+| `InpShowFVG` | Show FVGs (Pine shwFVG) | true | Pine `Show FVGs`. With false, no FVG is ever created, so no BPR can exist either. |
+| `InpBPR` | Balance Price Range (Pine i_BPR; Pine default false) | **true** | Pine `Balance Price Range` (Pine default: false). When it is on, the BPR boxes are drawn and the FVG boxes are hidden, as in Pine; the FVGs are still computed because they produce the BPRs. When it is off, the FVG boxes are drawn. |
+| `InpFvgType` | Options: FVG / IFVG (Pine i_FVG) | FVG | Pine `Options`. **FVG**: the gap between the wicks of bar n-2 and bar n. **IFVG**: the box from bar n's low up to bar n-2's high (bullish; mirrored for bearish). It is usually the overlap of those wicks. |
+| `InpVisibleBoxes` | # Visible FVG's (1..20) (Pine visBxs) | 2 | Pine `# Visible FVG's` (1–20, clamped). This is the number of zones kept per direction, for FVGs and for BPRs. It also changes the results, because only these zones are tracked. |
+| `InpShowFVGinBPRmode` | Debug: draw the underlying FVG boxes when BPR is on | false | Debug option, not in Pine. When BPR is on, it also draws the FVG boxes, so you can see which two gaps formed a BPR. In BPR mode, Pine never restyles FVG boxes, so they stay solid even after they break. |
+| **Style** | | | |
+| `InpBullColor` | Bullish FVG / BPR colour (Pine cFVGbl) | `C'0,230,118'` (#00E676) | Bullish FVG / BPR_UP colour. |
+| `InpBullBreakColor` | Bullish break colour (Pine cFVGblBR) | `C'128,128,0'` (#808000) | Fill of a broken bullish zone. |
+| `InpBearColor` | Bearish FVG / BPR colour (Pine cFVGbr) | `C'255,82,82'` (#FF5252) | Bearish FVG / BPR_DN colour. |
+| `InpBearBreakColor` | Bearish break colour (Pine cFVGbrBR) | `C'255,0,0'` (#FF0000) | Fill of a broken bearish zone. |
+| `InpFillTransp` | Fill transparency 0..100 (Pine 90) | 90 | Fill transparency in Pine units (0 = opaque, 100 = invisible). |
+| `InpBorderTransp` | Border / text transparency 0..100 (Pine 65) | 65 | Transparency of the border and the label. |
+| `InpBreakTransp` | Broken fill transparency 0..100 (Pine 95) | 95 | Transparency of a broken zone's fill. |
+| **Fibonacci** | | | |
+| `InpFib` | Fibonacci between last: (Pine iFib) | NONE | Pine `Fibonacci between last:`. **BPR** draws the Pine Fibonacci set between the latest BPR_UP and the latest BPR_DN. It needs BPR on and at least one zone of each kind. |
+| `InpFibExtend` | Extend lines (Pine iExt) | false | Pine `Extend lines`. Extends the 8 level lines to the right. |
+| **Live / alerts / export** | | | |
+| `InpLiveBar` | Process forming bar like Pine realtime (repaints until close) | true | Processes the forming bar like a Pine realtime bar: the zones can appear, change and disappear until the bar closes (repaint). With false, only closed bars are used, so nothing repaints, but the chart lags by one bar. |
+| `InpAlertNewBPR` | Alert on a NEW BPR created on a CLOSED bar (live bars only) | false | Raises a popup `Alert` when a **new BPR is created on a closed bar**. It fires only for a bar that closed since the previous calculation and is at most 2 bars old, also when MT5 recalculates the whole history. It never fires for history at load, for bars back-filled after a disconnection, or for Friday's last bar, which is only committed at Monday's first tick. The message gives the zone, its `pos`, and whether the creation bar already broke it. |
+| `InpExportCSV` | Write the parity export file after each full calculation (path in Experts log) | false | Writes the parity export file after every full calculation (section 7). |
 
 Fixed constants, the same as in Pine: wick limit 0.36 × body; break checks on zone indices 0..10; active zones
 extend 8 bars to the right; Fibonacci level lines are 50 bars long.
@@ -135,33 +136,41 @@ and styles. Pine draws these lines from the state on the last bar, and so does t
   tick, and that copy is what you see. When the bar closes, its final OHLC is committed. This mirrors how Pine
   restores the committed state before each realtime tick. So a BPR shown on the forming bar can still vanish
   before the close; that is a repaint, and it is expected. Only closed-bar zones are final.
-- Alerts fire only on closed bars, so they never repaint.
+- Alerts fire only on closed bars, so they never repaint (see `InpAlertNewBPR` for which closed bars).
 
 ## 6. Present mode anchoring
 
-Pine fixes `last_bar_index` when the script loads. The Present window therefore starts at
-`load-time last bar − 500` and then grows as new bars arrive. The port does the same: it anchors the window
-at every **full recalculation**, which happens in these cases:
+Pine fixes `last_bar_index` when the script loads. The Present window therefore starts 500 bars before the bar
+that was forming at load, and then grows as new bars arrive.
 
-- the indicator is attached;
-- an input or the timeframe changes;
-- MT5 reloads or extends the history;
-- the oldest bar changes (for example when the terminal trims history at *Tools → Options → Charts → Max bars
-  in chart*).
+The port anchors the window **by time**. The first calculation after the indicator starts stores the time of the
+forming bar, and the window is the 500 bars before that bar. The anchor is set again only when the indicator
+restarts, which happens when:
 
-On TradingView, a reload re-anchors the window in the same way. Bars before the window are skipped. This does
-not change the result: before the window, nothing can be created.
+- it is attached;
+- an input changes;
+- the timeframe or symbol changes.
+
+This matches a reload on TradingView. Other full recalculations find the same bar again by its time, so the window
+does not move. These include older history loaded by scrolling back, a resync after a reconnect, and trimming at
+*Tools → Options → Charts → Max bars in chart*.
+
+Bars before the window are skipped. This does not change the result, because nothing can be created before the
+window.
 
 ## 7. Parity check against the Python reference
 
-1. Set `InpExportCSV = true`, either when attaching or by changing the input. The indicator writes
-   `MQL5/Files/LuxAlgo_BPR_<symbol>_<period>.csv` (for example `LuxAlgo_BPR_XAUUSD_M1.csv`) once, right after
-   its first full calculation. To find it, use *File → Open Data Folder → MQL5 → Files*. To write a fresh file,
-   change any input or attach the indicator again. The Experts log prints the path.
+1. Set "Write the parity export file …" (`InpExportCSV`) to true, either when attaching or by changing the input.
+   The indicator writes `LuxAlgo_BPR_<symbol>_<period>_<mode>.csv` (for example `LuxAlgo_BPR_XAUUSD_M1_Present.csv`)
+   after every full calculation, so it always matches the history on the chart. The **Experts** log prints the full
+   path:
+   - on a normal chart it is *File → Open Data Folder → MQL5 → Files*;
+   - in the Strategy Tester (visual mode) it is the agent's folder,
+     `<data folder>\Tester\Agent-…\MQL5\Files`.
 2. Copy the file to the repo machine and run:
 
    ```
-   python tools/luxbpr_parity.py <path/to/LuxAlgo_BPR_<symbol>_<period>.csv>
+   python tools/luxbpr_parity.py <path/to/LuxAlgo_BPR_<symbol>_<period>_<mode>.csv>
    ```
 
    The tool rebuilds the state from the exported bars with the Python reference. It then compares that state
@@ -192,25 +201,30 @@ ZONE,<FVG_UP|FVG_DN|BPR_UP|BPR_DN>,<slot>,<exists 0|1>,<left>,<top>,<right>,<bot
   in prices, session boundaries and missing bars. Different bars give different gaps, so the zones will not
   match TradingView bar for bar. For an exact comparison, run the logic on the **same** bars with the parity
   export (section 7). Do not compare screenshots.
-- **Present window.** It is anchored at load or at a full recalculation (section 6). If the two platforms load
-  at different times, their windows differ.
+- **Present window.** It is anchored when the indicator starts (section 6). If the two platforms load at
+  different times, their windows differ.
 - **Transparency.** MT5 objects are opaque, so the port emulates Pine transparency by blending each colour with
   the chart background: `shown = (1 − t)·colour + t·background`. If you change the background colour, the
-  blend updates on the next tick.
+  boxes are re-blended at once, through the chart-change event. If the history is not ready at that moment, they
+  are re-blended on the next tick.
 - **Scope.** The port covers only FVG, BPR, the displacement markers and the Fibonacci set between BPRs. Market
   structure (MSS/BOS), order blocks, liquidity, volume imbalance, NWOG/NDOG and killzones are **not** ported.
+- **Label position.** The "BPR"/"FVG" label is centred in bars, as in Pine, so a weekend inside a box does not
+  move it to the edge.
 - **Displacement markers** are arrows (Wingdings 233/234) instead of Pine label shapes.
 - **Fibonacci with BPR off.** In Pine, `Fibonacci = BPR` with BPR off leaves the line coordinates at 0, so Pine
   draws degenerate lines at price 0. The port draws nothing in that case.
 - **Ticks.** Pine and MT5 sample intrabar ticks differently, so the forming-bar display can differ while the bar
   is open. Committed (closed-bar) results depend only on the final OHLC.
 - **Rounding.** `meanBody` is a fresh sum of the last `Length` bodies divided by `Length`. Pine's `ta.sma` could
-  differ in the last bit; that matters only when a body equals `meanBody` to about 1e-16.
+  differ by floating-point rounding (its internal summation is not documented). That matters only when a body
+  equals `meanBody` to within that rounding.
 
 ## 9. Status
 
 | Item | Status |
 |---|---|
 | Compiles in MetaEditor | **NOT YET COMPILED.** Please send the compiler messages. |
-| Matches Pine / Python on the same bars | To be checked with the parity export (section 7) |
-| Mechanical source check (`python3 tools/mql5_static_check.py mql5/Indicators/LuxAlgo_BPR`) | Brackets balanced. The tool's built-in list is short, so it flags standard MQL5 functions such as `SetIndexBuffer` and `PlotIndexSetInteger` as "possibly undefined". |
+| Logic matches the Python reference | **VERIFIED in this repo on synthetic bars.** `tests/test_luxbpr_mql5_harness.py` transliterates this file to C++, compiles it with g++, drives it like MT5 and compares it bar by bar with `qe/indicators/luxalgo_bpr.py`. 15 cases cover:<br>• the committed and forming-bar states<br>• the Present window, including a reload<br>• IFVG mode<br>• 20 boxes<br>• alert counts<br>• the export<br>This checks the logic only; it is not MetaEditor. |
+| Matches on your broker's bars | To be checked with the parity export (section 7) |
+| Mechanical source check (`python3 tools/mql5_static_check.py mql5/Indicators/LuxAlgo_BPR`) | Brackets are balanced and no call is undefined (`possibly undefined: []`, `balance ok`). This is not a compiler; the MetaEditor compile is still pending. |

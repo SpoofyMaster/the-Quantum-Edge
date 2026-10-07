@@ -49,6 +49,7 @@ int main(int argc, char **argv) {
   int N = (int)FO.size();
   for(int i = 0; i < N; i++) { O[i] = FO[i]; H[i] = FH[i]; L[i] = FL[i]; C[i] = FC[i]; T[i] = 1700000000LL + 60LL * i; }
   OnInit();
+  g_now = T[K - 1];
   int prev = OnCalculate(K, 0, T, O, H, L, C, TV, RV, SP);
   emit("C", K - 2, g_state);
   if(InpLiveBar) emit("L", K - 1, g_tmp);
@@ -66,6 +67,7 @@ int main(int argc, char **argv) {
       }
       int pc = prev;
       if(reloadAt == r && t == 0) pc = 0;
+      g_now = T[r - 1];
       prev = OnCalculate(r, pc, T, O, H, L, C, TV, RV, SP);
       if(t == 0) emit("C", r - 2, g_state);
     }

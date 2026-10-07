@@ -25,6 +25,8 @@ def transform(src: str) -> str:
     s, k1 = re.subn(r'#define\s+LXB_PREFIX\s+"LXBPR_"', '#define LXB_PREFIX std::string("LXBPR_")', s)
     s, k2 = re.subn(r"double\s+g_bufUp\[\];", "double g_bufUp[MAXBARS];", s)
     s, k3 = re.subn(r"double\s+g_bufDn\[\];", "double g_bufDn[MAXBARS];", s)
+    # any other dynamic array declaration (e.g. a local 'datetime t[];') becomes a fixed-size array
+    s = re.sub(r"^(\s*)(double|datetime|int|long)\s+(\w+)\[\];", r"\1static \2 \3[MAXBARS];", s, flags=re.M)
     if (k1, k2, k3) != (1, 1, 1):
         raise SystemExit(f"mq5_to_cpp: expected declarations not found ({k1},{k2},{k3}); update the transform")
     return '#include "shim.h"\n' + s

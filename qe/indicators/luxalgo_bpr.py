@@ -375,15 +375,19 @@ def run(
     params: BprParams = BprParams(),
     last_bar_index: int | None = None,
     first_index: int = 0,
+    forming_bar: bool = False,
 ) -> LuxBprEngine:
     """Process ``bars`` (each ``(open, high, low, close)``; bar ``i`` has index ``first_index + i``).
 
-    ``last_bar_index`` (Pine ``last_bar_index`` at load time) defaults to the index of the last bar given and
-    only matters in Present mode, where it fixes the ``per`` window.
+    ``last_bar_index`` (Pine ``last_bar_index`` at load time) only matters in Present mode, where it fixes the
+    ``per`` window. It defaults to the index of the last bar given. When ``bars`` are the CLOSED bars and a forming
+    bar will be shown with ``live_view`` (the TradingView / MT5 situation during market hours), Pine's
+    ``last_bar_index`` is the forming bar: pass ``forming_bar=True`` (or ``last_bar_index`` explicitly), which
+    makes the window start at ``first_index + len(bars) - present_bars`` like the MT5 indicator.
     """
     seq = list(bars)
     if last_bar_index is None:
-        last_bar_index = first_index + len(seq) - 1
+        last_bar_index = first_index + len(seq) - (0 if forming_bar else 1)
     eng = LuxBprEngine(params, per_start_for(last_bar_index, params))
     for i, bar in enumerate(seq):
         o, h, l, c = bar[0], bar[1], bar[2], bar[3]  # noqa: E741

@@ -921,3 +921,16 @@ def test_parity_tool_cli_and_crlf_utf16(tmp_path):
         r = subprocess.run([sys.executable, str(TOOL), str(p)], cwd=tmp_path, capture_output=True, text=True)
         assert r.returncode == 0, r.stdout + r.stderr
         assert "RESULT: IDENTICAL" in r.stdout
+
+
+def test_run_with_forming_bar_anchors_present_window_like_mt5():
+    """Spec section 7: with a forming bar on the chart, Pine's last_bar_index is the forming bar, so the window is
+    [L - present_bars, L] with L = first_index + len(closed). The MT5 indicator uses formingBar - InpPresentBars."""
+    p = BprParams(mode="Present", present_bars=50)
+    closed = [(100.0, 101.0, 99.0, 100.5)] * 80
+    assert run(closed, p).per_start == 79 - 50
+    assert run(closed, p, forming_bar=True).per_start == 80 - 50
+    assert run(closed, p, first_index=10, forming_bar=True).per_start == 90 - 50
+    assert run(closed, p, last_bar_index=200, forming_bar=True).per_start == 150  # explicit index wins
+    assert run(closed, BprParams(mode="Historical"), forming_bar=True).per_start is None
+
