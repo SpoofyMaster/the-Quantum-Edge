@@ -42,3 +42,12 @@ CC BY-NC-SA 4.0: non-commercial, share-alike). It is a charting tool, not a stra
   `tests/test_luxbpr_*`.
 - Browser replay: [`research/indicators/preview/LuxAlgo_BPR_live_replay.html`](research/indicators/preview/LuxAlgo_BPR_live_replay.html)
   (open it locally; rebuild with `python tools/luxbpr_preview/build.py`).
+- **BPR + FVG Expert Advisor** (2026-10-08): [`mql5/BprFvgEA/`](mql5/BprFvgEA/) draws the zones like the indicator and
+  trades BPR/FVG retest setups ([spec](research/indicators/BPR_FVG_EA_SPEC.md)). It runs in the tester or on a demo
+  account only; real accounts are log-only. **Not yet compiled.**
+  - Python twin with identical decisions: `qe/strategies/bpr_fvg.py`, checked event by event by
+    `tests/test_bpr_fvg_ea_harness.py`.
+  - **Pre-registered backtest EXP010 (XAUUSD M1, 2020-01 → 2025-06): REJECTED.** The defaults lost −0.37 R per trade
+    after costs, and every variant was negative. See
+    [`reports/EXP010_BPR_FVG_EA_REPORT.md`](reports/EXP010_BPR_FVG_EA_REPORT.md).
+
