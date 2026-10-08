@@ -4,8 +4,9 @@
 the LuxAlgo indicator and use them to take **buy and sell setups**.
 
 **Status.** The trading rules come from the owner's sketch ([`BPR_RETEST_PLAYBOOK.md`](BPR_RETEST_PLAYBOOK.md),
-hypothesis **H-13**). They are an untested `HYPOTHESIS`. The defaults below were fixed from the sketch and the
-playbook **before any market data was looked at**; none of them is tuned.
+hypothesis **H-13**). The defaults below were fixed from the sketch and the playbook **before any market data was
+looked at**; none of them is tuned. The pre-registered backtest EXP010 **REJECTED** them: −0.37 R per trade after
+costs on XAUUSD M1, 2020-01 → 2025-06 ([`reports/EXP010_BPR_FVG_EA_REPORT.md`](../../reports/EXP010_BPR_FVG_EA_REPORT.md)).
 
 ## Files that follow this spec
 
@@ -21,6 +22,10 @@ Parity between the two is checked by a C++ transliteration of the EA's pure modu
 
 - **Accounts.** Orders are sent only in the Strategy Tester and on **demo** accounts. On a **real account the EA is
   log-only**: it draws, detects and logs, but sends no orders. Live trading needs separate human approval.
+  - The check **fails closed** and is repeated on every tick and before every send (order, delete, close, partial
+    close, stop modify). Outside the tester, trading needs a connected terminal, a known account (login > 0) and the
+    trade mode `DEMO`. An account that is not known yet is log-only (`WAITING FOR ACCOUNT`), and so are real and
+    contest accounts.
 - **Risk per trade.** At most 0.20 % of equity per position, including commission. The input is capped at 0.20.
 - **Daily loss.** A planned daily loss of 1.00 % (FX day starts at 17:00 New York) triggers a lockout for the rest of
   that FX day. The input is capped at 1.00.
@@ -90,6 +95,11 @@ Parity between the two is checked by a C++ transliteration of the EA's pure modu
 | `InpDeviationPts` | 30 | |
 | `InpWarmupBars` | 5000 | Closed bars processed at start for display and state. **No setup created during warm-up is traded.** |
 | `InpLogCsv` | true | CSV logs in the Common Files folder. |
+
+**One instance per account.** The 1.00 % daily-loss budget, the lockout and the trade count are computed **per EA
+instance** (this symbol and magic number, from the account history). Only **one** instance per account is supported;
+several instances would each have their own 1.00 % budget. Trades per day are counted as distinct positions (a limit
+filled in several deals is one trade).
 
 ---
 
@@ -234,7 +244,7 @@ Steps on each closed bar `u`:
        - `TP2 = P − (O − X)` (ask).
      - **Marketability.** If the market is already through `P`, the setup waits for the next bar (stays `ARMED`). Long:
        `ask ≤ P`, where the decision ask is `c[u] + sp` for Python and parity. Short: `bid ≥ P`, with the decision bid
-       `c[u]`.
+       `c[u]`. The live EA re-checks this at the first tick of `u+1`; see §5 "Marketable LIMIT decisions".
      - **Checks** (if one fails, the setup stays `ARMED` and is retried on the next bar; levels are recomputed with the
        new `X`):
        - `risk = |P − SL|`;
@@ -276,7 +286,32 @@ The executor reports back with `filled(id)`, `cancelled(id, reason)` and `closed
 - **Before the rollover.** Also close at 16:44 New York on trading days.
 - **Restart.** A position carrying this EA's magic number is managed again: its SL/TP are on the server, the time stop
   comes from `POSITION_TIME`, and TP1 is read from the comment `BF|<id>|<TP1>`. A pending order left from before the
-  restart is deleted.
+  restart is deleted. When the account is not known yet at start, this recovery runs again on the first tick on which
+  trading is permitted.
+- **Nothing runs untracked.** On every tick, a position with this symbol and magic number that the EA does not track is
+  adopted like a restart position (logged as an error), and a pending order with this symbol and magic number that is
+  not the EA's live limit is deleted (retried every 5 s). If a cancel finds the order already gone, the EA keeps
+  tracking it and the order history decides on the next tick (filled: the trade is tracked or finished; otherwise
+  cancelled).
+- **Removal.** When the EA stops (any reason, outside the tester), it deletes its pending orders. An open position keeps
+  only its server SL/TP. For every reason except a recompile, an error line says that the time stop, the 16:44 flat
+  and TP1 no longer run unless the EA runs again on the same symbol with the same magic number. This includes input
+  and chart changes, because a new magic number or symbol hides the position from the restarted EA.
+- **Marketable LIMIT decisions (EA).** The detector checks marketability against the parity quote (`c[u] + sp`). The
+  executor re-reads the live tick at the first tick of bar `u+1`:
+  - market already at or through `P` (long `ask ≤ P`, short `bid ≥ P`): a **market order** is sent at once with the same
+    SL and server TP. This mirrors the Python simulator, which fills such a limit on bar `u+1` at `min(P, ask_open)`
+    (long) or `max(P, bid_open)` (short). The substitution is logged;
+  - right side of the market but inside the stops level: no order, and the setup goes back to `ARMED`
+    (`NotifyRetry`: levels cleared, `X` updated again) and is tried on the next bar;
+  - the other transient conditions (slot busy, order-error breaker, no tick, risk baseline not ready, daily budget)
+    also send the setup back to `ARMED`.
+  - `ORDER_FAILED` is kept for real refusals: margin, stops level on SL/TP, broker errors (and the log-only rule).
+  - `NotifyRetry` is an EA-only executor call; the parity harness never uses it.
+- **Netting accounts.** `CTrade::PositionClosePartial` works on hedging accounts only. On any other account
+  `TP1_TP2` falls back to `TP1_ONLY` for the detector and the executor (one server TP at TP1), and a warning is
+  logged. Failed management actions (partial close, stop move, close) never count towards the entry error breaker;
+  the first TP1 / break-even failure of a trade is logged once.
 
 **Python simulator** (bar-based, for backtests; `ask = bid + spread_k` for bar `k`):
 
@@ -309,17 +344,30 @@ lots = floor( equity·risk% / ( LossPerLot(|P − SL| + slippage·tk) + 2·commi
 
 - **Rounding.** The result is never rounded up to the minimum volume; if it falls below the minimum volume, the order
   is skipped (reason `SIZE_BELOW_MIN`).
-- **Pre-trade check.** Daily check before each order: `realised loss today + planned risk ≤ daily limit`.
+- **Pre-trade check.** Daily check before each order: `realised loss today + planned risk ≤ daily limit`. The realised
+  result is rebuilt from the account history once per new bar and right before each order.
+- **Readiness.** An FX day is committed only once the account is ready (tester, or connected with a known login) and
+  the equity is above 0; until then no new trade is allowed (fail closed), and a 0 baseline is never stored.
+- **Market orders** (CONFIRM, and a marketable LIMIT sent at market) are sized from the live ask/bid with an entry
+  buffer of `max(slippage·tk, deviation_points·point)` instead of `slippage·tk`, because the deviation is not enforced
+  on market execution. After the fill, if `lots · (LossPerLot(|fill − SL| + slippage·tk) + 2·commission)` exceeds the
+  budget (`equity · risk%` at sizing), the excess volume (rounded up to the step) is closed; when the rest would be
+  below the minimum volume, or on a netting account, the whole position is closed (exit reason `RISK`).
 - **Same formula as** `qe/risk.py` and `VideoStrategyEA/include/RiskManager.mqh`.
 
 ## 7. Logging (EA)
 
-CSV files go to the Common Files folder (`FILE_COMMON`) and carry the symbol and timeframe in the name.
+CSV files go to the Common Files folder (`FILE_COMMON`) and carry the symbol, timeframe, magic number and run mode
+(`TESTER` or `LIVE`) in the name, so a tester run never touches the files of a chart.
 
 | File | Columns |
 |---|---|
-| `BFEA_setups_<sym>_<tf>.csv` | `id`, `source`, `dir`, `created_time`, `B`, `T`, `h`, `sweep_bar_time`, `M`, `mss_time`, `status`, `reason`, `P`, `SL`, `TP1`, `TP2`, `decision_time` |
-| `BFEA_trades_<sym>_<tf>.csv` | `id`, `dir`, `entry_time`, `entry`, `lots`, `SL`, `TP1`, `TP2`, `exit_time`, `exit`, `exit_reason`, `pnl_usd`, `R`, `planned_risk_usd` |
+| `BFEA_setups_<sym>_<tf>_<magic>_<TESTER\|LIVE>.csv` | `run`, `id`, `source`, `dir`, `created_time`, `B`, `T`, `h`, `sweep_bar_time`, `M`, `mss_time`, `status`, `reason`, `P`, `SL`, `TP1`, `TP2`, `decision_time` |
+| `BFEA_trades_<sym>_<tf>_<magic>_<TESTER\|LIVE>.csv` | `run`, `id`, `dir`, `entry_time`, `entry`, `lots`, `SL`, `TP1`, `TP2`, `exit_time`, `exit`, `exit_reason`, `pnl_usd`, `R`, `planned_risk_usd` |
+
+- `run` is the server time of `OnInit` (text). Setup ids restart at 1 on every start, so `(run, id)` is the key.
+- `TESTER` files are rewritten at the start of each tester run; `LIVE` files are appended to, and every `LIVE` row is
+  flushed at once. Files are opened with shared read and write access.
 
 The Experts log gets one line per setup state change.
 
@@ -337,7 +385,7 @@ The Experts log gets one line per setup state change.
   - the label `L#id` or `S#id`.
   - After cancellation the rectangles turn grey. The last 20 overlays are kept.
 - **Panel** (top-left labels):
-  - mode: `TESTER`, `DEMO` or `REAL: LOG-ONLY`;
+  - mode: `TESTER`, `DEMO`, `REAL: LOG-ONLY` or `WAITING FOR ACCOUNT: LOG-ONLY`;
   - source, entry mode and direction;
   - setups armed;
   - order or position state;

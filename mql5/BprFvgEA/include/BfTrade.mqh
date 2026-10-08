@@ -8,8 +8,13 @@
 //
 // * filling mode from the symbol; prices normalised to the tick;
 // * stops / freeze levels and margin checked BEFORE sending;
-// * REAL accounts never receive orders (log-only). There is deliberately NO input to change this:
-//   live trading needs a separate, explicit human approval (CLAUDE.md).
+// * the account is checked again before EVERY send (Permitted(), fail closed): orders go out only in the Strategy
+//   Tester, or when the terminal is connected, the account is known (login > 0) and its trade mode is DEMO. An
+//   account that is not known yet (AccountInfoInteger returns 0 = ACCOUNT_TRADE_MODE_DEMO before the login) is
+//   log-only, and so are REAL and CONTEST accounts. Refresh() recomputes tradingAllowed / modeNote on every tick.
+//   There is deliberately NO input to change this: live trading needs a separate, explicit human approval (CLAUDE.md);
+// * only entry failures (market / limit orders) count towards the order-error breaker; management actions (close,
+//   partial close, stop modify, order delete) and refusals by the account guard never do.
 //+------------------------------------------------------------------+
 #ifndef BF_TRADE_MQH
 #define BF_TRADE_MQH
@@ -35,6 +40,7 @@ public:
    string            lastError;
 
 private:
+   //--- entries (market / limit orders): failures count towards the breaker
    void              OnResult(const bool ok, const string what)
      {
       if(ok)
@@ -47,6 +53,45 @@ private:
                   m_trade.ResultRetcodeDescription();
       if(m_errors >= m_maxErrors)
          m_breaker = true;
+     }
+
+   //--- management (close, partial close, stop modify, delete): never counts towards the entry breaker
+   void              OnMgmtResult(const bool ok, const string what)
+     {
+      if(ok)
+         return;
+      lastError = what + " retcode=" + IntegerToString((long)m_trade.ResultRetcode()) + " " +
+                  m_trade.ResultRetcodeDescription();
+     }
+
+   //--- 0 tester / optimisation, 1 account not known yet, 2 demo, 3 any other account (real, contest)
+   int               ModeCode(void)
+     {
+      if((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION))
+         return(0);
+      if(!(bool)TerminalInfoInteger(TERMINAL_CONNECTED))
+         return(1);
+      if(AccountInfoInteger(ACCOUNT_LOGIN) <= 0)
+         return(1);
+      if((ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO)
+         return(2);
+      return(3);
+     }
+
+   string            ModeText(const int code)
+     {
+      if(code == 0)
+         return("TESTER");
+      if(code == 1)
+         return("WAITING FOR ACCOUNT: LOG-ONLY");
+      if(code == 2)
+         return("DEMO");
+      return("REAL: LOG-ONLY");
+     }
+
+   string            Refusal(void)
+     {
+      return("not sent: trading not permitted (" + ModeText(ModeCode()) + ")");
      }
 
    double            MinStopDist(void)
@@ -70,37 +115,44 @@ public:
       lastError      = "";
      }
 
-   //--- the account mode decides once and for all whether orders may be sent (spec "Hard rules")
+   //--- spec "Hard rules": true only in the tester or on a connected, known DEMO account (fail closed)
+   bool              Permitted(void)
+     {
+      int code = ModeCode();
+      return(code == 0 || code == 2);
+     }
+
+   //--- re-evaluated on every tick (OnTick) and in Init: never latched
+   void              Refresh(void)
+     {
+      int code = ModeCode();
+      tradingAllowed = (code == 0 || code == 2);
+      modeNote       = ModeText(code);
+      m_trade.SetMarginMode();                    // the margin mode is 0 (netting) until the account is known
+     }
+
    bool              Init(const string sym, const long magic, const int deviationPts, const int maxErrors)
      {
       m_sym       = sym;
       m_magic     = magic;
       m_dev       = (deviationPts > 0) ? deviationPts : 0;
       m_maxErrors = (maxErrors > 1) ? maxErrors : 1;
+      m_errors    = 0;
+      m_breaker   = false;
+      m_lastDeal  = 0;
+      lastError   = "";
       m_trade.SetExpertMagicNumber((ulong)magic);
       m_trade.SetDeviationInPoints((ulong)m_dev);
       m_trade.SetTypeFillingBySymbol(sym);
-      m_trade.SetMarginMode();
       m_trade.LogLevel(LOG_LEVEL_ERRORS);
-      bool tester = ((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION));
-      ENUM_ACCOUNT_TRADE_MODE mode = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-      if(tester)
-        {
-         tradingAllowed = true;
-         modeNote       = "TESTER";
-        }
-      else
-         if(mode == ACCOUNT_TRADE_MODE_DEMO || mode == ACCOUNT_TRADE_MODE_CONTEST)
-           {
-            tradingAllowed = true;
-            modeNote       = "DEMO";
-           }
-         else
-           {
-            tradingAllowed = false;
-            modeNote       = "REAL: LOG-ONLY";
-           }
+      Refresh();
       return(true);
+     }
+
+   //--- CTrade::PositionClosePartial works on hedging accounts only
+   bool              IsHedging(void)
+     {
+      return((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING);
      }
 
    bool              Breaker(void)
@@ -148,6 +200,24 @@ public:
          step = 0.01;
       int digits = (int)MathMax(0.0, MathCeil(-MathLog10(step) - 1e-9));
       return(NormalizeDouble(MathFloor(vol / step + 1e-9) * step, digits));
+     }
+
+   //--- volume rounded UP to the step
+   double            CeilVolume(const double vol)
+     {
+      double step = SymbolInfoDouble(m_sym, SYMBOL_VOLUME_STEP);
+      if(step <= 0.0)
+         step = 0.01;
+      int digits = (int)MathMax(0.0, MathCeil(-MathLog10(step) - 1e-9));
+      return(NormalizeDouble(MathCeil(vol / step - 1e-9) * step, digits));
+     }
+
+   double            VolumeStep(void)
+     {
+      double step = SymbolInfoDouble(m_sym, SYMBOL_VOLUME_STEP);
+      if(step <= 0.0)
+         step = 0.01;
+      return(step);
      }
 
    double            MinVolume(void)
@@ -249,6 +319,11 @@ public:
       uint    rc;
       double  price;
       m_lastDeal = 0;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
       for(attempt = 0; attempt < 3; attempt++)
         {
          if(!SymbolInfoTick(m_sym, tk))
@@ -284,20 +359,25 @@ public:
       int  modes     = (int)SymbolInfoInteger(m_sym, SYMBOL_EXPIRATION_MODE);
       bool specified = ((modes & SYMBOL_EXPIRATION_SPECIFIED) != 0);
       ENUM_ORDER_TYPE_TIME tt = specified ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
-      datetime exp   = specified ? expiry : (datetime)0;
+      datetime expTime = specified ? expiry : (datetime)0;
       bool ok;
       uint rc;
       bool done;
       int  attempt;
       ticket = 0;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
       for(attempt = 0; attempt < 2; attempt++)
         {
          if(dir > 0)
-            ok = m_trade.BuyLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt, exp,
-                                  comment);
+            ok = m_trade.BuyLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
+                                  expTime, comment);
          else
-            ok = m_trade.SellLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt, exp,
-                                   comment);
+            ok = m_trade.SellLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
+                                   expTime, comment);
          rc   = m_trade.ResultRetcode();
          done = (ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED));
          if(done)
@@ -319,31 +399,63 @@ public:
       return(false);
      }
 
+   //--- management actions below: guarded by Permitted(); failures never trip the entry breaker
    bool              DeleteOrder(const ulong ticket)
      {
-      bool ok = m_trade.OrderDelete(ticket);
-      OnResult(ok, "delete order");
+      bool ok;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
+      ok = m_trade.OrderDelete(ticket);
+      OnMgmtResult(ok, "delete order");
       return(ok);
      }
 
    bool              ClosePosition(const ulong ticket)
      {
-      bool ok = m_trade.PositionClose(ticket, (ulong)m_dev);
-      OnResult(ok, "close position");
+      bool ok;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
+      ok = m_trade.PositionClose(ticket, (ulong)m_dev);
+      OnMgmtResult(ok, "close position");
       return(ok);
      }
 
+   //--- hedging accounts only (CTrade::PositionClosePartial refuses netting accounts without sending anything)
    bool              ClosePartial(const ulong ticket, const double volume)
      {
-      bool ok = m_trade.PositionClosePartial(ticket, volume, (ulong)m_dev);
-      OnResult(ok, "partial close");
+      bool ok;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
+      if(!IsHedging())
+        {
+         lastError = "partial close: not available on a netting account";
+         return(false);
+        }
+      m_trade.SetMarginMode();
+      ok = m_trade.PositionClosePartial(ticket, volume, (ulong)m_dev);
+      OnMgmtResult(ok, "partial close");
       return(ok);
      }
 
    bool              ModifyStops(const ulong ticket, const double sl, const double tp)
      {
-      bool ok = m_trade.PositionModify(ticket, NormalizePrice(sl), NormalizePrice(tp));
-      OnResult(ok, "modify stops");
+      bool ok;
+      if(!Permitted())
+        {
+         lastError = Refusal();
+         return(false);
+        }
+      ok = m_trade.PositionModify(ticket, NormalizePrice(sl), NormalizePrice(tp));
+      OnMgmtResult(ok, "modify stops");
       return(ok);
      }
   };

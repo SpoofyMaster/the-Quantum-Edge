@@ -56,6 +56,7 @@ Alert ArrayInitialize ChartGetInteger ChartRedraw IndicatorSetInteger IndicatorS
 PlotIndexSetDouble PlotIndexSetInteger SetIndexBuffer StringReplace StringSubstr CopyTime TerminalInfoString TimeCurrent
 AccountInfoString FileFlush HistoryOrderGetInteger HistoryOrderSelect HistorySelect PositionClosePartial PositionGetDouble
 PositionModify PositionSelectByTicket ResultDeal SetTypeFilling StringSplit StringToDouble StringToInteger
+OrderSend TerminalInfoInteger
 '''.split())
 ctrade=set('SetExpertMagicNumber SetDeviationInPoints SetTypeFillingBySymbol SetMarginMode LogLevel Buy Sell BuyLimit SellLimit OrderModify OrderDelete PositionClose ResultRetcode ResultRetcodeDescription ResultOrder'.split())
 unknown=sorted(c for c in calls-defined-builtin-ctrade if not c.isupper())

@@ -735,6 +735,26 @@ public:
         }
      }
 
+   //--- EA executor only; the parity harness never calls it. A decided order could not be sent for a transient
+   //    reason (limit inside the stops level, slot busy, no tick, daily budget; spec s.5 "Marketable LIMIT
+   //    decisions"): ORDERED -> ARMED, no order kind, levels cleared, X unfrozen (StepExisting updates it again
+   //    from the next bar). No event record.
+   void              NotifyRetry(const int id)
+     {
+      int i = FindIndex(id);
+      if(i < 0)
+         return;
+      if(m_s[i].status != BF_ST_ORDERED)
+         return;
+      m_s[i].status      = BF_ST_ARMED;
+      m_s[i].ordKind     = BF_ORD_NONE;
+      m_s[i].P           = 0.0;
+      m_s[i].SL          = 0.0;
+      m_s[i].TP1         = 0.0;
+      m_s[i].TP2         = 0.0;
+      m_s[i].decisionBar = -1;
+     }
+
    void              NotifyClosed(const int id)
      {
       int i = FindIndex(id);

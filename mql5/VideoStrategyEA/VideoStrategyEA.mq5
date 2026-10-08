@@ -541,6 +541,7 @@ void UpdatePanel(void)
 
 void OnTick()
   {
+   g_tm.Refresh();                                  // fail-closed account guard, re-evaluated every tick
    datetime cur = iTime(_Symbol, PERIOD_M1, 0);
    if(cur == 0) return;
    if(cur != g_lastBar)

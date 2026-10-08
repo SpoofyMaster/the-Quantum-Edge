@@ -789,6 +789,21 @@ void DrawPanel()
    Comment(txt);
   }
 
+// Fail-closed account guard (CLAUDE.md: no live trading). AccountInfoInteger returns 0 while the account is not
+// known yet (e.g. OnInit at terminal start), and 0 is also ACCOUNT_TRADE_MODE_DEMO, so login and connection are
+// checked first. Called in OnInit and at the top of every OnTick, so a wrong early reading never sticks.
+void RefreshTradeMode()
+  {
+   bool tester = (bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION);
+   if(tester) { g_tradingAllowed = true; g_tradeModeNote = "STRATEGY TESTER"; return; }
+   if(!(bool)TerminalInfoInteger(TERMINAL_CONNECTED) || AccountInfoInteger(ACCOUNT_LOGIN) <= 0)
+     { g_tradingAllowed = false; g_tradeModeNote = "WAITING FOR ACCOUNT: LOG-ONLY"; return; }
+   ENUM_ACCOUNT_TRADE_MODE am = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
+   if(am == ACCOUNT_TRADE_MODE_DEMO && InpAllowDemoOrders) { g_tradingAllowed = true;  g_tradeModeNote = "DEMO"; }
+   else if(am == ACCOUNT_TRADE_MODE_REAL)                  { g_tradingAllowed = false; g_tradeModeNote = "REAL ACCOUNT: LOG-ONLY"; }
+   else                                                    { g_tradingAllowed = false; g_tradeModeNote = "LOG-ONLY"; }
+  }
+
 //------------------------------------------------------------------------------------------------
 // Event handlers
 //------------------------------------------------------------------------------------------------
@@ -800,12 +815,7 @@ int OnInit()
    if(InpSeasonWeeks < InpSeasonMinWeeks || InpSeasonWeeks > WMAX) { Print("QE: bad seasonal weeks"); return INIT_PARAMETERS_INCORRECT; }
 
    // trading permission: tester always; demo if allowed; REAL accounts are log-only (research phase)
-   bool tester = (bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION);
-   ENUM_ACCOUNT_TRADE_MODE am = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-   if(tester)                                          { g_tradingAllowed = true;  g_tradeModeNote = "STRATEGY TESTER"; }
-   else if(am == ACCOUNT_TRADE_MODE_DEMO && InpAllowDemoOrders) { g_tradingAllowed = true;  g_tradeModeNote = "DEMO"; }
-   else if(am == ACCOUNT_TRADE_MODE_REAL)              { g_tradingAllowed = false; g_tradeModeNote = "REAL ACCOUNT: LOG-ONLY"; }
-   else                                                { g_tradingAllowed = false; g_tradeModeNote = "LOG-ONLY"; }
+   RefreshTradeMode();
 
    g_W = InpSeasonWeeks;
    SeasonalReset();
@@ -838,6 +848,7 @@ void OnDeinit(const int reason)
 
 void OnTick()
   {
+   RefreshTradeMode();                              // fail-closed account guard, re-evaluated every tick
    g_lastTickTime = TimeCurrent();
    static datetime lastBar = 0;
    datetime barOpen = iTime(_Symbol, PERIOD_M1, 0);
@@ -864,6 +875,7 @@ void OnTick()
 
 void OnTimer()
   {
+   RefreshTradeMode();                              // the timer path is guarded like OnTick
    bool connected = (bool)TerminalInfoInteger(TERMINAL_CONNECTED);
    if(!connected) { g_wasDisconnected = true; return; }
    if(g_wasDisconnected)

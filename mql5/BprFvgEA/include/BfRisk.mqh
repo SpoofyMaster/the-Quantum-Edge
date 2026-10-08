@@ -13,6 +13,12 @@
 // Sizing (spec s.6, same formula as qe/risk.py size_position):
 //   lots = floor( equity*risk% / ( LossPerLot(|P - SL| + slippage*tick) + 2*commission_per_lot_side ) / step ) * step
 // The realised result of the FX day is rebuilt from this EA's deals in the account history, so it survives restarts.
+// It is recomputed once per new bar and right before every order, so a restart before the history was synchronised
+// cannot leave a stale lockout state for long.
+// The FX-day baseline is committed only once the account is ready (equity > 0, see DayCheck in BprFvgEA.mq5); until
+// then RiskOk() / CheckNewTrade() refuse every new trade (fail closed).
+// The budget is PER EA INSTANCE (this symbol + magic): only ONE instance per account is supported, otherwise the
+// account could lose a multiple of the 1.00 % planned daily loss.
 //+------------------------------------------------------------------+
 #ifndef BF_RISK_MQH
 #define BF_RISK_MQH
@@ -32,8 +38,9 @@ private:
    long              m_fxDay;
    double            m_dayStartEq;
    double            m_realised;        // net P&L of this EA's deals in the current FX day (account currency)
-   int               m_trades;          // positions opened by this EA in the current FX day
+   int               m_trades;          // positions opened by this EA in the current FX day (distinct position ids)
    bool              m_lockout;
+   double            m_lastBudget;      // equity * risk% of the last SizeLots call (account currency)
 
 public:
                      CBfRisk(void)
@@ -49,6 +56,7 @@ public:
       m_realised     = 0.0;
       m_trades       = 0;
       m_lockout      = false;
+      m_lastBudget   = 0.0;
      }
 
    void              Init(const string sym, const long magic, const double riskPct, const double dayLossPct,
@@ -65,6 +73,7 @@ public:
       m_realised     = 0.0;
       m_trades       = 0;
       m_lockout      = false;
+      m_lastBudget   = 0.0;
      }
 
    double            RiskPct(void)
@@ -85,6 +94,17 @@ public:
    double            RealisedToday(void)
      {
       return(m_realised);
+     }
+
+   //--- a valid FX-day baseline exists (the account was ready when the day was committed)
+   bool              Ready(void)
+     {
+      return(m_fxDay >= 0 && m_dayStartEq > 0.0);
+     }
+
+   double            LastBudget(void)
+     {
+      return(m_lastBudget);
      }
 
    double            DayLimit(void)
@@ -112,6 +132,11 @@ public:
       int      i;
       int      total;
       ulong    d;
+      int      j;
+      int      nIds = 0;
+      bool     seen;
+      ulong    pid;
+      ulong    ids[];
       datetime now = TimeCurrent();
       long     entry;
       m_realised = 0.0;
@@ -132,29 +157,53 @@ public:
             continue;
          entry = HistoryDealGetInteger(d, DEAL_ENTRY);
          if(entry == (long)DEAL_ENTRY_IN)
-            m_trades++;
+           {
+            // a limit filled in several deals is one trade: count distinct position ids
+            pid  = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+            seen = false;
+            for(j = 0; j < nIds; j++)
+              {
+               if(ids[j] == pid)
+                 {
+                  seen = true;
+                  break;
+                 }
+              }
+            if(!seen)
+              {
+               ArrayResize(ids, nIds + 1, 16);
+               ids[nIds] = pid;
+               nIds++;
+              }
+           }
          m_realised += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION) +
                        HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_FEE);
         }
+      m_trades = nIds;
       if(!m_lockout && m_dayStartEq > 0.0 && -m_realised >= DayLimit() - 1e-9)
          m_lockout = true;
      }
 
-   //--- call on every closed bar (cheap unless the FX day changed)
-   void              UpdateDay(const long fxDay, CBfSession &ses)
+   //--- commits a new FX day. false (nothing stored, retried by the caller) while the equity is not available:
+   //    a 0 baseline is never stored.
+   bool              UpdateDay(const long fxDay, CBfSession &ses)
      {
-      if(fxDay == m_fxDay)
-         return;
+      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
+      if(fxDay == m_fxDay && m_dayStartEq > 0.0)
+         return(true);
+      if(eq <= 0.0)
+         return(false);
       m_fxDay    = fxDay;
       m_lockout  = false;
       m_realised = 0.0;
       Recompute(ses);
       // equity at the start of the FX day: current equity minus what was already realised today (restart-safe)
-      m_dayStartEq = AccountInfoDouble(ACCOUNT_EQUITY) - m_realised;
+      m_dayStartEq = eq - m_realised;
       if(m_dayStartEq <= 0.0)
-         m_dayStartEq = AccountInfoDouble(ACCOUNT_EQUITY);
+         m_dayStartEq = eq;
       if(-m_realised >= DayLimit() - 1e-9 && m_realised < 0.0)
          m_lockout = true;
+      return(true);
      }
 
    //--- after a trade closes / opens
@@ -167,6 +216,8 @@ public:
    //    still fits in the daily budget.
    bool              RiskOk(void)
      {
+      if(!Ready())
+         return(false);                                  // no valid baseline yet: fail closed
       if(m_lockout)
          return(false);
       if(m_maxTradesDay > 0 && m_trades >= m_maxTradesDay)
@@ -178,6 +229,8 @@ public:
    //--- spec s.6 pre-trade check: realised loss today + planned risk <= daily limit
    bool              CheckNewTrade(const double plannedRisk)
      {
+      if(!Ready())
+         return(false);                                  // no valid baseline yet: fail closed
       if(m_lockout)
          return(false);
       double loss = MathMax(0.0, -m_realised);
@@ -194,6 +247,15 @@ public:
       if(ts <= 0.0 || tv <= 0.0)
          return(0.0);
       return(dist / ts * tv);
+     }
+
+   //--- planned loss of 1.0 lot at the stop incl. the round-trip commission; 0 when the symbol data is not ready
+   double            PerLotRisk(const double stopDist)
+     {
+      double loss = LossPerLot(stopDist);
+      if(loss <= 0.0)
+         return(0.0);
+      return(loss + 2.0 * m_commLotSide);
      }
 
    //--- value of a 1.0 price move for 1.0 lot (account currency); 0 when the symbol data is not ready
@@ -215,11 +277,13 @@ public:
    //    <= equity * risk%. Returns 0 when that is below the minimum volume (never rounded up).
    double            SizeLots(const double stopDist, double &plannedRisk)
      {
-      plannedRisk = 0.0;
+      plannedRisk  = 0.0;
+      m_lastBudget = 0.0;
       if(stopDist <= 0.0)
          return(0.0);
       double eq     = AccountInfoDouble(ACCOUNT_EQUITY);
       double budget = eq * m_riskPct / 100.0;
+      m_lastBudget  = budget;
       double perLot = LossPerLot(stopDist) + 2.0 * m_commLotSide;
       if(perLot <= 0.0)
          return(0.0);

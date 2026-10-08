@@ -4,7 +4,8 @@
 //| * filling mode from the symbol, prices normalized to tick size    |
 //| * stops/freeze level and margin checks BEFORE sending             |
 //| * requotes/price-changed retried (market orders, max 2)           |
-//| * REAL accounts never receive orders (log-only); no input exists  |
+//| * REAL accounts never receive orders (log-only, fail-closed and   |
+//|   re-checked every tick and before every send); no input exists  |
 //|   to override this: live trading needs separate human approval.   |
 //+------------------------------------------------------------------+
 #ifndef VSEA_TRADE_MQH
@@ -49,12 +50,30 @@ public:
       m_trade.SetTypeFillingBySymbol(sym);
       m_trade.SetMarginMode();
       m_trade.LogLevel(LOG_LEVEL_ERRORS);
-      bool tester = (bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION);
-      ENUM_ACCOUNT_TRADE_MODE mode = (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE);
-      if(tester) { tradingAllowed = true; modeNote = "STRATEGY TESTER"; }
-      else if(mode == ACCOUNT_TRADE_MODE_DEMO || mode == ACCOUNT_TRADE_MODE_CONTEST) { tradingAllowed = true; modeNote = "DEMO"; }
-      else { tradingAllowed = false; modeNote = "REAL ACCOUNT: LOG-ONLY (no orders)"; }
+      Refresh();
       return true;
+     }
+
+   //--- Fail-closed account guard (CLAUDE.md: no live trading). AccountInfoInteger returns 0 while the account is
+   //    not known yet, and 0 is also ACCOUNT_TRADE_MODE_DEMO, so the login and the connection are checked first.
+   //    Re-evaluated on every tick (Refresh) and before every send (Permitted); contest accounts are log-only.
+   bool              Permitted(void) const
+     {
+      if((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION))
+         return true;
+      if(!(bool)TerminalInfoInteger(TERMINAL_CONNECTED) || AccountInfoInteger(ACCOUNT_LOGIN) <= 0)
+         return false;
+      return (ENUM_ACCOUNT_TRADE_MODE)AccountInfoInteger(ACCOUNT_TRADE_MODE) == ACCOUNT_TRADE_MODE_DEMO;
+     }
+
+   void              Refresh(void)
+     {
+      tradingAllowed = Permitted();
+      if((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION)) modeNote = "STRATEGY TESTER";
+      else if(!(bool)TerminalInfoInteger(TERMINAL_CONNECTED) || AccountInfoInteger(ACCOUNT_LOGIN) <= 0)
+         modeNote = "WAITING FOR ACCOUNT: LOG-ONLY";
+      else if(tradingAllowed) modeNote = "DEMO";
+      else modeNote = "REAL ACCOUNT: LOG-ONLY (no orders)";
      }
 
    bool              Breaker(void) const { return m_breaker; }
@@ -127,6 +146,7 @@ public:
    //--- ENT-1: market order with SL/TP attached. Returns true if a position was opened.
    bool              OpenMarket(const int dir, const double lots, const double sl, const double tp, const string comment)
      {
+      if(!Permitted()) { lastError = "not permitted (" + modeNote + ")"; return false; }   // never counts toward the breaker
       for(int attempt = 0; attempt < 3; attempt++)
         {
          MqlTick tk;
@@ -150,6 +170,8 @@ public:
    bool              PlaceLimit(const int dir, const double lots, const double price, const double sl, const double tp,
                                 const datetime expiry, const string comment, ulong &ticket)
      {
+      ticket = 0;
+      if(!Permitted()) { lastError = "not permitted (" + modeNote + ")"; return false; }   // never counts toward the breaker
       int modes = (int)SymbolInfoInteger(m_sym, SYMBOL_EXPIRATION_MODE);
       bool specified = (modes & SYMBOL_EXPIRATION_SPECIFIED) != 0;
       ENUM_ORDER_TYPE_TIME tt = specified ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
@@ -165,6 +187,7 @@ public:
 
    bool              ModifyLimit(const ulong ticket, const double price, const double sl, const double tp, const datetime expiry)
      {
+      if(!Permitted()) { lastError = "not permitted (" + modeNote + ")"; return false; }   // never counts toward the breaker
       if(!OrderSelect(ticket)) return false;
       double pt = SymbolInfoDouble(m_sym, SYMBOL_POINT);
       double freeze = (double)SymbolInfoInteger(m_sym, SYMBOL_TRADE_FREEZE_LEVEL) * pt;
@@ -181,6 +204,7 @@ public:
 
    bool              DeleteOrder(const ulong ticket)
      {
+      if(!Permitted()) { lastError = "not permitted (" + modeNote + ")"; return false; }   // never counts toward the breaker
       bool ok = m_trade.OrderDelete(ticket);
       OnResult(ok, "delete order");
       return ok;
@@ -188,6 +212,7 @@ public:
 
    bool              ClosePosition(const ulong ticket)
      {
+      if(!Permitted()) { lastError = "not permitted (" + modeNote + ")"; return false; }   // never counts toward the breaker
       bool ok = m_trade.PositionClose(ticket, (ulong)MathMax(m_deviation, 0));
       OnResult(ok, "close position");
       return ok;
