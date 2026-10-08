@@ -32,6 +32,21 @@ def transform(src: str) -> str:
     return '#include "shim.h"\n' + s
 
 
+def transform_pure(sources: list[str]) -> str:
+    """Concatenate pure .mqh modules (no MT5 API) into one C++ translation unit for the EA parity harness.
+
+    Local '#include "x.mqh"' lines are dropped (the files are given in dependency order); array parameters
+    become pointers and colour literals numbers, as for the indicator.
+    """
+    body = []
+    for text in sources:
+        body.append("\n".join(ln for ln in text.split("\n") if not re.match(r'\s*#include\s+"', ln)))
+    s = "\n".join(body)
+    s = re.sub(r"C'(\d+),(\d+),(\d+)'", r"RGBC(\1,\2,\3)", s)
+    s = re.sub(r"(const\s+)?(\w+)\s*&\s*(\w+)\[\]", lambda m: (m.group(1) or "") + m.group(2) + " *" + m.group(3), s)
+    return '#include "shim.h"\n' + s
+
+
 if __name__ == "__main__":
     with open(sys.argv[1], encoding="utf-8") as f:
         text = f.read()

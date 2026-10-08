@@ -46,6 +46,10 @@ inline double MathAbs(double x) { return std::fabs(x); }
 inline double MathMax(double a, double b) { return a > b ? a : b; }
 inline double MathMin(double a, double b) { return a < b ? a : b; }
 inline double MathRound(double x) { return std::round(x); }
+inline double MathFloor(double x) { return std::floor(x); }
+inline double MathCeil(double x) { return std::ceil(x); }
+// MQL5 NormalizeDouble: round half away from zero at `d` decimals (round(v * 10^d) / 10^d).
+inline double NormalizeDouble(double v, int d) { double p = std::pow(10.0, d); return std::round(v * p) / p; }
 inline string IntegerToString(long long v) { return std::to_string(v); }
 inline string DoubleToString(double v, int d) { char b[64]; snprintf(b, 64, "%.*f", d, v); return b; }
 inline string StringFormat(const char *f, double v) { char b[64]; snprintf(b, 64, f, v); return b; }

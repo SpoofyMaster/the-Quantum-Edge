@@ -54,6 +54,8 @@ OrderGetString OrderGetInteger OrderGetDouble OrderSelect OrderCalcMargin Histor
 HistoryDealGetDouble HistorySelectByPosition HistoryDealsTotal HistoryDealGetTicket GetPointer EnumToString MQLInfoInteger iTime
 Alert ArrayInitialize ChartGetInteger ChartRedraw IndicatorSetInteger IndicatorSetString ObjectDelete PeriodSeconds
 PlotIndexSetDouble PlotIndexSetInteger SetIndexBuffer StringReplace StringSubstr CopyTime TerminalInfoString TimeCurrent
+AccountInfoString FileFlush HistoryOrderGetInteger HistoryOrderSelect HistorySelect PositionClosePartial PositionGetDouble
+PositionModify PositionSelectByTicket ResultDeal SetTypeFilling StringSplit StringToDouble StringToInteger
 '''.split())
 ctrade=set('SetExpertMagicNumber SetDeviationInPoints SetTypeFillingBySymbol SetMarginMode LogLevel Buy Sell BuyLimit SellLimit OrderModify OrderDelete PositionClose ResultRetcode ResultRetcodeDescription ResultOrder'.split())
 unknown=sorted(c for c in calls-defined-builtin-ctrade if not c.isupper())
