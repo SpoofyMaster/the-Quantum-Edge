@@ -16,6 +16,11 @@ Status labels follow CLAUDE.md:
 
 Paper/demo only; live trading needs separate, explicit approval.
 
+> **Update 2026-10-08.** The mechanical version of these rules (the BPR+FVG EA, `research/indicators/BPR_FVG_EA_SPEC.md`)
+> was tested in the pre-registered experiment EXP010 on XAUUSD M1, 2020-01 → 2025-06. **Result: REJECTED.** The
+> defaults lost −0.37 R per trade after costs over 62 trades. See
+> [`reports/EXP010_BPR_FVG_EA_REPORT.md`](../../reports/EXP010_BPR_FVG_EA_REPORT.md).
+
 ---
 
 ## 1. What the sketch shows

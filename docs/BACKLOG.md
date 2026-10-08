@@ -86,6 +86,15 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [?] U-11 User (optional): TradingView screenshot (same symbol/timeframe, BPR on) for a visual cross-check.
 - [x] LX-5 Owner sketch "BPR retest long" read and turned into an execution playbook
   (`research/indicators/BPR_RETEST_PLAYBOOK.md`), registered as **H-13 HYPOTHESIS**.
-- [?] LX-6 EXP010: pre-registered backtest of H-13 (dev 2020–2023, one validation look 2024-01 → 2025-06) — needs
-  the owner's go-ahead and the U-9 compile; entry rule (R1 front-run / R3 confirmation) and BPR definition
-  (indicator box vs manual sell-off ∩ rally overlap) to be fixed before data is loaded.
+- [x] LX-6 EXP010: pre-registered backtest of H-13 (XAUUSD M1 2020-01 → 2025-06, 7 trials): **REJECTED**
+  (V0 −0.368R, CI [−0.705, +0.030]; every variant negative) — `reports/EXP010_BPR_FVG_EA_REPORT.md`.
+
+## BPR + FVG Expert Advisor (session 2026-10-08, journal day05)
+- [x] EA-1 Spec `research/indicators/BPR_FVG_EA_SPEC.md` (setups, life cycle, execution, risk, display, parity contract).
+- [x] EA-2 MQL5 EA `mql5/BprFvgEA/` (LuxAlgo zones on chart + BPR/FVG retest setups; tester/demo only, real accounts
+  log-only) — **NOT compiled**.
+- [x] EA-3 Python reference `qe/strategies/bpr_fvg.py` (detector + simulator, 63 tests) and EA-vs-Python parity harness
+  (`tests/test_bpr_fvg_ea_harness.py`, 10 configurations, mutation-checked).
+- [x] EA-4 Adversarial review (24 findings; 4 critical/major trading-safety issues in the execution layer) → fixed.
+- [?] U-12 User: compile `mql5/BprFvgEA` in MetaEditor; run the Strategy Tester (XAUUSD M1, real ticks,
+  2020-01-01 → 2025-06-30, defaults) and send the report + `BFEA_trades_*_TESTER.csv` for comparison with EXP010.
