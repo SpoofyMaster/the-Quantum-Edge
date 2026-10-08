@@ -276,9 +276,18 @@ removing the EA. In a non-visual Strategy Tester run nothing is drawn (faster).
 
 ## Verification so far
 
-Development checks run while writing the EA (no MetaEditor available). They were **ad hoc and their outputs are not
-saved in the repository**, so under CLAUDE.md they are **not `VERIFIED`**; the reproducible versions belong to the
-pending parity-harness task (`tests/test_bpr_fvg_ea_harness.py`).
+**Reproducible, run in CI on every push:**
+
+| Test | What it checks |
+|---|---|
+| `tests/test_bpr_fvg_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are transliterated to C++, compiled with g++ and compared **event by event** with the Python reference `qe/strategies/bpr_fvg.py`.<br>• Records compared: every ARMED, MSS, PLACE_LIMIT, MARKET, DONE and CANCEL record, with prices.<br>• 10 configurations: BPR/FVG/BOTH sources, LIMIT/CONFIRM entry, filters on and off, long-only and short-only, three TP modes, warm-up, price ties.<br>• Mutation checks: deliberate one-character bugs were caught. |
+| `tests/test_bpr_fvg_strategy.py` | 63 scenario tests of the Python reference (spec sections 3–5), including causality and the simulator fill and exit rules. |
+| `tests/test_luxbpr_mql5_harness.py` | The same engine code in the indicator, checked against the LuxAlgo Python reference. |
+
+These checks cover the EA's decision logic only. They do not cover MetaEditor compilation, MT5 order execution, or
+the drawing code.
+
+**Earlier ad-hoc checks**, made while writing the EA. Their outputs are not saved, so they are not `VERIFIED`:
 
 | Check | Outcome of the ad-hoc run |
 |---|---|

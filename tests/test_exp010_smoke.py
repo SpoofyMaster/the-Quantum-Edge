@@ -33,7 +33,8 @@ def test_session_arrays_follow_the_spec_window():
 
 def test_pipeline_runs_on_synthetic_bars():
     exp = _exp()
-    m1 = generate(start="2021-03-01", end="2021-03-20", price0=2000.0, sigma_min=0.0002, base_spread=0.10, seed=3)  # ~0.4 USD per minute at 2000
+    # sigma_min is a per-minute log return: 0.0002 is about 0.4 USD per minute at 2000
+    m1 = generate(start="2021-03-01", end="2021-03-20", price0=2000.0, sigma_min=0.0002, base_spread=0.10, seed=3)
     m1 = m1.assign(sp=m1["ao"] - m1["bo"])
     frame = m1[["bo", "bh", "bl", "bc", "sp"]]
     for f in (frame, exp.to_m5(m1)):
@@ -47,4 +48,5 @@ def test_pipeline_runs_on_synthetic_bars():
             assert (hold <= 120 + 5).all()  # 120 min cap (an M5 bar of slack)
     m5 = exp.to_m5(m1)
     assert m5.index[1] - m5.index[0] == pd.Timedelta("5min")
-    assert (m5.bh >= m5[["bo", "bc"]].max(axis=1)).all() and (m5.bl <= m5[["bo", "bc"]].min(axis=1)).all()
+    eps = 1e-9  # the synthetic generator's high/low can sit one ulp inside open/close (separate log sums)
+    assert (m5.bh >= m5[["bo", "bc"]].max(axis=1) - eps).all() and (m5.bl <= m5[["bo", "bc"]].min(axis=1) + eps).all()
