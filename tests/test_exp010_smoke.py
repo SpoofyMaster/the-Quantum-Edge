@@ -33,7 +33,7 @@ def test_session_arrays_follow_the_spec_window():
 
 def test_pipeline_runs_on_synthetic_bars():
     exp = _exp()
-    m1 = generate(start="2021-03-01", end="2021-03-20", price0=2000.0, sigma_min=0.25, base_spread=0.10, seed=3)
+    m1 = generate(start="2021-03-01", end="2021-03-20", price0=2000.0, sigma_min=0.0002, base_spread=0.10, seed=3)  # ~0.4 USD per minute at 2000
     m1 = m1.assign(sp=m1["ao"] - m1["bo"])
     frame = m1[["bo", "bh", "bl", "bc", "sp"]]
     for f in (frame, exp.to_m5(m1)):
