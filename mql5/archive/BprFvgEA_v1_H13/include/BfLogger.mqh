@@ -1,16 +1,15 @@
 //+------------------------------------------------------------------+
 //| BfLogger.mqh                                                     |
-//| BprFvgEA v2: Experts-log lines and CSV logs (v2 spec s.8)        |
+//| BprFvgEA: Experts-log lines and CSV logs (spec s.7)              |
 //+------------------------------------------------------------------+
 //
 // Part of BprFvgEA (distributed as a whole under CC BY-NC-SA 4.0 because it includes a port of LuxAlgo code; see
 // BfEngine.mqh). This file contains no LuxAlgo logic. Adapted from mql5/VideoStrategyEA/include/DebugLogger.mqh.
 //
 // Files (Common Files folder, FILE_COMMON; symbol, timeframe, magic number and run mode in the name):
-//   BFEA2_setups_<sym>_<tf>_<magic>_<TESTER|LIVE>.csv  one row per setup when it ends (DONE / CLOSED), plus the
-//                                                      still-open ones at exit
-//   BFEA2_trades_<sym>_<tf>_<magic>_<TESTER|LIVE>.csv  one row per closed position (one Fibonacci level; on a
-//                                                      netting account the levels that share the position)
+//   BFEA_setups_<sym>_<tf>_<magic>_<TESTER|LIVE>.csv  one row per setup when it ends (DONE / CLOSED), plus the
+//                                                     still-open ones at exit
+//   BFEA_trades_<sym>_<tf>_<magic>_<TESTER|LIVE>.csv  one row per closed trade
 // TESTER files are rewritten at the start of each tester run; LIVE files (a chart, demo or log-only) are appended to
 // and never touched by the tester. The first column 'run' is the server time of OnInit, so (run, id) is unique even
 // though setup ids restart at 1 on every start. LIVE rows are flushed at once (nothing is lost on a crash).
@@ -23,8 +22,8 @@
 
 #include "BfDefines.mqh"
 
-#define BF_SETUPS_HEADER "run,id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason"
-#define BF_TRADES_HEADER "run,id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk"
+#define BF_SETUPS_HEADER "run,id,source,dir,created_time,B,T,h,sweep_bar_time,M,mss_time,status,reason,P,SL,TP1,TP2,decision_time"
+#define BF_TRADES_HEADER "run,id,dir,entry_time,entry,lots,SL,TP1,TP2,exit_time,exit,exit_reason,pnl_usd,R,planned_risk_usd"
 
 class CBfLogger
   {
@@ -93,8 +92,8 @@ public:
       m_fresh   = tester;
       m_quiet   = quiet;
       m_run     = run;
-      m_fSetups = "BFEA2_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
-      m_fTrades = "BFEA2_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fSetups = "BFEA_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fTrades = "BFEA_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
       m_rows    = 0;
       if(m_csv)
         {

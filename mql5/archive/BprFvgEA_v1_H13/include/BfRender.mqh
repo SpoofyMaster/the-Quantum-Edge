@@ -1,7 +1,7 @@
 //+------------------------------------------------------------------+
 //| BfRender.mqh                                                     |
-//| BprFvgEA v2: chart objects - LuxAlgo zones, displacement markers,|
-//| Fibonacci, per-setup drawings and the panel (v2 spec s.8)        |
+//| BprFvgEA: chart objects - LuxAlgo zones, displacement markers,   |
+//| Fibonacci, position-tool trade overlays and the panel (spec s.8) |
 //+------------------------------------------------------------------+
 //
 // © LuxAlgo (original Pine v5 logic of 'ICT Concepts [LuxAlgo]')
@@ -12,8 +12,7 @@
 // "Fibonacci between last: BPR" display of the Pine v5 script "ICT Concepts [LuxAlgo]", adapted from
 // mql5/Indicators/LuxAlgo_BPR/LuxAlgo_BPR.mq5. It is distributed under the same licence (CC BY-NC-SA 4.0):
 // NON-COMMERCIAL use only, attribution to LuxAlgo required, share-alike. Not affiliated with or endorsed by LuxAlgo.
-// The per-setup drawings (touch / breakout marks, the setup Fibonacci, entry / SL / TP lines) and the panel are this
-// project's own.
+// The trade overlays and the panel are this project's own.
 //
 // Differences from the indicator's renderer (all display-only):
 //   * object prefix "BFEA_";
@@ -30,9 +29,9 @@
 
 #define BF_PREFIX         "BFEA_"
 #define BF_NSLOTS         80      // 4 kinds x BF_MAXB slots (draw cache)
-#define BF_SK_KEEP        40      // setups whose drawings stay on the chart (v2 spec s.8)
-#define BF_SK_BARS        15      // Fibonacci lines run this many bars past the leg extreme / decision
-#define BF_PANEL_ROWS     10
+#define BF_TB_KEEP        20      // trade overlays kept on the chart (spec s.8)
+#define BF_TB_BARS        20      // overlay length in bars (spec s.8)
+#define BF_PANEL_ROWS     6
 
 //+------------------------------------------------------------------+
 //| Colour helpers (MQL5 colour layout is 0x00BBGGRR)                |
@@ -239,7 +238,7 @@ private:
    bool              m_fibOn;
    bool              m_fibExt;
    bool              m_showDispl;
-   bool              m_showSetups;
+   bool              m_showTrade;
    bool              m_showPanel;
    color             m_bull;
    color             m_bullBrk;
@@ -254,8 +253,8 @@ private:
    BfFibCache        m_fc;
    bool              m_dirty;
    color             m_lastBg;
-   int               m_skIds[BF_SK_KEEP];
-   int               m_skCount;
+   int               m_tbIds[BF_TB_KEEP];
+   int               m_tbCount;
    string            m_panel[BF_PANEL_ROWS];
    string            m_panelShown[BF_PANEL_ROWS];
 
@@ -326,6 +325,23 @@ private:
       ObjectDelete(0, BF_PREFIX + "FIB_1618");
      }
 
+   string            TradeBase(const int id)
+     {
+      return(BF_PREFIX + "TB" + IntegerToString(id));
+     }
+
+   void              DeleteTradeObjects(const int id)
+     {
+      string b = TradeBase(id);
+      ObjectDelete(0, b + "_G");
+      ObjectDelete(0, b + "_R");
+      ObjectDelete(0, b + "_L");
+      ObjectDelete(0, b + "_T");
+     }
+
+   // One slot of one array: fill rectangle (_F), border rectangle (_B) and centred text (_T).
+   // Pine colours (L611-622, L662-672, L707-708, L734-736): fill = base @90 (break colour @95 once
+   // broken), border and text = base @65; border solid -> dashed (price entered) -> dotted (broken).
    void              RenderSlot(const int kind, const int slot, const bool visible, const ZoneS &z, const int count,
                                 const datetime &tm[], const datetime formTime, const color bg)
      {
@@ -483,7 +499,7 @@ public:
       m_fibOn     = false;
       m_fibExt    = false;
       m_showDispl = false;
-      m_showSetups = true;
+      m_showTrade = true;
       m_showPanel = true;
       m_bull      = C'0,230,118';
       m_bullBrk   = C'128,128,0';
@@ -496,9 +512,9 @@ public:
       m_digits    = 2;
       m_dirty     = false;
       m_lastBg    = clrNONE;
-      m_skCount   = 0;
-      for(i = 0; i < BF_SK_KEEP; i++)
-         m_skIds[i] = 0;
+      m_tbCount   = 0;
+      for(i = 0; i < BF_TB_KEEP; i++)
+         m_tbIds[i] = 0;
       for(i = 0; i < BF_PANEL_ROWS; i++)
         {
          m_panel[i]      = "";
@@ -508,7 +524,7 @@ public:
      }
 
    void              Init(const bool showZones, const bool showBpr, const bool fvgDebug, const bool fibOn,
-                          const bool fibExt, const bool showDispl, const bool showSetups, const bool showPanel,
+                          const bool fibExt, const bool showDispl, const bool showTrade, const bool showPanel,
                           const color bull, const color bullBrk, const color bear, const color bearBrk,
                           const int fillT, const int borderT, const int breakT, const bool ifvg, const int digits)
      {
@@ -518,7 +534,7 @@ public:
       m_fibOn     = fibOn;
       m_fibExt    = fibExt;
       m_showDispl = showDispl;
-      m_showSetups = showSetups;
+      m_showTrade = showTrade;
       m_showPanel = showPanel;
       m_bull      = bull;
       m_bullBrk   = bullBrk;
@@ -584,102 +600,62 @@ public:
       ObjectDelete(0, BF_PREFIX + "DSP" + key + "D");
      }
 
-   //+---------------------------------------------------------------+
-   //| v2 spec s.8: per-setup drawings. Every object of setup id is  |
-   //| named BFEA_S<id>_<key>; the last BF_SK_KEEP setups are kept.  |
-   //+---------------------------------------------------------------+
-   string            SetupBase(const int id)
-     {
-      return(BF_PREFIX + "S" + IntegerToString(id) + "_");
-     }
-
-   bool              SetupsOn(void)
-     {
-      return(m_showSetups);
-     }
-
-   //--- a setup that gets drawings: the oldest drawn setup is deleted once BF_SK_KEEP are on the chart
-   void              SetupRegister(const int id)
-     {
-      int i;
-      for(i = 0; i < m_skCount; i++)
-         if(m_skIds[i] == id)
-            return;
-      if(m_skCount >= BF_SK_KEEP)
-        {
-         ObjectsDeleteAll(0, SetupBase(m_skIds[0]));
-         for(i = 1; i < BF_SK_KEEP; i++)
-            m_skIds[i - 1] = m_skIds[i];
-         m_skCount = BF_SK_KEEP - 1;
-        }
-      m_skIds[m_skCount] = id;
-      m_skCount++;
-     }
-
-   void              SetupText(const int id, const string key, const datetime t, const double p, const string txt,
-                               const color clr, const ENUM_ANCHOR_POINT anchor, const string tip)
-     {
-      if(!m_showSetups)
-         return;
-      SetupRegister(id);
-      BfDrawText(SetupBase(id) + key, t, p, txt, clr, tip, anchor);
-      m_dirty = true;
-     }
-
-   //--- a horizontal segment [t1, t2] at price p with a label at its right end
-   void              SetupHLine(const int id, const string key, const datetime t1, const datetime t2, const double p,
-                                const color clr, const ENUM_LINE_STYLE style, const string label, const string tip)
-     {
-      string b = SetupBase(id) + key;
-      if(!m_showSetups)
-         return;
-      SetupRegister(id);
-      BfDrawTrend(b, t1, p, t2, p, clr, style, false);
-      ObjectSetString(0, b, OBJPROP_TOOLTIP, tip);
-      if(label != "")
-         BfDrawText(b + "T", t2, p, label, clr, tip, ANCHOR_LEFT);
-      else
-         ObjectDelete(0, b + "T");
-      m_dirty = true;
-     }
-
-   void              SetupSegment(const int id, const string key, const datetime t1, const double p1, const datetime t2,
-                                  const double p2, const color clr, const ENUM_LINE_STYLE style)
-     {
-      if(!m_showSetups)
-         return;
-      SetupRegister(id);
-      BfDrawTrend(SetupBase(id) + key, t1, p1, t2, p2, clr, style, false);
-      m_dirty = true;
-     }
-
-   void              SetupDelete(const int id, const string key)
-     {
-      ObjectDelete(0, SetupBase(id) + key);
-      ObjectDelete(0, SetupBase(id) + key + "T");
-      m_dirty = true;
-     }
-
-   //--- a finished setup (DONE / CLOSED / re-anchored): its drawings turn grey, they stay for review
-   void              SetupGrey(const int id)
+   //--- spec s.8 position-tool overlay: green P -> final target, red P -> SL, dashed TP1 line (TP1_TP2),
+   //    from the decision bar to +20 bars, label L#id / S#id. The last BF_TB_KEEP overlays are kept.
+   void              TradeBox(const int id, const int dir, const datetime t1, const datetime t2, const double P,
+                              const double SL, const double TP1, const double finalTp, const bool tp1Line,
+                              const string note)
      {
       int    i;
       bool   known = false;
-      string pre = SetupBase(id);
-      string nm;
-      if(!m_showSetups)
+      color  bg    = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+      string b     = TradeBase(id);
+      string lbl   = ((dir > 0) ? "L#" : "S#") + IntegerToString(id) + note;
+      string tip   = lbl + " P " + DoubleToString(P, m_digits) + " SL " + DoubleToString(SL, m_digits) +
+                     " TP1 " + DoubleToString(TP1, m_digits) + " TP " + DoubleToString(finalTp, m_digits);
+      if(!m_showTrade)
          return;
-      for(i = 0; i < m_skCount; i++)
-         if(m_skIds[i] == id)
+      for(i = 0; i < m_tbCount; i++)
+         if(m_tbIds[i] == id)
             known = true;
       if(!known)
-         return;                                                // nothing was drawn for this setup
-      for(i = ObjectsTotal(0) - 1; i >= 0; i--)
         {
-         nm = ObjectName(0, i);
-         if(StringFind(nm, pre) == 0)
-            ObjectSetInteger(0, nm, OBJPROP_COLOR, C'128,128,128');
+         if(m_tbCount >= BF_TB_KEEP)
+           {
+            DeleteTradeObjects(m_tbIds[0]);
+            for(i = 1; i < BF_TB_KEEP; i++)
+               m_tbIds[i - 1] = m_tbIds[i];
+            m_tbCount = BF_TB_KEEP - 1;
+           }
+         m_tbIds[m_tbCount] = id;
+         m_tbCount++;
         }
+      BfDrawRect(b + "_G", t1, P, t2, finalTp, BfBlendColor(C'0,230,118', 70, bg), true, true, STYLE_SOLID, tip);
+      BfDrawRect(b + "_R", t1, P, t2, SL, BfBlendColor(C'255,82,82', 70, bg), true, true, STYLE_SOLID, tip);
+      if(tp1Line)
+         BfDrawTrend(b + "_L", t1, TP1, t2, TP1, BfBlendColor(C'0,230,118', 20, bg), STYLE_DASH, false);
+      else
+         ObjectDelete(0, b + "_L");
+      BfDrawText(b + "_T", t1, P, lbl, (dir > 0) ? C'0,160,80' : C'200,40,40', tip, ANCHOR_LEFT_LOWER);
+      m_dirty = true;
+     }
+
+   //--- after cancellation the rectangles turn grey (spec s.8)
+   void              TradeBoxGrey(const int id)
+     {
+      color  bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+      string b  = TradeBase(id);
+      color  g  = BfBlendColor(C'128,128,128', 75, bg);
+      if(!m_showTrade)
+         return;
+      if(ObjectFind(0, b + "_G") >= 0)
+         ObjectSetInteger(0, b + "_G", OBJPROP_COLOR, g);
+      if(ObjectFind(0, b + "_R") >= 0)
+         ObjectSetInteger(0, b + "_R", OBJPROP_COLOR, g);
+      if(ObjectFind(0, b + "_L") >= 0)
+         ObjectSetInteger(0, b + "_L", OBJPROP_COLOR, BfBlendColor(C'128,128,128', 40, bg));
+      if(ObjectFind(0, b + "_T") >= 0)
+         ObjectSetInteger(0, b + "_T", OBJPROP_COLOR, C'128,128,128');
       m_dirty = true;
      }
 
@@ -736,7 +712,7 @@ public:
      {
       ObjectsDeleteAll(0, BF_PREFIX);
       ResetCache();
-      m_skCount = 0;
+      m_tbCount = 0;
       ChartRedraw(0);
      }
   };

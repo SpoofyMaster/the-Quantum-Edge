@@ -1,17 +1,12 @@
 //+------------------------------------------------------------------+
 //| BfTrade.mqh                                                      |
-//| BprFvgEA v2: order execution through CTrade (spec s.8)           |
+//| BprFvgEA: order execution through CTrade (spec s.5)              |
 //+------------------------------------------------------------------+
 //
 // Part of BprFvgEA (distributed as a whole under CC BY-NC-SA 4.0 because it includes a port of LuxAlgo code; see
 // BfEngine.mqh). This file contains no LuxAlgo logic. Adapted from mql5/VideoStrategyEA/include/TradeManager.mqh.
 //
-// * filling mode from the symbol for market orders; pending (limit) orders use ORDER_FILLING_RETURN first and the
-//   symbol's mode as the fallback (some servers refuse FOK / IOC on pending orders); the symbol's mode is restored
-//   after every send; prices normalised to the tick;
-// * a limit order's server-side expiration (ORDER_TIME_SPECIFIED) is sent again as GTC when the server refuses it;
-// * TradePermission(): the terminal / program "Algo Trading" switches, the account's and the symbol's trade modes;
-//   a refused send for these reasons (or a closed market) does not count towards the breaker;
+// * filling mode from the symbol; prices normalised to the tick;
 // * stops / freeze levels and margin checked BEFORE sending;
 // * the account is checked again before EVERY send (Permitted(), fail closed): orders go out only in the Strategy
 //   Tester, or when the terminal is connected, the account is known (login > 0) and its trade mode is DEMO. An
@@ -38,34 +33,24 @@ private:
    int               m_maxErrors;
    bool              m_breaker;
    ulong             m_lastDeal;
-   uint              m_lastRc;
 
 public:
    bool              tradingAllowed;
    string            modeNote;
    string            lastError;
-   int               nSent;             // entries accepted by the server (limit + market)
-   int               nFailed;           // entries refused
 
 private:
    //--- entries (market / limit orders): failures count towards the breaker
    void              OnResult(const bool ok, const string what)
      {
-      uint rc = m_trade.ResultRetcode();
-      m_lastRc = rc;
       if(ok)
         {
          m_errors = 0;
-         nSent++;
          return;
         }
-      nFailed++;
-      lastError = what + " retcode=" + IntegerToString((long)rc) + " " + m_trade.ResultRetcodeDescription();
-      // permission / market-hours refusals are not order errors of the EA: they never trip the breaker
-      if(rc == TRADE_RETCODE_CLIENT_DISABLES_AT || rc == TRADE_RETCODE_SERVER_DISABLES_AT ||
-         rc == TRADE_RETCODE_MARKET_CLOSED || rc == TRADE_RETCODE_TRADE_DISABLED)
-         return;
       m_errors++;
+      lastError = what + " retcode=" + IntegerToString((long)m_trade.ResultRetcode()) + " " +
+                  m_trade.ResultRetcodeDescription();
       if(m_errors >= m_maxErrors)
          m_breaker = true;
      }
@@ -125,12 +110,9 @@ public:
       m_maxErrors    = 3;
       m_breaker      = false;
       m_lastDeal     = 0;
-      m_lastRc       = 0;
       tradingAllowed = false;
       modeNote       = "";
       lastError      = "";
-      nSent          = 0;
-      nFailed        = 0;
      }
 
    //--- spec "Hard rules": true only in the tester or on a connected, known DEMO account (fail closed)
@@ -158,10 +140,7 @@ public:
       m_errors    = 0;
       m_breaker   = false;
       m_lastDeal  = 0;
-      m_lastRc    = 0;
       lastError   = "";
-      nSent       = 0;
-      nFailed     = 0;
       m_trade.SetExpertMagicNumber((ulong)magic);
       m_trade.SetDeviationInPoints((ulong)m_dev);
       m_trade.SetTypeFillingBySymbol(sym);
@@ -174,50 +153,6 @@ public:
    bool              IsHedging(void)
      {
       return((ENUM_ACCOUNT_MARGIN_MODE)AccountInfoInteger(ACCOUNT_MARGIN_MODE) == ACCOUNT_MARGIN_MODE_RETAIL_HEDGING);
-     }
-
-   //--- the switches that make the server or the terminal refuse every order: false + the reason. In the Strategy
-   //    Tester only the symbol's trade mode can refuse.
-   bool              TradePermission(string &why)
-     {
-      long smode = SymbolInfoInteger(m_sym, SYMBOL_TRADE_MODE);
-      bool tester = ((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION));
-      why = "";
-      if(!tester)
-        {
-         if(!(bool)TerminalInfoInteger(TERMINAL_TRADE_ALLOWED))
-            why = "the terminal's 'Algo Trading' button is OFF";
-         else
-            if(!(bool)MQLInfoInteger(MQL_TRADE_ALLOWED))
-               why = "'Allow Algo Trading' is unticked in the EA's properties (Common tab)";
-            else
-               if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_ALLOWED))
-                  why = "trading is disabled for this account (investor password or a broker block)";
-               else
-                  if(!(bool)AccountInfoInteger(ACCOUNT_TRADE_EXPERT))
-                     why = "the broker disables expert advisors on this account";
-        }
-      if(why == "" && smode == (long)SYMBOL_TRADE_MODE_DISABLED)
-         why = "trading is disabled for " + m_sym;
-      if(why == "" && smode == (long)SYMBOL_TRADE_MODE_CLOSEONLY)
-         why = m_sym + " is close-only";
-      return(why == "");
-     }
-
-   //--- the symbol allows this direction (SYMBOL_TRADE_MODE long-only / short-only)
-   bool              DirectionAllowed(const int dir)
-     {
-      long smode = SymbolInfoInteger(m_sym, SYMBOL_TRADE_MODE);
-      if(smode == (long)SYMBOL_TRADE_MODE_LONGONLY)
-         return(dir > 0);
-      if(smode == (long)SYMBOL_TRADE_MODE_SHORTONLY)
-         return(dir < 0);
-      return(true);
-     }
-
-   uint              LastRetcode(void)
-     {
-      return(m_lastRc);
      }
 
    bool              Breaker(void)
@@ -354,61 +289,6 @@ public:
       return(false);
      }
 
-   //--- the open position whose POSITION_IDENTIFIER is posId (any magic: on a netting account the net position keeps
-   //    the magic of its first deal)
-   bool              SelectPositionById(const ulong posId, ulong &ticket)
-     {
-      int i;
-      ulong tk;
-      ticket = 0;
-      if(posId == 0)
-         return(false);
-      for(i = PositionsTotal() - 1; i >= 0; i--)
-        {
-         tk = PositionGetTicket(i);
-         if(tk == 0)
-            continue;
-         if((ulong)PositionGetInteger(POSITION_IDENTIFIER) != posId)
-            continue;
-         ticket = tk;
-         return(true);
-        }
-      return(false);
-     }
-
-   //--- number of this EA's open positions / pending orders (symbol + magic)
-   int               OwnPositions(void)
-     {
-      int i;
-      int n = 0;
-      ulong tk;
-      for(i = PositionsTotal() - 1; i >= 0; i--)
-        {
-         tk = PositionGetTicket(i);
-         if(tk == 0)
-            continue;
-         if(PositionGetString(POSITION_SYMBOL) == m_sym && PositionGetInteger(POSITION_MAGIC) == m_magic)
-            n++;
-        }
-      return(n);
-     }
-
-   int               OwnPendingOrders(void)
-     {
-      int i;
-      int n = 0;
-      ulong tk;
-      for(i = OrdersTotal() - 1; i >= 0; i--)
-        {
-         tk = OrderGetTicket(i);
-         if(tk == 0)
-            continue;
-         if(OrderGetString(ORDER_SYMBOL) == m_sym && OrderGetInteger(ORDER_MAGIC) == m_magic)
-            n++;
-        }
-      return(n);
-     }
-
    //--- this EA's pending order (symbol + magic)
    bool              SelectPendingOrder(ulong &ticket)
      {
@@ -444,7 +324,6 @@ public:
          lastError = Refusal();
          return(false);
         }
-      m_trade.SetTypeFillingBySymbol(m_sym);
       for(attempt = 0; attempt < 3; attempt++)
         {
          if(!SymbolInfoTick(m_sym, tk))
@@ -473,20 +352,17 @@ public:
       return(false);
      }
 
-   //--- limit order with SL / TP; a server-side expiration is added as a safety net when the symbol allows it.
-   //    Filling: RETURN first (valid for pending orders on every execution mode), the symbol's mode on INVALID_FILL.
-   //    Expiration: GTC on INVALID_EXPIRATION. At most 3 sends; the symbol's filling mode is restored afterwards.
+   //--- limit order with SL / TP; a server-side expiration is added as a safety net when the symbol allows it
    bool              PlaceLimit(const int dir, const double lots, const double price, const double sl, const double tp,
                                 const datetime expiry, const string comment, ulong &ticket)
      {
       int  modes     = (int)SymbolInfoInteger(m_sym, SYMBOL_EXPIRATION_MODE);
       bool specified = ((modes & SYMBOL_EXPIRATION_SPECIFIED) != 0);
-      bool symFill   = false;
       ENUM_ORDER_TYPE_TIME tt = specified ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
       datetime expTime = specified ? expiry : (datetime)0;
       bool ok;
       uint rc;
-      bool done = false;
+      bool done;
       int  attempt;
       ticket = 0;
       if(!Permitted())
@@ -494,8 +370,7 @@ public:
          lastError = Refusal();
          return(false);
         }
-      m_trade.SetTypeFilling(ORDER_FILLING_RETURN);
-      for(attempt = 0; attempt < 3; attempt++)
+      for(attempt = 0; attempt < 2; attempt++)
         {
          if(dir > 0)
             ok = m_trade.BuyLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
@@ -506,28 +381,20 @@ public:
          rc   = m_trade.ResultRetcode();
          done = (ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED));
          if(done)
-            break;
-         if(rc == TRADE_RETCODE_INVALID_FILL && !symFill)
            {
-            symFill = true;
-            m_trade.SetTypeFillingBySymbol(m_sym);
-            continue;
+            OnResult(true, "");
+            ticket = m_trade.ResultOrder();
+            return(true);
            }
-         if(rc == TRADE_RETCODE_INVALID_EXPIRATION && tt != ORDER_TIME_GTC)
+         // some servers refuse the symbol's market filling mode on pending orders: retry once with RETURN
+         if(attempt == 0 && rc == TRADE_RETCODE_INVALID_FILL)
            {
-            tt      = ORDER_TIME_GTC;                    // the detector cancels the order through its own intents
-            expTime = 0;
+            m_trade.SetTypeFilling(ORDER_FILLING_RETURN);
             continue;
            }
          break;
         }
       m_trade.SetTypeFillingBySymbol(m_sym);
-      if(done)
-        {
-         OnResult(true, "");
-         ticket = m_trade.ResultOrder();
-         return(true);
-        }
       OnResult(false, "limit order");
       return(false);
      }

@@ -1,14 +1,13 @@
 //+------------------------------------------------------------------+
 //| BfRisk.mqh                                                       |
-//| BprFvgEA v2: position sizing and the daily-loss lockout (spec s.8)|
+//| BprFvgEA: position sizing and the daily-loss lockout (spec s.6)  |
 //+------------------------------------------------------------------+
 //
 // Part of BprFvgEA (distributed as a whole under CC BY-NC-SA 4.0 because it includes a port of LuxAlgo code; see
 // BfEngine.mqh). This file contains no LuxAlgo logic. Adapted from mql5/VideoStrategyEA/include/RiskManager.mqh.
 //
 // Hard rules (CLAUDE.md), with no input to override them:
-//   * at most 0.20 % of equity per setup, INCLUDING the round-trip commission (input capped at 0.20); v2 splits it
-//     equally over the enabled Fibonacci levels, so each position risks at most 0.20 % / n_levels;
+//   * at most 0.20 % of equity per position, INCLUDING the round-trip commission (input capped at 0.20);
 //   * planned daily loss 1.00 % (FX day = 17:00 New York) -> lockout for the rest of that FX day (capped at 1.00);
 //   * size depends only on equity and stop distance: never larger after losses, never rounded UP to the minimum.
 // Sizing (spec s.6, same formula as qe/risk.py size_position):
@@ -213,8 +212,8 @@ public:
       Recompute(ses);
      }
 
-   //--- "risk OK" of the detector environment: no lockout, the trade limit is not reached, and one more full-risk
-   //    loss (all levels of a setup) still fits in the daily budget.
+   //--- spec s.4 step 5 "risk OK": no lockout, the trade limit is not reached, and one more full-risk loss
+   //    still fits in the daily budget.
    bool              RiskOk(void)
      {
       if(!Ready())
@@ -274,27 +273,20 @@ public:
       return(2.0 * m_commLotSide / v);
      }
 
-   //--- equity * risk% / parts: the budget of one Fibonacci level (account currency)
-   double            LevelBudget(const int parts)
-     {
-      double eq = AccountInfoDouble(ACCOUNT_EQUITY);
-      if(parts <= 0 || eq <= 0.0)
-         return(0.0);
-      return(eq * m_riskPct / 100.0 / (double)parts);
-     }
-
-   //--- spec s.8: largest volume (rounded DOWN to the step) whose loss at the stop + round-trip commission
-   //    <= budget. Returns 0 when that is below the minimum volume (never rounded up).
-   double            SizeLotsBudget(const double stopDist, const double budget, double &plannedRisk)
+   //--- spec s.6: largest volume (rounded DOWN to the step) whose loss at the stop + round-trip commission
+   //    <= equity * risk%. Returns 0 when that is below the minimum volume (never rounded up).
+   double            SizeLots(const double stopDist, double &plannedRisk)
      {
       plannedRisk  = 0.0;
-      m_lastBudget = budget;
-      if(stopDist <= 0.0 || budget <= 0.0)
+      m_lastBudget = 0.0;
+      if(stopDist <= 0.0)
          return(0.0);
-      double loss   = LossPerLot(stopDist);
-      if(loss <= 0.0)
-         return(0.0);                                    // tick value unknown: no size (never commission-only sizing)
-      double perLot = loss + 2.0 * m_commLotSide;
+      double eq     = AccountInfoDouble(ACCOUNT_EQUITY);
+      double budget = eq * m_riskPct / 100.0;
+      m_lastBudget  = budget;
+      double perLot = LossPerLot(stopDist) + 2.0 * m_commLotSide;
+      if(perLot <= 0.0)
+         return(0.0);
       double step = SymbolInfoDouble(m_sym, SYMBOL_VOLUME_STEP);
       double vmin = SymbolInfoDouble(m_sym, SYMBOL_VOLUME_MIN);
       double vmax = SymbolInfoDouble(m_sym, SYMBOL_VOLUME_MAX);

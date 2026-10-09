@@ -1,6 +1,6 @@
 """BPR+FVG EA vs. the Python reference (research/indicators/BPR_FVG_EA_SPEC.md section 9).
 
-The pure EA modules (mql5/BprFvgEA/include/BfDefines, BfEngine, BfDetector) are transliterated to C++
+The pure modules of the v1 EA (mql5/archive/BprFvgEA_v1_H13/include/BfDefines, BfEngine, BfDetector) are transliterated to C++
 (tools/mql5_cpp_harness), compiled with g++ and run bar by bar under the harness environment:
 - session always open, risk OK and a constant spread;
 - orders never fill;
@@ -23,7 +23,7 @@ from qe.strategies.bpr_fvg import DIRECTIONS, ENTRY_MODES, SOURCES, TP_MODES, St
 
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / "tools/mql5_cpp_harness"
-INC = ROOT / "mql5/BprFvgEA/include"
+INC = ROOT / "mql5/archive/BprFvgEA_v1_H13/include"
 GXX = shutil.which("g++")
 pytestmark = pytest.mark.skipif(GXX is None, reason="g++ not installed")
 
