@@ -51,3 +51,14 @@ CC BY-NC-SA 4.0: non-commercial, share-alike). It is a charting tool, not a stra
     after costs, and every variant was negative. See
     [`reports/EXP010_BPR_FVG_EA_REPORT.md`](reports/EXP010_BPR_FVG_EA_REPORT.md).
 
+- **BprFvgEA v2** (2026-10-09): the owner's own setup.
+  - A BPR touched at most twice, with a rejection between the touches.
+  - A breakout of the last touching candle's high or low, with two closes beyond it and at least one FVG.
+  - Three limit orders at the 50 / 61.8 / 71 % retracement of the breakout leg, all targeting the leg extreme.
+
+  Spec: [`research/indicators/BPR_BREAKOUT_FIB_SPEC.md`](research/indicators/BPR_BREAKOUT_FIB_SPEC.md).
+  Hypothesis **H-14, untested**. **Not yet compiled.**
+  - v2 logs every reason a setup does not become an order, on its panel and in the Experts log. v1 rejected most
+    setups silently, which is why it hardly placed any limit orders. v1 is frozen in `mql5/archive/BprFvgEA_v1_H13`.
+  - Python twin: `qe/strategies/bpr_breakout.py`, checked record by record by
+    `tests/test_bpr_breakout_ea_harness.py`.

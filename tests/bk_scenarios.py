@@ -101,6 +101,23 @@ def scenarios() -> dict[str, list]:
     # the same as base, but candle 17 has a long upper wick: not a LuxAlgo displacement candle, so the engine makes
     # no FVG after the reference candle (LUXALGO waits); the plain gap on 17 still counts for ANY_GAP
     sc["no_lux_fvg"] = b[:17] + [bar(100.8, 101.45, 100.8, 101.2)] + b[18:]
+    # the full rule with two touches: touch 1 (14), a wick above the level that does not close above it (15),
+    # touch 2 (17) after a rejection candle (16) -> the level becomes the high of candle 17; rejection (18),
+    # breakout close (19, a displacement candle), second close + LuxAlgo FVG (20), new high (21), pullback (22) ->
+    # three buy limits; 23 fills L1 and L2, 25 touches the target: L3 is cancelled and the setup closes
+    sc["two_touches"] = prefix() + [bar(100.1, 100.2, 99.5, 100.0),     # 14 TOUCH 1
+                                    bar(100.0, 100.3, 100.0, 100.15),   # 15 REJECT (wick above 100.2, close below)
+                                    bar(100.15, 100.2, 99.95, 100.0),   # 16 still away from the zone
+                                    bar(100.0, 100.05, 99.7, 99.8),     # 17 TOUCH 2 (ref; level 100.05)
+                                    bar(99.92, 100.0, 99.92, 99.95),    # 18 REJECT
+                                    bar(99.95, 100.6, 99.93, 100.5),    # 19 BREAKOUT (displacement candle)
+                                    bar(100.65, 101.2, 100.65, 101.1),  # 20 CONFIRM; LuxAlgo FVG (gap over 18)
+                                    bar(101.1, 101.5, 101.0, 101.4),    # 21 new high
+                                    bar(101.4, 101.45, 101.0, 101.1),   # 22 pullback -> PLACE_LIMIT x3
+                                    bar(101.1, 101.15, 100.35, 100.45),  # 23 fills L1 100.70 and L2 100.49
+                                    bar(100.45, 100.9, 100.4, 100.85),  # 24
+                                    bar(100.85, 101.55, 100.8, 101.5),  # 25 target 101.5 touched
+                                    bar(101.5, 101.6, 101.4, 101.55)]   # 26
     sc["short_base"] = mirror(b)
     sc["short_fill_target"] = mirror(sc["fill_target"])
     sc["short_reanchor"] = mirror(sc["reanchor"])

@@ -1,0 +1,112 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="640" font-family="Arial" font-size="12">
+<rect width="1200" height="640" fill="#131722"/>
+<text x="70" y="24" fill="#d1d4dc" font-size="15">BprFvgEA v2 - how the EA reads the rule (synthetic bars, scenario "two_touches", Python reference records)</text>
+<line x1="70" x2="900" y1="550.1" y2="550.1" stroke="#2a2e39"/>
+<text x="64" y="554.1" fill="#787b86" text-anchor="end">97.00</text>
+<line x1="70" x2="900" y1="500.3" y2="500.3" stroke="#2a2e39"/>
+<text x="64" y="504.3" fill="#787b86" text-anchor="end">97.50</text>
+<line x1="70" x2="900" y1="450.5" y2="450.5" stroke="#2a2e39"/>
+<text x="64" y="454.5" fill="#787b86" text-anchor="end">98.00</text>
+<line x1="70" x2="900" y1="400.7" y2="400.7" stroke="#2a2e39"/>
+<text x="64" y="404.7" fill="#787b86" text-anchor="end">98.50</text>
+<line x1="70" x2="900" y1="350.9" y2="350.9" stroke="#2a2e39"/>
+<text x="64" y="354.9" fill="#787b86" text-anchor="end">99.00</text>
+<line x1="70" x2="900" y1="301.1" y2="301.1" stroke="#2a2e39"/>
+<text x="64" y="305.1" fill="#787b86" text-anchor="end">99.50</text>
+<line x1="70" x2="900" y1="251.3" y2="251.3" stroke="#2a2e39"/>
+<text x="64" y="255.3" fill="#787b86" text-anchor="end">100.00</text>
+<line x1="70" x2="900" y1="201.5" y2="201.5" stroke="#2a2e39"/>
+<text x="64" y="205.5" fill="#787b86" text-anchor="end">100.50</text>
+<line x1="70" x2="900" y1="151.7" y2="151.7" stroke="#2a2e39"/>
+<text x="64" y="155.7" fill="#787b86" text-anchor="end">101.00</text>
+<line x1="70" x2="900" y1="101.8" y2="101.8" stroke="#2a2e39"/>
+<text x="64" y="105.8" fill="#787b86" text-anchor="end">101.50</text>
+<rect x="346.7" y="261.2" width="553.3" height="189.3" fill="#00e676" fill-opacity="0.12" stroke="#00e676" stroke-opacity="0.5"/>
+<text x="350.7" y="446.5" fill="#00e676">BPR (bullish, pos=+1)  98.00 - 99.90</text>
+<line x1="89.8" x2="89.8" y1="239.3" y2="253.3" stroke="#26a69a"/>
+<rect x="77.9" y="241.3" width="23.7" height="10.0" fill="#26a69a"/>
+<text x="89.8" y="596" fill="#787b86" text-anchor="middle" font-size="10">6</text>
+<line x1="129.3" x2="129.3" y1="239.3" y2="253.3" stroke="#ef5350"/>
+<rect x="117.4" y="241.3" width="23.7" height="10.0" fill="#ef5350"/>
+<text x="129.3" y="596" fill="#787b86" text-anchor="middle" font-size="10">7</text>
+<line x1="168.8" x2="168.8" y1="246.3" y2="261.2" stroke="#ef5350"/>
+<rect x="157.0" y="251.3" width="23.7" height="5.0" fill="#ef5350"/>
+<text x="168.8" y="596" fill="#787b86" text-anchor="middle" font-size="10">8</text>
+<line x1="208.3" x2="208.3" y1="254.3" y2="452.5" stroke="#ef5350"/>
+<rect x="196.5" y="256.2" width="23.7" height="194.3" fill="#ef5350"/>
+<text x="208.3" y="596" fill="#787b86" text-anchor="middle" font-size="10">9</text>
+<line x1="247.9" x2="247.9" y1="500.3" y2="550.1" stroke="#ef5350"/>
+<rect x="236.0" y="510.3" width="23.7" height="29.9" fill="#ef5350"/>
+<text x="247.9" y="596" fill="#787b86" text-anchor="middle" font-size="10">10</text>
+<line x1="287.4" x2="287.4" y1="450.5" y2="545.1" stroke="#26a69a"/>
+<rect x="275.5" y="460.5" width="23.7" height="79.7" fill="#26a69a"/>
+<text x="287.4" y="596" fill="#787b86" text-anchor="middle" font-size="10">11</text>
+<line x1="326.9" x2="326.9" y1="259.2" y2="462.5" stroke="#26a69a"/>
+<rect x="315.0" y="261.2" width="23.7" height="199.2" fill="#26a69a"/>
+<text x="326.9" y="596" fill="#787b86" text-anchor="middle" font-size="10">12</text>
+<line x1="366.4" x2="366.4" y1="221.4" y2="256.2" stroke="#26a69a"/>
+<rect x="354.6" y="231.3" width="23.7" height="24.9" fill="#26a69a"/>
+<text x="366.4" y="596" fill="#787b86" text-anchor="middle" font-size="10">13</text>
+<line x1="406.0" x2="406.0" y1="231.3" y2="301.1" stroke="#ef5350"/>
+<rect x="394.1" y="241.3" width="23.7" height="10.0" fill="#ef5350"/>
+<text x="406.0" y="596" fill="#787b86" text-anchor="middle" font-size="10">14</text>
+<line x1="445.5" x2="445.5" y1="221.4" y2="251.3" stroke="#26a69a"/>
+<rect x="433.6" y="236.3" width="23.7" height="14.9" fill="#26a69a"/>
+<text x="445.5" y="596" fill="#787b86" text-anchor="middle" font-size="10">15</text>
+<line x1="485.0" x2="485.0" y1="231.3" y2="256.2" stroke="#ef5350"/>
+<rect x="473.1" y="236.3" width="23.7" height="14.9" fill="#ef5350"/>
+<text x="485.0" y="596" fill="#787b86" text-anchor="middle" font-size="10">16</text>
+<line x1="524.5" x2="524.5" y1="246.3" y2="281.2" stroke="#ef5350"/>
+<rect x="512.7" y="251.3" width="23.7" height="19.9" fill="#ef5350"/>
+<text x="524.5" y="596" fill="#787b86" text-anchor="middle" font-size="10">17</text>
+<line x1="564.0" x2="564.0" y1="251.3" y2="259.2" stroke="#26a69a"/>
+<rect x="552.2" y="256.2" width="23.7" height="3.0" fill="#26a69a"/>
+<text x="564.0" y="596" fill="#787b86" text-anchor="middle" font-size="10">18</text>
+<line x1="603.6" x2="603.6" y1="191.5" y2="258.2" stroke="#26a69a"/>
+<rect x="591.7" y="201.5" width="23.7" height="54.8" fill="#26a69a"/>
+<text x="603.6" y="596" fill="#787b86" text-anchor="middle" font-size="10">19</text>
+<line x1="643.1" x2="643.1" y1="131.7" y2="186.5" stroke="#26a69a"/>
+<rect x="631.2" y="141.7" width="23.7" height="44.8" fill="#26a69a"/>
+<text x="643.1" y="596" fill="#787b86" text-anchor="middle" font-size="10">20</text>
+<line x1="682.6" x2="682.6" y1="101.8" y2="151.7" stroke="#26a69a"/>
+<rect x="670.8" y="111.8" width="23.7" height="29.9" fill="#26a69a"/>
+<text x="682.6" y="596" fill="#787b86" text-anchor="middle" font-size="10">21</text>
+<line x1="722.1" x2="722.1" y1="106.8" y2="151.7" stroke="#ef5350"/>
+<rect x="710.3" y="111.8" width="23.7" height="29.9" fill="#ef5350"/>
+<text x="722.1" y="596" fill="#787b86" text-anchor="middle" font-size="10">22</text>
+<line x1="761.7" x2="761.7" y1="136.7" y2="216.4" stroke="#ef5350"/>
+<rect x="749.8" y="141.7" width="23.7" height="64.7" fill="#ef5350"/>
+<text x="761.7" y="596" fill="#787b86" text-anchor="middle" font-size="10">23</text>
+<line x1="801.2" x2="801.2" y1="161.6" y2="211.4" stroke="#26a69a"/>
+<rect x="789.3" y="166.6" width="23.7" height="39.8" fill="#26a69a"/>
+<text x="801.2" y="596" fill="#787b86" text-anchor="middle" font-size="10">24</text>
+<line x1="840.7" x2="840.7" y1="96.9" y2="171.6" stroke="#26a69a"/>
+<rect x="828.9" y="101.8" width="23.7" height="64.8" fill="#26a69a"/>
+<text x="840.7" y="596" fill="#787b86" text-anchor="middle" font-size="10">25</text>
+<line x1="880.2" x2="880.2" y1="91.9" y2="111.8" stroke="#26a69a"/>
+<rect x="868.4" y="96.9" width="23.7" height="5.0" fill="#26a69a"/>
+<text x="880.2" y="596" fill="#787b86" text-anchor="middle" font-size="10">26</text>
+<text x="406.0" y="317.1" fill="#ffeb3b" text-anchor="middle" font-weight="bold">T1</text>
+<text x="445.5" y="267.3" fill="#ffeb3b" text-anchor="middle" font-weight="bold">R</text>
+<text x="524.5" y="297.2" fill="#ffeb3b" text-anchor="middle" font-weight="bold">T2</text>
+<text x="564.0" y="275.2" fill="#ffeb3b" text-anchor="middle" font-weight="bold">R</text>
+<text x="603.6" y="183.5" fill="#ffeb3b" text-anchor="middle" font-weight="bold">B1</text>
+<line x1="524.5" x2="603.6" y1="246.3" y2="246.3" stroke="#ffeb3b" stroke-dasharray="3,3"/>
+<text x="520.5" y="206.3" fill="#ffeb3b" text-anchor="end">breakout level = high of the last touching candle (100.05)</text>
+<line x1="520.5" x2="524.5" y1="210.3" y2="246.3" stroke="#ffeb3b" stroke-width="0.6"/>
+<text x="643.1" y="123.7" fill="#ffeb3b" text-anchor="middle" font-weight="bold">B2</text>
+<line x1="524.5" x2="900.0" y1="101.8" y2="101.8" stroke="#00c853"/>
+<text x="906.0" y="91.8" fill="#00c853">0% = leg high = TP 101.50</text>
+<line x1="524.5" x2="900.0" y1="281.2" y2="281.2" stroke="#ffc107"/>
+<text x="906.0" y="271.2" fill="#ffc107">100% = leg origin 99.70</text>
+<line x1="524.5" x2="900.0" y1="191.5" y2="191.5" stroke="#2196f3"/>
+<text x="906.0" y="195.5" fill="#2196f3">50.0% L1 buy limit 100.70 (CLOSED)</text>
+<line x1="524.5" x2="900.0" y1="212.7" y2="212.7" stroke="#2196f3"/>
+<text x="906.0" y="216.7" fill="#2196f3">61.8% L2 buy limit 100.49 (CLOSED)</text>
+<line x1="524.5" x2="900.0" y1="229.2" y2="229.2" stroke="#2196f3"/>
+<text x="906.0" y="233.2" fill="#2196f3">71.0% L3 buy limit 100.32 (CANCELLED)</text>
+<line x1="524.5" x2="900.0" y1="291.1" y2="291.1" stroke="#ff5252"/>
+<text x="906.0" y="305.1" fill="#ff5252">SL 99.60 (origin - 10 ticks)</text>
+<text x="722.1" y="84.8" fill="#2196f3" text-anchor="middle">pullback: orders</text>
+<text x="70" y="42" fill="#9598a1">T = touch of the BPR (max 2, a rejection candle R between) | B1 = breakout close above the level | B2 = second close above (confirmation) | an FVG must form after the last touching candle</text>
+</svg>

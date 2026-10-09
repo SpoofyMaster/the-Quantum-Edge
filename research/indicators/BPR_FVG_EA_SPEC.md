@@ -1,5 +1,10 @@
 # BPR + FVG Expert Advisor: specification (single source of truth)
 
+> **Superseded (2026-10-09).** This is the spec of BprFvgEA **v1** (H-13, REJECTED by EXP010), frozen in
+> `mql5/archive/BprFvgEA_v1_H13`. The current EA (v2) follows
+> [`BPR_BREAKOUT_FIB_SPEC.md`](BPR_BREAKOUT_FIB_SPEC.md).
+
+
 **Owner request (2026-10-08).** Combine the LuxAlgo BPR/FVG features into **one MQL5 EA**. The EA must draw them like
 the LuxAlgo indicator and use them to take **buy and sell setups**.
 

@@ -98,3 +98,27 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [x] EA-4 Adversarial review (24 findings; 4 critical/major trading-safety issues in the execution layer) → fixed.
 - [?] U-12 User: compile `mql5/BprFvgEA` in MetaEditor; run the Strategy Tester (XAUUSD M1, real ticks,
   2020-01-01 → 2025-06-30, defaults) and send the report + `BFEA_trades_*_TESTER.csv` for comparison with EXP010.
+
+## BprFvgEA v2: the owner's BPR rejection → breakout → Fibonacci setup (session 2026-10-09, journal day06)
+- [x] EA-5 Diagnose "the EA is not placing limit orders" (owner test of v1): the cost (≤ 0.15 R) and reward:risk
+  (≥ 1) checks failed silently on most M1 zones, so setups stayed ARMED without a log line. v1 is frozen in
+  `mql5/archive/BprFvgEA_v1_H13` (REJECTED by EXP010).
+- [x] EA-6 Spec of the owner's rule, with each phrase's reading: `research/indicators/BPR_BREAKOUT_FIB_SPEC.md`.
+  H-14 registered as HYPOTHESIS.
+- [x] EA-7 `mql5/BprFvgEA` v2. **NOT compiled.**
+  - New pure detector, with up to three limit orders per setup at 50 / 61.8 / 71 %.
+  - Robust placement: RETURN filling for limits, GTC fallback, algo-trading checks.
+  - Diagnostics panel, `DIAG` log lines and a start-up self-check.
+  - Per-setup drawings: touches, breakout, Fibonacci.
+- [x] EA-8 Python reference `qe/strategies/bpr_breakout.py`.
+  - 50 tests, including causality.
+  - C++ parity harness with simulated fills and exits: 55 cases + coverage test; 22 mutations caught.
+- [x] EA-9 Adversarial review of v2 (compile, execution, conformance) + fixes (journal day06).
+- [?] U-13 User: compile `mql5/BprFvgEA` v2 and send every compiler message. Then run the Strategy Tester on XAUUSD
+  M1, real ticks, any period up to 2025-06-30. Send:
+  - the `[BFEA]` Experts lines (`SELF-CHECK`, `DIAG`);
+  - the report;
+  - `BFEA2_*_TESTER.csv`.
+- [ ] EXP011 Pre-register a backtest of H-14 (XAUUSD M1 2020-01 → 2025-06, spec defaults, bar-based simulator of the
+  three entries). It needs a Python execution simulator for v2 first. Do not look at results before the
+  pre-registration commit.
