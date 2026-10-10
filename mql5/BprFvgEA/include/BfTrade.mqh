@@ -6,9 +6,10 @@
 // Part of BprFvgEA (distributed as a whole under CC BY-NC-SA 4.0 because it includes a port of LuxAlgo code; see
 // BfEngine.mqh). This file contains no LuxAlgo logic. Adapted from mql5/VideoStrategyEA/include/TradeManager.mqh.
 //
-// * filling mode from the symbol for market orders; pending (limit) orders use ORDER_FILLING_RETURN first and the
-//   symbol's mode as the fallback (some servers refuse FOK / IOC on pending orders); the symbol's mode is restored
-//   after every send; prices normalised to the tick;
+// * filling: orders go through CTrade, whose FillingCheck sets the symbol's mode (FOK / IOC on market-execution
+//   symbols, also for pending orders). A limit order refused with INVALID_FILL is sent again by a raw OrderSend with
+//   ORDER_FILLING_RETURN. The filling actually sent is kept in lastFilling (self-check / logs); prices normalised
+//   to the tick;
 // * a limit order's server-side expiration (ORDER_TIME_SPECIFIED) is sent again as GTC when the server refuses it;
 // * TradePermission(): the terminal / program "Algo Trading" switches, the account's and the symbol's trade modes;
 //   a refused send for these reasons (or a closed market) does not count towards the breaker;
@@ -18,8 +19,11 @@
 //   account that is not known yet (AccountInfoInteger returns 0 = ACCOUNT_TRADE_MODE_DEMO before the login) is
 //   log-only, and so are REAL and CONTEST accounts. Refresh() recomputes tradingAllowed / modeNote on every tick.
 //   There is deliberately NO input to change this: live trading needs a separate, explicit human approval (CLAUDE.md);
-// * only entry failures (market / limit orders) count towards the order-error breaker; management actions (close,
-//   partial close, stop modify, order delete) and refusals by the account guard never do.
+// * the order-error breaker: one strike per DECISION (BeginBatch / EndBatch) whose sends were all refused for a
+//   non-transient reason; 3 strikes trip it; it resets after 30 minutes or at the next FX day. Management actions
+//   (close, partial close, stop modify, order delete), refusals by the account guard, permission / market-hours
+//   refusals and transient retcodes (requote, timeout, price changed, connection, too many requests, locked,
+//   frozen) never count.
 //+------------------------------------------------------------------+
 #ifndef BF_TRADE_MQH
 #define BF_TRADE_MQH
@@ -37,6 +41,10 @@ private:
    int               m_errors;
    int               m_maxErrors;
    bool              m_breaker;
+   datetime          m_breakerTime;     // when the breaker tripped (it resets 30 minutes later)
+   bool              m_inBatch;
+   bool              m_batchOk;         // a send of the open batch was accepted
+   bool              m_batchStrike;     // a send of the open batch was refused for a counted reason
    ulong             m_lastDeal;
    uint              m_lastRc;
 
@@ -46,28 +54,51 @@ public:
    string            lastError;
    int               nSent;             // entries accepted by the server (limit + market)
    int               nFailed;           // entries refused
+   string            lastFilling;       // filling mode of the last entry request (self-check / logs)
 
 private:
-   //--- entries (market / limit orders): failures count towards the breaker
-   void              OnResult(const bool ok, const string what)
+   //--- retcodes that say nothing about the order itself: never a strike
+   static bool       NotCounted(const uint rc)
      {
-      uint rc = m_trade.ResultRetcode();
+      return(rc == TRADE_RETCODE_CLIENT_DISABLES_AT || rc == TRADE_RETCODE_SERVER_DISABLES_AT ||
+             rc == TRADE_RETCODE_MARKET_CLOSED || rc == TRADE_RETCODE_TRADE_DISABLED ||
+             rc == TRADE_RETCODE_REQUOTE || rc == TRADE_RETCODE_TIMEOUT || rc == TRADE_RETCODE_INVALID_PRICE ||
+             rc == TRADE_RETCODE_PRICE_CHANGED || rc == TRADE_RETCODE_PRICE_OFF ||
+             rc == TRADE_RETCODE_TOO_MANY_REQUESTS || rc == TRADE_RETCODE_LOCKED || rc == TRADE_RETCODE_FROZEN ||
+             rc == TRADE_RETCODE_CONNECTION);
+     }
+
+   void              Strike(void)
+     {
+      m_errors++;
+      if(m_errors >= m_maxErrors && !m_breaker)
+        {
+         m_breaker     = true;
+         m_breakerTime = TimeCurrent();
+        }
+     }
+
+   //--- entries (market / limit orders). rc / desc: the server's answer.
+   void              OnResult(const bool ok, const uint rc, const string desc, const string what)
+     {
       m_lastRc = rc;
       if(ok)
         {
-         m_errors = 0;
          nSent++;
+         if(m_inBatch)
+            m_batchOk = true;
+         else
+            m_errors = 0;
          return;
         }
       nFailed++;
-      lastError = what + " retcode=" + IntegerToString((long)rc) + " " + m_trade.ResultRetcodeDescription();
-      // permission / market-hours refusals are not order errors of the EA: they never trip the breaker
-      if(rc == TRADE_RETCODE_CLIENT_DISABLES_AT || rc == TRADE_RETCODE_SERVER_DISABLES_AT ||
-         rc == TRADE_RETCODE_MARKET_CLOSED || rc == TRADE_RETCODE_TRADE_DISABLED)
+      lastError = what + " retcode=" + IntegerToString((long)rc) + " " + desc;
+      if(NotCounted(rc))
          return;
-      m_errors++;
-      if(m_errors >= m_maxErrors)
-         m_breaker = true;
+      if(m_inBatch)
+         m_batchStrike = true;
+      else
+         Strike();
      }
 
    //--- management (close, partial close, stop modify, delete): never counts towards the entry breaker
@@ -124,8 +155,13 @@ public:
       m_errors       = 0;
       m_maxErrors    = 3;
       m_breaker      = false;
+      m_breakerTime  = 0;
+      m_inBatch      = false;
+      m_batchOk      = false;
+      m_batchStrike  = false;
       m_lastDeal     = 0;
       m_lastRc       = 0;
+      lastFilling    = "";
       tradingAllowed = false;
       modeNote       = "";
       lastError      = "";
@@ -157,15 +193,18 @@ public:
       m_maxErrors = (maxErrors > 1) ? maxErrors : 1;
       m_errors    = 0;
       m_breaker   = false;
+      m_breakerTime = 0;
+      m_inBatch   = false;
       m_lastDeal  = 0;
       m_lastRc    = 0;
       lastError   = "";
+      lastFilling = "";
       nSent       = 0;
       nFailed     = 0;
       m_trade.SetExpertMagicNumber((ulong)magic);
       m_trade.SetDeviationInPoints((ulong)m_dev);
       m_trade.SetTypeFillingBySymbol(sym);
-      m_trade.LogLevel(LOG_LEVEL_ERRORS);
+      m_trade.LogLevel(LOG_LEVEL_NO);             // failures are logged by the EA (throttled, with the retcode)
       Refresh();
       return(true);
      }
@@ -220,14 +259,45 @@ public:
       return(m_lastRc);
      }
 
+   //--- the breaker resets by itself 30 minutes after it tripped (and at the next FX day: ResetBreaker)
    bool              Breaker(void)
      {
+      if(m_breaker && (long)TimeCurrent() - (long)m_breakerTime >= 1800)
+        {
+         m_breaker = false;
+         m_errors  = 0;
+        }
       return(m_breaker);
+     }
+
+   //--- one decision = one batch of entries: at most one strike for the whole batch, none if any send was accepted
+   void              BeginBatch(void)
+     {
+      m_inBatch     = true;
+      m_batchOk     = false;
+      m_batchStrike = false;
+     }
+
+   void              EndBatch(void)
+     {
+      m_inBatch = false;
+      if(m_batchOk)
+         m_errors = 0;
+      else
+         if(m_batchStrike)
+            Strike();
+     }
+
+   //--- the account is not known yet / the terminal is not connected (transient; not a REAL account)
+   bool              AccountPending(void)
+     {
+      return(ModeCode() == 1);
      }
 
    void              ResetBreaker(void)
      {
       m_breaker = false;
+      m_breakerTime = 0;
       m_errors  = 0;
      }
 
@@ -458,59 +528,93 @@ public:
          else
             ok = m_trade.Sell(lots, m_sym, price, NormalizePrice(sl), NormalizePrice(tp), comment);
          rc = m_trade.ResultRetcode();
+         lastFilling = EnumToString(m_trade.RequestTypeFilling());
          if(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED))
            {
             m_lastDeal = m_trade.ResultDeal();
-            OnResult(true, "");
+            OnResult(true, rc, "", "");
             return(true);
            }
          if(rc == TRADE_RETCODE_REQUOTE || rc == TRADE_RETCODE_PRICE_CHANGED || rc == TRADE_RETCODE_PRICE_OFF)
             continue;
-         OnResult(false, "market order");
+         OnResult(false, rc, m_trade.ResultRetcodeDescription(), "market order");
          return(false);
         }
-      OnResult(false, "market order (requotes)");
+      OnResult(false, m_trade.ResultRetcode(), m_trade.ResultRetcodeDescription(), "market order (requotes)");
       return(false);
      }
 
    //--- limit order with SL / TP; a server-side expiration is added as a safety net when the symbol allows it.
-   //    Filling: RETURN first (valid for pending orders on every execution mode), the symbol's mode on INVALID_FILL.
-   //    Expiration: GTC on INVALID_EXPIRATION. At most 3 sends; the symbol's filling mode is restored afterwards.
+   //    1. CTrade (its FillingCheck sets the symbol's filling mode); 2. on INVALID_FILL, a raw OrderSend with
+   //    ORDER_FILLING_RETURN; on INVALID_EXPIRATION (either path), the same again as GTC. At most 4 sends.
    bool              PlaceLimit(const int dir, const double lots, const double price, const double sl, const double tp,
                                 const datetime expiry, const string comment, ulong &ticket)
      {
-      int  modes     = (int)SymbolInfoInteger(m_sym, SYMBOL_EXPIRATION_MODE);
-      bool specified = ((modes & SYMBOL_EXPIRATION_SPECIFIED) != 0);
-      bool symFill   = false;
-      ENUM_ORDER_TYPE_TIME tt = specified ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
-      datetime expTime = specified ? expiry : (datetime)0;
-      bool ok;
-      uint rc;
-      bool done = false;
-      int  attempt;
+      int             modes     = (int)SymbolInfoInteger(m_sym, SYMBOL_EXPIRATION_MODE);
+      bool            specified = ((modes & SYMBOL_EXPIRATION_SPECIFIED) != 0);
+      bool            raw       = false;
+      bool            ok;
+      bool            done      = false;
+      uint            rc        = 0;
+      string          desc      = "";
+      int             attempt;
+      ENUM_ORDER_TYPE_TIME tt   = specified ? ORDER_TIME_SPECIFIED : ORDER_TIME_GTC;
+      datetime        expTime   = specified ? expiry : (datetime)0;
+      MqlTradeRequest rq;
+      MqlTradeResult  rs;
       ticket = 0;
       if(!Permitted())
         {
          lastError = Refusal();
          return(false);
         }
-      m_trade.SetTypeFilling(ORDER_FILLING_RETURN);
-      for(attempt = 0; attempt < 3; attempt++)
+      m_trade.SetTypeFillingBySymbol(m_sym);
+      for(attempt = 0; attempt < 4; attempt++)
         {
-         if(dir > 0)
-            ok = m_trade.BuyLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
-                                  expTime, comment);
+         if(!raw)
+           {
+            if(dir > 0)
+               ok = m_trade.BuyLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
+                                     expTime, comment);
+            else
+               ok = m_trade.SellLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
+                                      expTime, comment);
+            rc          = m_trade.ResultRetcode();
+            desc        = m_trade.ResultRetcodeDescription();
+            lastFilling = EnumToString(m_trade.RequestTypeFilling());
+            done        = (ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED));
+            if(done)
+               ticket = m_trade.ResultOrder();
+           }
          else
-            ok = m_trade.SellLimit(lots, NormalizePrice(price), m_sym, NormalizePrice(sl), NormalizePrice(tp), tt,
-                                   expTime, comment);
-         rc   = m_trade.ResultRetcode();
-         done = (ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED));
+           {
+            ZeroMemory(rq);
+            ZeroMemory(rs);
+            rq.action       = TRADE_ACTION_PENDING;
+            rq.symbol       = m_sym;
+            rq.magic        = (ulong)m_magic;
+            rq.volume       = lots;
+            rq.type         = (dir > 0) ? ORDER_TYPE_BUY_LIMIT : ORDER_TYPE_SELL_LIMIT;
+            rq.price        = NormalizePrice(price);
+            rq.sl           = NormalizePrice(sl);
+            rq.tp           = NormalizePrice(tp);
+            rq.type_time    = tt;
+            rq.expiration   = expTime;
+            rq.type_filling = ORDER_FILLING_RETURN;
+            rq.comment      = comment;
+            ok          = ::OrderSend(rq, rs);
+            rc          = rs.retcode;
+            desc        = rs.comment;
+            lastFilling = "ORDER_FILLING_RETURN (raw)";
+            done        = (ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_PLACED));
+            if(done)
+               ticket = rs.order;
+           }
          if(done)
             break;
-         if(rc == TRADE_RETCODE_INVALID_FILL && !symFill)
+         if(rc == TRADE_RETCODE_INVALID_FILL && !raw)
            {
-            symFill = true;
-            m_trade.SetTypeFillingBySymbol(m_sym);
+            raw = true;                                  // the server refuses the symbol's mode: RETURN, raw
             continue;
            }
          if(rc == TRADE_RETCODE_INVALID_EXPIRATION && tt != ORDER_TIME_GTC)
@@ -521,14 +625,12 @@ public:
            }
          break;
         }
-      m_trade.SetTypeFillingBySymbol(m_sym);
       if(done)
         {
-         OnResult(true, "");
-         ticket = m_trade.ResultOrder();
+         OnResult(true, rc, "", "");
          return(true);
         }
-      OnResult(false, "limit order");
+      OnResult(false, rc, desc, "limit order (" + lastFilling + ")");
       return(false);
      }
 

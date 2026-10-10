@@ -106,6 +106,7 @@ class BreakoutParams:
     direction: str = "BOTH"
     max_touches: int = 2
     confirm_closes: int = 2
+    reject_before_break: bool = False
     fvg_rule: str = "LUXALGO"
     setup_expiry_bars: int = 240
     leg_expiry_bars: int = 60
@@ -138,8 +139,9 @@ class BreakoutParams:
             v = getattr(self, name)
             if not _is_int(v) or not lo <= v <= hi:
                 raise ValueError(f"{name} must be an int in {lo}..{hi}, got {v!r}")
-        if not isinstance(self.use_session, bool):
-            raise ValueError("use_session must be a bool")
+        for name in ("use_session", "reject_before_break"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a bool")
         if len(self.fib_levels) != 3 or not all(_is_num(f) and 0.0 <= f < 100.0 for f in self.fib_levels):
             raise ValueError(f"fib_levels must be 3 numbers in [0, 100), got {self.fib_levels!r}")
         if not any(f > 0.0 for f in self.fib_levels):
@@ -460,7 +462,9 @@ class BreakoutDetector:
                 self._stat("BREAK_FAIL")
                 st.phase = ZONE
                 st.n_close = 0
-            elif st.phase == ZONE and self._beyond(st, c):
+            elif (st.phase == ZONE and not tn and (not p.reject_before_break or not st.in_ep)
+                  and self._beyond(st, c)):
+                # a touching candle belongs to the touch (it becomes the reference candle below)
                 st.phase = BREAK
                 st.brk_bar = u
                 st.n_close = 1

@@ -43,6 +43,7 @@ def test_defaults_follow_the_owner_rule():
 
 
 @pytest.mark.parametrize("kw", [{"max_hold_min": 121}, {"direction": "UP"}, {"fvg_rule": "X"},
+                                {"reject_before_break": 1},
                                 {"fib_levels": (50.0, 61.8)}, {"fib_levels": (0.0, 0.0, 0.0)},
                                 {"fib_levels": (50.0, 100.0, 71.0)}, {"stop_fib": 0.0}, {"target_fib": 100.0},
                                 {"max_touches": 0}, {"confirm_closes": 6}, {"max_cost_r": -0.1}, {"tick_size": 0},
@@ -130,6 +131,21 @@ def test_a_wick_beyond_the_level_is_not_a_breakout():
     bars = prefix() + [BASE_TAIL[0], BASE_TAIL[1], bar(100.1, 100.9, 100.0, 100.15)]   # high > 100.2, close below
     det, _ = _run(bars)
     assert "BREAKOUT" not in [e[2] for e in _evs(det)]
+
+
+def test_a_touching_candle_is_never_the_breakout_candle():
+    det, _ = _run(scenarios()["touching_close_above"])
+    assert [e[2:] for e in _evs(det, 14)] == [("TOUCH", 1, None), ("REJECT", 0, None)]
+    st = det.setup(1)
+    assert st.ref == 15 and st.lvl == 101.0 and st.phase == "ZONE"   # the level moved to the touching candle's high
+
+
+def test_reject_before_break_option():
+    sc = scenarios()["reject_is_breakout"]
+    det, _ = _run(sc)                                                 # default: candle 15 is the breakout
+    assert [e[:3] for e in _evs(det, 15)][:2] == [(15, 1, "BREAKOUT"), (16, 1, "CONFIRM")]
+    det2, _ = _run(sc, BreakoutParams(fvg_rule="ANY_GAP", reject_before_break=True))
+    assert [e[:3] for e in _evs(det2, 15)][:3] == [(15, 1, "REJECT"), (16, 1, "BREAKOUT"), (17, 1, "CONFIRM")]
 
 
 def test_broken_zone_ends_the_setup():

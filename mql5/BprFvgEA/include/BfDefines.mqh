@@ -264,6 +264,7 @@ struct BfParams
    int               direction;           // ENUM_BF_DIRECTION
    int               maxTouches;          // 1..5
    int               confirmCloses;       // 1..5 (breakout candle included)
+   bool              rejectBeforeBreak;   // the breakout candle must come after a rejection candle (stricter reading)
    int               fvgRule;             // ENUM_BF_FVGRULE
    int               setupExpiryBars;     // bars after the BPR's creation to reach the confirmation
    int               legExpiryBars;       // bars after the confirmation for orders / fills
@@ -296,6 +297,7 @@ void BfDefaultParams(BfParams &p)
    p.direction            = BF_DIR_BOTH;
    p.maxTouches           = 2;
    p.confirmCloses        = 2;
+   p.rejectBeforeBreak    = false;
    p.fvgRule              = BF_FVGRULE_LUXALGO;
    p.setupExpiryBars      = 240;
    p.legExpiryBars        = 60;
@@ -324,6 +326,7 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.direction            = src.direction;
    dst.maxTouches           = src.maxTouches;
    dst.confirmCloses        = src.confirmCloses;
+   dst.rejectBeforeBreak    = src.rejectBeforeBreak;
    dst.fvgRule              = src.fvgRule;
    dst.setupExpiryBars      = src.setupExpiryBars;
    dst.legExpiryBars        = src.legExpiryBars;

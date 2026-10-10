@@ -17,6 +17,7 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    if(k == "direction") p.direction = (int)v;
    else if(k == "max_touches") p.maxTouches = (int)v;
    else if(k == "confirm_closes") p.confirmCloses = (int)v;
+   else if(k == "reject_before_break") p.rejectBeforeBreak = v != 0;
    else if(k == "fvg_rule") p.fvgRule = (int)v;
    else if(k == "setup_expiry_bars") p.setupExpiryBars = (int)v;
    else if(k == "leg_expiry_bars") p.legExpiryBars = (int)v;

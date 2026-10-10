@@ -92,12 +92,25 @@ def scenarios() -> dict[str, list]:
     # (ref = 17). The rule needs a gap on a bar AFTER the reference candle, so no order may be decided.
     sc["fvg_on_ref"] = prefix() + [bar(100.1, 100.15, 99.6, 99.7),    # 14 touch 1
                                    bar(99.7, 99.75, 99.3, 99.4),      # 15 same touch (origin 99.3)
-                                   bar(99.4, 99.8, 99.35, 99.75),     # 16 same touch (close = level: no breakout)
+                                   bar(99.4, 99.95, 99.35, 99.75),    # 16 same touch (close below the level 99.75)
                                    bar(99.76, 99.85, 99.76, 99.8),    # 17 same touch; gap 99.76 > high[15] 99.75
-                                   bar(99.8, 100.3, 99.78, 100.25),   # 18 BREAKOUT (> 99.85)
-                                   bar(100.25, 100.6, 99.84, 100.5),  # 19 CONFIRM
+                                   bar(99.95, 100.3, 99.92, 100.25),  # 18 BREAKOUT (> 99.85, does not touch)
+                                   bar(100.25, 100.6, 99.84, 100.5),  # 19 CONFIRM (no gap: 99.84 < 99.85)
                                    bar(100.5, 100.55, 100.2, 100.3),  # 20 pullback, no FVG after ref
                                    bar(100.3, 100.4, 100.1, 100.2)]   # 21 pullback, no FVG after ref
+    # A/B/C of the review: B closes above A's high but still touches the zone -> B is part of the touch (new
+    # reference, level = B's high); C closes below B's high -> no breakout
+    sc["touching_close_above"] = prefix() + [bar(100.1, 100.2, 99.6, 99.8),     # 14 TOUCH 1 (level 100.2)
+                                             bar(99.8, 101.0, 99.7, 100.6),     # 15 touches, closes above 100.2
+                                             bar(100.6, 100.8, 100.0, 100.7),   # 16 REJECT, close below 101.0
+                                             bar(100.7, 100.9, 100.3, 100.5)]   # 17
+    # the first candle out of the zone closes above the level: a breakout by default; with reject_before_break it
+    # is only the rejection, and the next close above the level is the breakout
+    sc["reject_is_breakout"] = prefix() + [bar(100.1, 100.2, 99.5, 100.0),     # 14 TOUCH 1
+                                           bar(100.0, 100.6, 99.95, 100.5),    # 15 out of the zone, close > 100.2
+                                           bar(100.5, 100.9, 100.4, 100.8),    # 16
+                                           bar(100.8, 101.3, 100.7, 101.2),    # 17
+                                           bar(101.2, 101.25, 100.9, 101.0)]   # 18
     # the same as base, but candle 17 has a long upper wick: not a LuxAlgo displacement candle, so the engine makes
     # no FVG after the reference candle (LUXALGO waits); the plain gap on 17 still counts for ANY_GAP
     sc["no_lux_fvg"] = b[:17] + [bar(100.8, 101.45, 100.8, 101.2)] + b[18:]

@@ -37,7 +37,7 @@ How each phrase is read. Every choice not fixed by the text is an input with the
 | "test it maximum two time" | A **touch** is a candle whose low reaches the zone (`low ≤ top`). Consecutive touching candles are **one** touch. A 3rd touch ends the setup (`TOUCH_LIMIT`). Input `InpMaxTouches = 2`. |
 | "not two successive candles … rejected … to the opposite direction" | Two touches must be separated by a **rejection**: at least one candle that does not touch the zone (it stays on the far side, `low > top`). |
 | "the high … of last candle before rejection" | The **reference candle** is the last candle of the latest touch. Its high is the **breakout level**. |
-| "make the BREAKOUT … close above … with the body" | **Breakout candle:** a candle closes above the breakout level. A wick alone does not count. |
+| "make the BREAKOUT … close above … with the body" | **Breakout candle:** a candle that does **not** touch the zone closes above the breakout level. A wick alone does not count. A touching candle that closes above the level is still part of the touch: it becomes the new reference candle, and its high the new level (revision 2, from the adversarial review). Stricter option `InpRejectBeforeBreak` (default off): the previous candle must not touch either, so a rejection candle comes before the breakout candle. |
 | "the second candle … must close above" | **Confirmation:** the next candle also closes above the level. `InpConfirmCloses = 2` counts both closes. If the second close fails, the breakout fails and the setup waits for a new one (touch rules still apply). |
 | "with minimum 1 FVG" | At least one **bullish FVG** has formed on a bar after the reference candle. The setup cannot place orders until one has. Input `InpFvgRule`: `LUXALGO` (default) = the engine's FVGs, the boxes the indicator draws (displacement candle + gap); `ANY_GAP` = any 3-candle gap `low[j] > high[j-2]`. |
 | "track, follow and update the high of the breakout" | After confirmation the **leg extreme** `X` (highest high) is updated on every new high. The **leg origin** `O` is the lowest low since the latest touch began, the low of the breakout leg. |
@@ -58,6 +58,7 @@ reference candle, the leg runs from a high `O` down to a low `X`, and sell limit
 | `InpDirection` | `direction` | `BOTH` | `BOTH` / `LONG_ONLY` / `SHORT_ONLY` |
 | `InpMaxTouches` | `max_touches` | 2 | Touches allowed (1..5); one more ends the setup |
 | `InpConfirmCloses` | `confirm_closes` | 2 | Consecutive closes beyond the level, breakout candle included (1..5) |
+| `InpRejectBeforeBreak` | `reject_before_break` | false | The breakout candle must come after a rejection candle (it cannot be the first candle out of the zone) |
 | `InpFvgRule` | `fvg_rule` | `LUXALGO` | `LUXALGO` / `ANY_GAP` / `NONE` (`NONE` drops the FVG condition) |
 | `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation |
 | `InpLegExpiryBars` | `leg_expiry_bars` | 60 | Bars after confirmation during which orders may be placed or filled |
@@ -142,7 +143,8 @@ A setup stops being tracked when it reaches `DONE` or `CLOSED`.
 
      If `nClose` is still short, set `inEp = tn` and end processing here too.
    - **Otherwise:** record `BREAK_FAIL`. The phase becomes `ZONE`, `nClose = 0`, and processing continues at step 6.
-5. **Phase `ZONE`** (at least one touch) with `beyond(u)`:
+5. **Phase `ZONE`** (at least one touch) with `beyond(u)`, `!tn` (the candle does not touch the zone) and, with
+   `reject_before_break`, `!inEp` (the previous candle did not touch either):
    - the phase becomes `BREAK`, with `brkBar = u`, `nClose = 1`, `Track(u)`;
    - record `BREAKOUT`.
 
@@ -301,10 +303,25 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   3. **Daily budget.** Realised loss today plus the total planned risk of the batch must be ≤ the daily limit.
      Otherwise → `NotifyRetry`.
 - **Limit orders.**
-  - Filling RETURN is tried first for pending orders. The symbol's mode is the fallback on `INVALID_FILL`.
+  - Sent through `CTrade`, whose `FillingCheck` sets the symbol's mode (FOK / IOC on market-execution symbols, also for
+    pending orders). On `INVALID_FILL` the order is sent again by a raw `OrderSend` with `ORDER_FILLING_RETURN`. The
+    filling actually sent is shown on the panel.
   - A server-side expiration (`ORDER_TIME_SPECIFIED`, `leg_expiry_bars + 3` bars) is used when the symbol allows it.
     On `INVALID_EXPIRATION` the order is sent again as GTC.
   - The detector cancels orders through its own intents.
+- **Order-error breaker.**
+  - A decision whose sends were **all** refused for a non-transient reason is one strike. Three strikes trip the
+    breaker.
+  - Transient or permission retcodes never count: requote, timeout, price changed, connection, too many requests,
+    locked, frozen, algo trading off, market closed.
+  - It resets after 30 minutes, or at the next FX day.
+  - While it is tripped, decisions call `NotifyRetry` with the reason; it is not folded into `riskOk`.
+- **Rollover window** 16:44–17:00 New York, whatever `use_session` is set to: no decision is sent (`NotifyRetry`), and
+  pending orders are deleted (`SESSION_END`).
+- **Account not confirmed yet** (terminal reconnecting): `NotifyRetry`. Only a REAL account is log-only.
+- **Daily loss** counts every deal of the EA's positions, whatever its magic, so manual closes count too.
+- **Removal.** When the EA is removed, or its chart or the terminal is closed, its positions are closed: nothing would
+  run their time stop any more. A recompile or an input change keeps them, and the restarted EA adopts them.
 - **Positions.** Each one has:
   - its server SL / TP;
   - a time stop `fill_time + max_hold_min` (at most 120 min);

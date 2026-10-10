@@ -40,9 +40,12 @@ v2:
   - A **self-check** at start prints everything that can stop an order (see [Self-check](#self-check-at-start)).
   - A summary at every new FX day and at the end of a test.
 - **Places orders more robustly.**
-  - Limit orders use the `RETURN` filling mode first. Some servers refuse FOK/IOC on pending orders. The symbol's own
-    mode is the fallback.
+  - Limit orders go through `CTrade`, which uses the symbol's filling mode. If the server refuses that mode
+    (`INVALID_FILL`), the order is sent again with the `RETURN` mode. The panel shows the mode actually sent.
   - When the broker refuses the expiration time, the order is sent again as GTC.
+  - The error breaker counts **one strike per decision**, not one per order. It ignores transient refusals (requote,
+    timeout, connection, price changed…) and resets after 30 minutes. While it is tripped, the panel says
+    `BREAKER TRIPPED`.
 - **Checks the "Algo Trading" switches.** It checks the terminal button, the EA's "Allow Algo Trading" box and the
   account's expert permission. Refusals for these reasons do not trip the error breaker.
 - **Uses the owner's own rules.** The cost filter is per entry, at 0.30 R, and can be turned off. There is no
@@ -120,6 +123,7 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpDirection` | BOTH | BOTH, LONG_ONLY or SHORT_ONLY |
 | `InpMaxTouches` | 2 | Touches of the BPR allowed. Consecutive touching candles count as one touch. One more touch ends the setup. |
 | `InpConfirmCloses` | 2 | Candles that must **close** beyond the breakout level: the breakout candle plus the next one |
+| `InpRejectBeforeBreak` | false | Stricter reading. A rejection candle (one that does not touch the zone) must come **before** the breakout candle, so the first candle out of the zone can no longer be the breakout. |
 | `InpFvgRule` | LUXALGO | FVG needed in the breakout leg. `LUXALGO`: an FVG the LuxAlgo engine makes (displacement candle + gap). `ANY_GAP`: any 3-candle gap. `NONE`: no FVG needed. |
 | `InpSetupExpiryBars` | 240 | The breakout must be confirmed within this many bars of the BPR's creation |
 | `InpLegExpiryBars` | 60 | After the confirmation, orders may be placed or filled for this many bars |
@@ -164,15 +168,21 @@ Every step uses **closed bars only**.
                        SL = O - 10 ticks
 ```
 
-1. **BPR.** The LuxAlgo engine creates a BPR on bar `u`. A bullish one (`pos = +1`) becomes a long setup; a bearish
-   one a short setup. Each BPR gives one setup ("used one time").
+1. **BPR.** The LuxAlgo engine creates a BPR on bar `u`.
+   - Its `pos` decides the direction: `+1` (price above the box) gives a long setup, `−1` a short setup.
+   - **The box colour is not the direction.** Green or red only tells which gap created the box. A red box can be a
+     long, and a green one a short. Each setup therefore draws **its own zone outline** in the trade's colour.
+   - Each BPR gives one setup ("used one time").
 2. **Touches.**
    - A **touch** is a candle whose low reaches the box (`low ≤ top`). Consecutive touching candles are one touch.
    - A **rejection** is a candle that stays above the box. A second touch counts only after a rejection.
    - A third touch ends the setup (`TOUCH_LIMIT`). A low below the box bottom breaks the BPR (`BROKEN`).
 3. **Breakout.**
    - The **reference candle** is the last touching candle; its **high is the breakout level**.
-   - The **breakout candle** (`B1`) is a candle that **closes** above the level. A wick above does not count.
+   - The **breakout candle** (`B1`) is a candle that **does not touch the box** and **closes** above the level. A
+     wick above does not count.
+   - A candle that still touches the box and closes above the level is part of the touch. It becomes the new
+     reference candle, and its high becomes the new level.
    - The **next candle must also close above it** (`B2`). Otherwise the breakout fails (`BREAK_FAIL`), and the
      setup keeps waiting under the same touch rules.
 4. **Leg.**
@@ -214,6 +224,7 @@ at the better price, with the same SL / TP.
   - a dashed border once price enters a box;
   - a dotted border in the break colour once it is broken.
 - **Setup drawings** (`InpShowSetups`):
+  - the setup's own zone, a dash-dot outline in the trade's colour, from the first touch on;
   - `T1` / `T2` under the touch candles;
   - a dotted line at the **breakout level**, from the reference candle to the breakout;
   - `B1` / `B2` on the breakout and confirmation candles; `x` on a failed confirmation;
@@ -325,6 +336,10 @@ All of these are inputs or are stated in the spec (§0):
 - **No setup recovery after a restart.** Setups in progress are not restored. Positions found at start are managed
   without their setup: server SL/TP, the time stop and the 16:44 flat. Pending orders left from before are deleted.
 - **Fills that race a cancel.** A fill that happens just as the EA cancels the order is managed without its setup.
+- **Stopping the EA.**
+  - Removing the EA, or closing its chart or the terminal, **closes its positions**: no time stop would run any
+    more. It also deletes its pending orders.
+  - A recompile, an input change or a timeframe change keeps the positions, and the restarted EA manages them again.
 - **Spread and decision time.** Decisions use the spread at the first tick of the next bar. The Python reference uses
   a constant or modelled spread.
 - **No news filter.**
@@ -335,8 +350,8 @@ All of these are inputs or are stated in the spec (§0):
 
 | Test | What it checks |
 |---|---|
-| `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 45 hand-built sequences, including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 22 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
-| `tests/test_bpr_breakout_strategy.py` | 50 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
+| `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 67 hand-built sequences (with the strict-rejection option too), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
+| `tests/test_bpr_breakout_strategy.py` | 53 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
 | `tools/mql5_static_check.py mql5/BprFvgEA` | Mechanical check: names and brackets. It cannot find MQL5 type errors. |
 
 None of this proves that MetaEditor compiles the code, that MT5 executes the orders as intended, or that the strategy

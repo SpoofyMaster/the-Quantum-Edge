@@ -653,6 +653,29 @@ public:
       m_dirty = true;
      }
 
+   //--- a rectangle of the setup (its own zone: the LuxAlgo box may leave the engine arrays, and its colour is the
+   //    gap that created it, not the trade direction)
+   void              SetupRect(const int id, const string key, const datetime t1, const double p1, const datetime t2,
+                               const double p2, const color clr, const string tip)
+     {
+      color bg = (color)ChartGetInteger(0, CHART_COLOR_BACKGROUND);
+      if(!m_showSetups)
+         return;
+      SetupRegister(id);
+      BfDrawRect(SetupBase(id) + key, t1, p1, t2, p2, BfBlendColor(clr, 60, bg), false, false, STYLE_DASHDOT, tip);
+      m_dirty = true;
+     }
+
+   //--- new text for an existing label (the label of line 'key')
+   void              SetupLabel(const int id, const string key, const string txt)
+     {
+      string nm = SetupBase(id) + key + "T";
+      if(!m_showSetups || ObjectFind(0, nm) < 0)
+         return;
+      ObjectSetString(0, nm, OBJPROP_TEXT, txt);
+      m_dirty = true;
+     }
+
    void              SetupDelete(const int id, const string key)
      {
       ObjectDelete(0, SetupBase(id) + key);

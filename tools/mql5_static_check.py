@@ -58,7 +58,7 @@ AccountInfoString FileFlush HistoryOrderGetInteger HistoryOrderGetDouble ObjectN
 PositionModify PositionSelectByTicket ResultDeal SetTypeFilling StringSplit StringToDouble StringToInteger
 OrderSend TerminalInfoInteger
 '''.split())
-ctrade=set('SetExpertMagicNumber SetDeviationInPoints SetTypeFillingBySymbol SetMarginMode LogLevel Buy Sell BuyLimit SellLimit OrderModify OrderDelete PositionClose ResultRetcode ResultRetcodeDescription ResultOrder'.split())
+ctrade=set('RequestTypeFilling SetExpertMagicNumber SetDeviationInPoints SetTypeFillingBySymbol SetMarginMode LogLevel Buy Sell BuyLimit SellLimit OrderModify OrderDelete PositionClose ResultRetcode ResultRetcodeDescription ResultOrder'.split())
 unknown=sorted(c for c in calls-defined-builtin-ctrade if not c.isupper())
 print('possibly undefined:',unknown)
 print('balance ok' if ok else 'PROBLEMS')

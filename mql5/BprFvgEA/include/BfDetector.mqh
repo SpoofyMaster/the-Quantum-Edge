@@ -166,11 +166,12 @@ private:
       m_n = w;
      }
 
+   //--- the DONE record keeps the phase the setup ended in (logs / CSV); the phase changes after the record
    void              SetDone(const int i, const int n, const int reason)
      {
-      m_s[i].phase  = BF_PH_DONE;
       m_s[i].reason = reason;
       AddEvent(n, BF_EV_DONE, m_s[i], 0, reason);
+      m_s[i].phase  = BF_PH_DONE;
       Stat(BF_STAT_DONE + reason);
      }
 
@@ -351,8 +352,10 @@ private:
            }
          else
            {
-            //--- step 5: ZONE + close beyond the level = breakout candle
-            if(ph == BF_PH_ZONE && Beyond(i, c[u]))
+            //--- step 5: ZONE + a candle that does NOT touch the zone closes beyond the level = breakout candle (a
+            //    touching candle belongs to the touch: it becomes the reference candle in step 6). Stricter reading
+            //    (rejectBeforeBreak): the previous candle must not have touched either (a rejection came first).
+            if(ph == BF_PH_ZONE && !tn && (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].brkBar = u;

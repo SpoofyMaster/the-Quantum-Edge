@@ -71,7 +71,8 @@ def _bars(seed, n, tick=0.01):
 def _cpp_args(p: BreakoutParams, sp: float, trade_from: int, hold_bars: int) -> list[str]:
     kv = {
         "direction": DIRECTIONS.index(p.direction), "max_touches": p.max_touches,
-        "confirm_closes": p.confirm_closes, "fvg_rule": FVG_RULES.index(p.fvg_rule),
+        "confirm_closes": p.confirm_closes, "reject_before_break": int(p.reject_before_break),
+        "fvg_rule": FVG_RULES.index(p.fvg_rule),
         "setup_expiry_bars": p.setup_expiry_bars, "leg_expiry_bars": p.leg_expiry_bars,
         "fib1": repr(float(p.fib_levels[0])), "fib2": repr(float(p.fib_levels[1])),
         "fib3": repr(float(p.fib_levels[2])), "stop_fib": repr(float(p.stop_fib)),
@@ -89,7 +90,8 @@ CASES = [
     (1, 4000, BreakoutParams(), 0.10, 0, 120, 0.01),
     (2, 4000, BreakoutParams(direction="LONG_ONLY"), 0.10, 0, 120, 0.01),
     (3, 4000, BreakoutParams(direction="SHORT_ONLY", fvg_rule="ANY_GAP"), 0.10, 0, 30, 0.01),
-    (4, 4000, BreakoutParams(fvg_rule="NONE", confirm_closes=1, max_touches=1), 0.10, 0, 120, 0.01),
+    (4, 4000, BreakoutParams(fvg_rule="NONE", confirm_closes=1, max_touches=1, reject_before_break=True), 0.10, 0,
+     120, 0.01),
     (5, 4000, BreakoutParams(min_rr=1.0, max_cost_r=0.0, fib_levels=(38.2, 0.0, 78.6)), 0.10, 0, 60, 0.01),
     (6, 4000, BreakoutParams(target_fib=-27.0, stop_fib=110.0, stop_buffer_ticks=0, confirm_closes=3), 0.20, 0,
      120, 0.01),
@@ -172,6 +174,7 @@ def _crafted():
     for name, bars in scenarios().items():
         for rule in ("ANY_GAP", "LUXALGO", "NONE"):
             out.append((f"{name}-{rule}", bars, {"fvg_rule": rule}))
+        out.append((f"{name}-strict", bars, {"fvg_rule": "ANY_GAP", "reject_before_break": True}))
     for name, (bars, ov) in boundary_cases().items():
         out.append((name, bars, {"fvg_rule": "ANY_GAP", **ov}))
     return out

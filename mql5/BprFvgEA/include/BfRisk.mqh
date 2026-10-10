@@ -127,19 +127,31 @@ public:
       return(m_realised / nominal);
      }
 
-   //--- rebuilds the realised P&L and the trade count of the current FX day from the deal history
+   static bool       HasId(const ulong &ids[], const int n, const ulong id)
+     {
+      int j;
+      for(j = 0; j < n; j++)
+         if(ids[j] == id)
+            return(true);
+      return(false);
+     }
+
+   //--- rebuilds the realised P&L and the trade count of the current FX day from the deal history.
+   //    Pass 1: the positions this EA opened (an IN deal with this symbol + magic). Pass 2: every deal of those
+   //    positions inside the FX day, WHATEVER its magic: a manual / mobile / script close of an EA position carries
+   //    magic 0 or a foreign magic, and its loss must still count towards the daily limit.
    void              Recompute(CBfSession &ses)
      {
       int      i;
       int      total;
       ulong    d;
-      int      j;
       int      nIds = 0;
-      bool     seen;
+      int      nDay = 0;
       ulong    pid;
       ulong    ids[];
+      ulong    dayIds[];
       datetime now = TimeCurrent();
-      long     entry;
+      bool     inDay;
       m_realised = 0.0;
       m_trades   = 0;
       if(!HistorySelect((datetime)((long)now - 4 * 86400), (datetime)((long)now + 3600)))
@@ -150,37 +162,40 @@ public:
          d = HistoryDealGetTicket(i);
          if(d == 0)
             continue;
+         if(HistoryDealGetString(d, DEAL_SYMBOL) != m_sym || HistoryDealGetInteger(d, DEAL_MAGIC) != m_magic)
+            continue;
+         if(HistoryDealGetInteger(d, DEAL_ENTRY) != (long)DEAL_ENTRY_IN)
+            continue;
+         pid = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+         if(!HasId(ids, nIds, pid))
+           {
+            ArrayResize(ids, nIds + 1, 16);
+            ids[nIds] = pid;
+            nIds++;
+           }
+         // a limit filled in several deals (or a netting position) is one trade: distinct position ids per day
+         if(ses.FxDay((datetime)HistoryDealGetInteger(d, DEAL_TIME)) == m_fxDay && !HasId(dayIds, nDay, pid))
+           {
+            ArrayResize(dayIds, nDay + 1, 16);
+            dayIds[nDay] = pid;
+            nDay++;
+           }
+        }
+      for(i = 0; i < total; i++)
+        {
+         d = HistoryDealGetTicket(i);
+         if(d == 0)
+            continue;
          if(HistoryDealGetString(d, DEAL_SYMBOL) != m_sym)
             continue;
-         if(HistoryDealGetInteger(d, DEAL_MAGIC) != m_magic)
+         pid   = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
+         inDay = (ses.FxDay((datetime)HistoryDealGetInteger(d, DEAL_TIME)) == m_fxDay);
+         if(!inDay || !HasId(ids, nIds, pid))
             continue;
-         if(ses.FxDay((datetime)HistoryDealGetInteger(d, DEAL_TIME)) != m_fxDay)
-            continue;
-         entry = HistoryDealGetInteger(d, DEAL_ENTRY);
-         if(entry == (long)DEAL_ENTRY_IN)
-           {
-            // a limit filled in several deals is one trade: count distinct position ids
-            pid  = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
-            seen = false;
-            for(j = 0; j < nIds; j++)
-              {
-               if(ids[j] == pid)
-                 {
-                  seen = true;
-                  break;
-                 }
-              }
-            if(!seen)
-              {
-               ArrayResize(ids, nIds + 1, 16);
-               ids[nIds] = pid;
-               nIds++;
-              }
-           }
          m_realised += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION) +
                        HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_FEE);
         }
-      m_trades = nIds;
+      m_trades = nDay;
       if(!m_lockout && m_dayStartEq > 0.0 && -m_realised >= DayLimit() - 1e-9)
          m_lockout = true;
      }
