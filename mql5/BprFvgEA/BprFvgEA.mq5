@@ -883,6 +883,22 @@ bool InRolloverWindow(void)
    return(m >= BF_NY_FLAT_MIN && m < BF_NY_ROLL_MIN);
   }
 
+// seconds from now to the next 16:44 New York (the rollover cut)
+long SecondsToRolloverCut(void)
+  {
+   long nyNow = (long)g_ses.ServerToNY(TimeCurrent());
+   long nyCut = (nyNow / 86400) * 86400 + (long)BF_NY_FLAT_MIN * 60;
+   if(nyCut <= nyNow)
+      nyCut += 86400;
+   return(nyCut - nyNow);
+  }
+
+// the effective entry window of the EA (v3: InpEntriesAfterSessionEnd extends it to 16:44 New York)
+bool SessionOkAt(const datetime server)
+  {
+   return(g_ses.EntryOk(server) || (InpEntriesAfterSessionEnd && LateEntryOk(server)));
+  }
+
 // retries of failed management sends (delete / close) at most every 3 seconds per level / position
 bool RetryDue(datetime &last)
   {
@@ -1003,6 +1019,9 @@ void ExecBatch(const BfIntent &its[], const int n)
             if(InRolloverWindow())
                wait = "16:44-17:00 New York (positions must be flat before the rollover)";
             else
+               if(SecondsToRolloverCut() < 120)
+                  wait = "less than 2 minutes before the 16:44 New York rollover";
+               else
                if(!g_risk.Ready())
                   wait = "daily-risk baseline not ready (account or equity not available yet)";
                else
@@ -1092,7 +1111,11 @@ void ExecBatch(const BfIntent &its[], const int n)
       else
         {
          // safety net only: the detector cancels the order through its own intents
+         // server-side expiry, never later than the next 16:44 New York: the broker removes the order even when no
+         // tick arrives in 16:44-17:00 (the EA's own deletes need a tick)
          expiry = (datetime)((long)TimeCurrent() + (long)(g_legExp + 3) * (long)PeriodSeconds());
+         if((long)expiry > (long)TimeCurrent() + SecondsToRolloverCut())
+            expiry = (datetime)((long)TimeCurrent() + SecondsToRolloverCut());
          ok = g_trade.PlaceLimit(dir, lots[j], P[j], SL, TP, expiry, cmt, ticket);
         }
       if(!ok)
@@ -1689,7 +1712,9 @@ void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool s
    //   or a new FX day after a data gap) is reached
    env.sessionEntryOk = g_ses.EntryOk(nextOpen) || (InpEntriesAfterSessionEnd && LateEntryOk(nextOpen));
    if(InpCancelAtSessionEnd)
-      env.sessionCancel = !env.sessionEntryOk;   // = SessionCancel(nextOpen), or the end of the extended window
+      // = SessionCancel(nextOpen) with the defaults (v2); with the extended window also a new FX day after a data gap
+      env.sessionCancel = !env.sessionEntryOk ||
+                          (InpEntriesAfterSessionEnd && g_ses.FxDay(nextOpen) != g_ses.FxDay(barTime));
    else
       env.sessionCancel = RolloverCut(nextOpen, barTime);
    env.riskOk         = g_risk.RiskOk();         // the order-error breaker is checked (and reported) by ExecBatch
@@ -1960,10 +1985,11 @@ void SelfCheck(void)
    double   vpp       = g_risk.ValuePerPriceUnit();
    double   maxStop   = 0.0;
    datetime dayStart  = (datetime)(((long)TimeCurrent() / 86400) * 86400);
-   datetime t;
    int      m;
    int      first     = -1;
    int      last      = -1;
+   bool     okPrev;
+   bool     okNow;
    g_trade.TradePermission(perm);
    g_log.Info("SELF-CHECK account: " + g_trade.modeNote + " | login " + IntegerToString(AccountInfoInteger(ACCOUNT_LOGIN)) +
               " " + AccountInfoString(ACCOUNT_SERVER) + " | " + (g_trade.IsHedging() ? "hedging" : "NETTING") +
@@ -1993,24 +2019,28 @@ void SelfCheck(void)
                "every entry gets SIZE_BELOW_MIN (raise the deposit)"));
    if(InpUseSession)
      {
-      for(m = 0; m < 1440; m++)
+      // the first window that STARTS on this server date; its end may be on the next date (it can cross midnight)
+      okPrev = SessionOkAt((datetime)((long)dayStart - 60));
+      for(m = 0; m < 1440 && first < 0; m++)
         {
-         t = (datetime)((long)dayStart + (long)m * 60);
-         if(g_ses.EntryOk(t) || (InpEntriesAfterSessionEnd && LateEntryOk(t)))
-           {
-            if(first < 0)
-               first = m;
-            last = m;
-           }
+         okNow = SessionOkAt((datetime)((long)dayStart + (long)m * 60));
+         if(okNow && !okPrev)
+            first = m;
+         okPrev = okNow;
         }
       if(first >= 0)
+        {
+         last = first;
+         while(last + 1 < 2880 && SessionOkAt((datetime)((long)dayStart + (long)(last + 1) * 60)))
+            last++;
          g_log.Info("SELF-CHECK session (" + EnumToString(InpServerMode) + "): entries on " +
                     TimeToString(dayStart, TIME_DATE) + " from " + StringFormat("%02d:%02d", first / 60, first % 60) +
-                    " to " + StringFormat("%02d:%02d", last / 60, last % 60) + " server time; check that this is " +
-                    "08:00 London .. " + (InpEntriesAfterSessionEnd ? "16:44" : "14:45") +
-                    " New York for your broker (InpServerMode)");
+                    " to " + StringFormat("%02d:%02d", (last % 1440) / 60, (last % 1440) % 60) +
+                    ((last >= 1440) ? " (+1 day)" : "") + " server time; check that this is 08:00 London .. " +
+                    (InpEntriesAfterSessionEnd ? "16:44" : "14:45") + " New York for your broker (InpServerMode)");
+        }
       else
-         g_log.Info("SELF-CHECK session: no entry window on " + TimeToString(dayStart, TIME_DATE) + " (weekend)");
+         g_log.Info("SELF-CHECK session: no entry window starts on " + TimeToString(dayStart, TIME_DATE) + " (weekend)");
      }
    else
       g_log.Info("SELF-CHECK session: off (entries at any time)");

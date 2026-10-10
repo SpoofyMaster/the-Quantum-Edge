@@ -21,9 +21,17 @@
 > - **New orders after 16:44 New York.** Those need `InpUseSession = false`, which removes the window entirely,
 >   including the 08:00 London start. Even then, no order is sent between 16:44 and 17:00 New York.
 > - **The 16:44–17:00 New York rollover rule.** Pending orders are still deleted then, because a fill there would be
->   closed at once by the 16:44 flat. This happens on the first tick in that window, or on the first bar after it if
->   there was no tick (data gap). The log calls this `ROLLOVER`, but the record reason is `SESSION_END`, so these
->   setups also count in the panel's `session` count; the panel shows the number of deleted orders next to it.
+>   closed at once by the 16:44 flat.
+>   - Every limit order is sent with a **server-side expiry no later than the next 16:44 New York**, so the broker
+>     removes it even when no tick arrives. If the broker refuses expiry times, the order is GTC and relies on the
+>     EA's own deletes.
+>   - The EA also deletes pending orders on the first tick between 16:44 and 17:00.
+>   - With `InpUseSession = true`, it cancels them on the first bar after a data gap when the switches extend order
+>     life.
+>   - No new order is sent in the last 2 minutes before 16:44.
+>
+>   The log calls these deletes `ROLLOVER`, but the record reason is `SESSION_END`, so these setups also count in the
+>   panel's `session` count. The panel shows the number of deleted orders next to it.
 > - **The hard limits:** 0.20 % risk per setup, 1 % daily loss, 120-minute time stop, tester / demo only.
 >
 > **Implementation.** The switches live in the EA only. The executor passes a disabled filter to the detector as 0

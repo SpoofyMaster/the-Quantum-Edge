@@ -332,8 +332,13 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
     window ends at 16:44.
   - `InpCancelAtSessionEnd = false`: `env.sessionCancel` no longer fires when the entry window ends. It fires only at
     the **rollover cut**: the next bar opens at or after 16:44 New York, on a weekend, or in another FX day than the
-    bar that closed (a data gap). This needs no tick inside 16:44–17:00. With `true`,
-    `env.sessionCancel = !env.sessionEntryOk`, which is v2's `SessionCancel` when the window is not extended.
+    bar that closed (a data gap). The cut acts on the first tick after the gap, so a fill on that tick is not
+    prevented by it; the server-side expiry below covers that case.
+  - With `InpCancelAtSessionEnd = true`, `env.sessionCancel = !env.sessionEntryOk`, which is v2's `SessionCancel`
+    with the defaults. With the extended window it also fires on a new FX day after a data gap.
+  - **Every limit order's server-side expiry is capped at the next 16:44 New York** (all settings). The broker removes
+    the order even without a tick. The cap is GTC only when the symbol refuses expiry times. No new order is sent in
+    the last 2 minutes before 16:44.
 
   The detector applies both session signals only with `use_session = true`. The executor's 16:44–17:00 rules (no new
   order; pending orders deleted on a tick in that window) still apply whatever the switches are.
