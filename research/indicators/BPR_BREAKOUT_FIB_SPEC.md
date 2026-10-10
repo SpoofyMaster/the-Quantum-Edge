@@ -1,4 +1,4 @@
-# BprFvgEA v2: BPR rejection → breakout → Fibonacci pullback
+# BprFvgEA v3: BPR rejection → breakout → Fibonacci pullback
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 2.00): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 3.00; v3 = v2 plus the EA-only switches of §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -69,7 +69,9 @@ reference candle, the leg runs from a high `O` down to a low `X`, and sell limit
 | `InpMinRR` | `min_rr` | 0.0 | Minimum reward:risk per level (0 = off) |
 | `InpMaxCostR` | `max_cost_r` | 0.30 | Maximum round-trip cost per level, as a fraction of its risk (0 = off) |
 | `InpMaxHoldMin` | `max_hold_min` | 120 | Time stop per position, minutes (hard cap 120) |
-| `InpUseSession` | `use_session` | true | Entries 08:00 London → 14:45 New York, Mon–Fri. Orders are cancelled at 14:45 NY. |
+| `InpUseSession` | `use_session` | true | Entries 08:00 London → 14:45 New York, Mon–Fri. Orders are cancelled at 14:45 NY (EA: unless the switches of §8 change it). |
+| `InpUseCostFilter` / `InpUseRRFilter` | (EA only) | true / true | Switches, §8 |
+| `InpCancelAtSessionEnd` / `InpEntriesAfterSessionEnd` | (EA only) | true / false | Switches, §8 |
 | `InpRiskPct` | (simulator) | 0.20 | Total risk per setup, % of equity, split over the enabled levels |
 | `InpSlippageTicks` | `slippage_ticks` | 1 | Used in the cost check and for sizing |
 | `InpCommissionPerLotSide` | `commission_per_lot_side` | 3.50 | Account currency per lot per side (`UNVERIFIED`) |
@@ -326,8 +328,15 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   reference has no counterpart for them:
   - `InpUseCostFilter = false`: the executor passes `max_cost_r = 0` (off) to the detector.
   - `InpUseRRFilter = false`: the executor passes `min_rr = 0` (off).
-  - `InpCancelAtSessionEnd = false`: `env.sessionCancel` is always false, so the 14:45 New York cancel (§4.3 step 4,
-    §4.4 step 3) never fires. The entry window and the 16:44 rollover rule still apply.
+  - `InpEntriesAfterSessionEnd = true`: `env.sessionEntryOk` also covers 14:45–16:44 New York, Mon–Fri, so the entry
+    window ends at 16:44.
+  - `InpCancelAtSessionEnd = false`: `env.sessionCancel` no longer fires when the entry window ends. It fires only at
+    the **rollover cut**: the next bar opens at or after 16:44 New York, on a weekend, or in another FX day than the
+    bar that closed (a data gap). This needs no tick inside 16:44–17:00. With `true`,
+    `env.sessionCancel = !env.sessionEntryOk`, which is v2's `SessionCancel` when the window is not extended.
+
+  The detector applies both session signals only with `use_session = true`. The executor's 16:44–17:00 rules (no new
+  order; pending orders deleted on a tick in that window) still apply whatever the switches are.
 
   The first two equal `max_cost_r = 0` / `min_rr = 0` in the reference. Any backtest that uses a switch is a new
   trial.

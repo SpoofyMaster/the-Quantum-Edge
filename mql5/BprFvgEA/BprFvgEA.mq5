@@ -18,10 +18,10 @@
 // Specification (single source of truth): research/indicators/BPR_BREAKOUT_FIB_SPEC.md ("spec s.N" below).
 // Python reference with the same detector records: qe/strategies/bpr_breakout.py.
 // Version 1 (H-13 sweep / MSS / far-edge limit rules, REJECTED by EXP010) is frozen in mql5/archive/BprFvgEA_v1_H13.
-// Version 3 = version 2 + three EA-only switches (owner request 2026-10-10): InpUseCostFilter, InpUseRRFilter and
-// InpCancelAtSessionEnd. The executor maps them onto the detector's existing settings (max cost 0 = off, min RR 0 =
-// off, no session-cancel signal), so the pure detector and its Python reference are unchanged; with the switches at
-// their defaults (true) v3 behaves exactly as v2.
+// Version 3 = version 2 + four EA-only switches (owner request 2026-10-10): InpUseCostFilter, InpUseRRFilter,
+// InpCancelAtSessionEnd and InpEntriesAfterSessionEnd. The executor maps them onto the detector's existing settings
+// and environment (max cost 0 = off, min RR 0 = off, the session signals of BfEnv), so the pure detector and its Python
+// reference are unchanged; with the switches at their defaults v3 behaves exactly as v2.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -97,6 +97,7 @@ input ENUM_BF_SERVER_TIME InpServerMode           = BF_SERVER_NY_PLUS_7;// Serve
 input int                 InpServerOffsetH        = 0;                  // Fixed-offset mode only: server = UTC + hours
 input bool                InpUseSession           = true;               // Entries 08:00 London .. 14:45 New York, Mon-Fri
 input bool                InpCancelAtSessionEnd   = true;               // Cancel pending orders at 14:45 New York (false = keep them until filled / expired)
+input bool                InpEntriesAfterSessionEnd = false;            // Allow NEW orders after 14:45 New York, until 16:44 New York (Mon-Fri)
 input double              InpRiskPct              = 0.20;               // Risk per SETUP, % equity incl. commission (max 0.20), split over the entries
 input double              InpDailyLossPct         = 1.00;               // Planned daily loss, % (FX day 17:00 NY; max 1.00)
 input int                 InpMaxTradesDay         = 0;                  // Max positions per FX day (0 = no limit)
@@ -1653,7 +1654,26 @@ void ManageOrphans(void)
 //+------------------------------------------------------------------+
 //| Environment of the detector                                      |
 //+------------------------------------------------------------------+
-void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool stale)
+// v3: the late entry window 14:45-16:44 New York, Monday-Friday (InpEntriesAfterSessionEnd)
+bool LateEntryOk(const datetime server)
+  {
+   datetime ny  = g_ses.ServerToNY(server);
+   int      dow = CBfSession::DowOf(ny);
+   int      m   = CBfSession::MinuteOfDay(ny);
+   return(dow >= 1 && dow <= 5 && m >= BF_NY_LAST_MIN && m < BF_NY_FLAT_MIN);
+  }
+
+// v3: the cut that keeps pending orders out of the rollover even without a tick in 16:44-17:00 New York: the next
+// bar opens at or after 16:44 NY, on a weekend, or in another FX day than the bar that just closed (a data gap)
+bool RolloverCut(const datetime nextOpen, const datetime barTime)
+  {
+   datetime ny  = g_ses.ServerToNY(nextOpen);
+   int      dow = CBfSession::DowOf(ny);
+   int      m   = CBfSession::MinuteOfDay(ny);
+   return(m >= BF_NY_FLAT_MIN || dow == 0 || dow == 6 || g_ses.FxDay(nextOpen) != g_ses.FxDay(barTime));
+  }
+
+void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool stale, const datetime barTime)
   {
    MqlTick q;
    BfClearEnv(env);
@@ -1662,10 +1682,16 @@ void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool s
    if(SymbolInfoTick(_Symbol, q) && q.ask > 0.0 && q.bid > 0.0)
       env.sp = q.ask - q.bid;                    // spread at the decision moment (first tick of bar u+1)
    env.slotFree       = SlotFree();
-   env.sessionEntryOk = g_ses.EntryOk(nextOpen);
-   // v3 switch: with InpCancelAtSessionEnd = false the detector never gets the 14:45 New York cancel signal, so pending
-   // orders stay until they fill, the leg expires (InpLegExpiryBars) or the 16:44 New York rollover rule deletes them
-   env.sessionCancel  = InpCancelAtSessionEnd ? g_ses.SessionCancel(nextOpen) : false;
+   // v3 switches (the detector uses both signals only with InpUseSession = true):
+   // - InpEntriesAfterSessionEnd: new orders also from 14:45 to 16:44 New York (the entry window ends at 16:44)
+   // - InpCancelAtSessionEnd = false: no cancel when the entry window ends; pending orders stay until they fill, the leg
+   //   expires (InpLegExpiryBars), a new extreme re-anchors the setup, or the rollover cut (16:44 New York, weekend,
+   //   or a new FX day after a data gap) is reached
+   env.sessionEntryOk = g_ses.EntryOk(nextOpen) || (InpEntriesAfterSessionEnd && LateEntryOk(nextOpen));
+   if(InpCancelAtSessionEnd)
+      env.sessionCancel = !env.sessionEntryOk;   // = SessionCancel(nextOpen), or the end of the extended window
+   else
+      env.sessionCancel = RolloverCut(nextOpen, barTime);
    env.riskOk         = g_risk.RiskOk();         // the order-error breaker is checked (and reported) by ExecBatch
    // a catch-up bar (not the last closed bar) has no decision tick: its spread is unknown -> no entry on it
    env.spreadOk       = (!stale && (g_maxSpreadPts <= 0 || env.sp <= (double)g_maxSpreadPts * _Point + 1e-12));
@@ -1701,7 +1727,7 @@ void ProcessClosed(const int u, const bool warm, const datetime nextOpen, const 
      }
    if(!g_tradeLogic)
       return;                                    // IFVG: display only
-   BuildEnv(env, warm, nextOpen, stale);
+   BuildEnv(env, warm, nextOpen, stale, g_t[u]);
    g_det.OnBarClosed(u, g_o, g_h, g_l, g_c, g_state, ev, env);
    if(warm)
      {
@@ -1821,8 +1847,8 @@ string DiagEnded(void)
           IntegerToString(St(BF_STAT_DONE + BF_R_TOUCH_LIMIT)) + " leg broken " +
           IntegerToString(St(BF_STAT_DONE + BF_R_LEG_BROKEN)) + " no level " +
           IntegerToString(St(BF_STAT_DONE + BF_R_NO_LEVEL)) + " session " +
-          IntegerToString(St(BF_STAT_DONE + BF_R_SESSION_END)) + " (rollover deletes " + IntegerToString(g_nRollDel) +
-          ") refused " +
+          IntegerToString(St(BF_STAT_DONE + BF_R_SESSION_END)) + " (rollover order deletes " +
+          IntegerToString(g_nRollDel) + ") refused " +
           IntegerToString(St(BF_STAT_DONE + BF_R_ORDER_FAILED)) + " size " +
           IntegerToString(St(BF_STAT_DONE + BF_R_SIZE_BELOW_MIN)) + " geometry " +
           IntegerToString(St(BF_STAT_DONE + BF_R_BAD_GEOMETRY)) + " capacity " +
@@ -1856,9 +1882,12 @@ string FiltersText(void)
                                                        "off (InpMaxCostR = 0)");
    string rr   = !InpUseRRFilter ? "OFF (switch)" : ((g_minRR > 0.0) ? ">= " + DoubleToString(g_minRR, 2) :
                                                    "off (InpMinRR = 0)");
-   return("switches: cost filter " + cost + " | RR filter " + rr + " | cancel at 14:45 NY " +
-          (InpCancelAtSessionEnd ? "ON" : "OFF") + " | entry window " + (InpUseSession ? "08:00 LDN-14:45 NY" : "OFF") +
-          " | rollover deletes " + IntegerToString(g_nRollDel));
+   string win  = !InpUseSession ? "OFF (any time)" :
+                 (InpEntriesAfterSessionEnd ? "08:00 LDN-16:44 NY" : "08:00 LDN-14:45 NY");
+   string canc = !InpUseSession ? "off (InpUseSession = false)" :
+                 (InpCancelAtSessionEnd ? "ON (at the end of the entry window)" : "OFF (switch)");
+   return("switches: cost filter " + cost + " | RR filter " + rr + " | entry window " + win +
+          " | cancel at window end " + canc + " | rollover order deletes " + IntegerToString(g_nRollDel));
   }
 
 void UpdatePanel(void)
@@ -1967,7 +1996,7 @@ void SelfCheck(void)
       for(m = 0; m < 1440; m++)
         {
          t = (datetime)((long)dayStart + (long)m * 60);
-         if(g_ses.EntryOk(t))
+         if(g_ses.EntryOk(t) || (InpEntriesAfterSessionEnd && LateEntryOk(t)))
            {
             if(first < 0)
                first = m;
@@ -1978,7 +2007,8 @@ void SelfCheck(void)
          g_log.Info("SELF-CHECK session (" + EnumToString(InpServerMode) + "): entries on " +
                     TimeToString(dayStart, TIME_DATE) + " from " + StringFormat("%02d:%02d", first / 60, first % 60) +
                     " to " + StringFormat("%02d:%02d", last / 60, last % 60) + " server time; check that this is " +
-                    "08:00 London .. 14:45 New York for your broker (InpServerMode)");
+                    "08:00 London .. " + (InpEntriesAfterSessionEnd ? "16:44" : "14:45") +
+                    " New York for your broker (InpServerMode)");
       else
          g_log.Info("SELF-CHECK session: no entry window on " + TimeToString(dayStart, TIME_DATE) + " (weekend)");
      }
@@ -2201,6 +2231,9 @@ int OnInit()
    g_nRetry       = 0;
    g_lastWait     = "";
    g_nLogOnly     = 0;
+   g_nRollDel     = 0;
+   g_nExpPre      = 0;
+   g_nExpLeg      = 0;
    g_recoveryLive = g_trade.tradingAllowed;
    ResetState(g_state, g_ep);
    ResetState(g_tmp, g_ep);
