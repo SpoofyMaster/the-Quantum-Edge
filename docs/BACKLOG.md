@@ -125,3 +125,7 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [x] EA-10 v3 (2026-10-10, journal day07): on/off switches `InpUseCostFilter`, `InpUseRRFilter`, `InpEntriesAfterSessionEnd`,
   `InpCancelAtSessionEnd`. They are MQL5 only and mapped in the executor; the detector and Python are unchanged.
 - [?] U-14 User: compile v3. Optionally run the tester with the switches off and send the `[BFEA]` lines and the CSVs.
+- [x] EA-11 v4 (2026-10-10, journal day07): exit switches `InpUseTimeStop` and `InpFlatBeforeRollover` (default on =
+  v3). Off departs from the ≤ 120-min hard rule at the owner's request (tester / demo only); such runs are not research
+  trials of H-14. MQL5 only; the detector and Python are unchanged.
+- [?] U-15 User: compile v4 and send every compiler message.

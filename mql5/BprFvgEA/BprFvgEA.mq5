@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 3)                                        |
+//| BprFvgEA.mq5  (version 4)                                        |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -22,6 +22,12 @@
 // InpCancelAtSessionEnd and InpEntriesAfterSessionEnd. The executor maps them onto the detector's existing settings
 // and environment (max cost 0 = off, min RR 0 = off, the session signals of BfEnv), so the pure detector and its Python
 // reference are unchanged; with the switches at their defaults v3 behaves exactly as v2.
+// Version 4 = version 3 + two EA-only exit switches (owner request 2026-10-10): InpUseTimeStop and
+// InpFlatBeforeRollover. Switched off, a position is no longer closed at market after InpMaxHoldMin ("close at market:
+// TIME") or at 16:44 New York ("ROLLOVER"); it runs to its server stop-loss / take-profit. Both default to ON, so the
+// defaults behave exactly as v3. Turning either OFF departs from the project's hard rule "every position closed
+// <= 120 minutes after entry": that is the owner's decision for the Strategy Tester / demo, and such runs are not
+// research trials of H-14 (see the README).
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -34,7 +40,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "3.00"
+#property version     "4.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -90,6 +96,7 @@ input bool                InpUseRRFilter          = true;               // Rewar
 input double              InpMinRR                = 0.0;                // Minimum reward:risk per entry (0 = off)
 input bool                InpUseCostFilter        = true;               // Cost filter ON (false = entries placed whatever their cost)
 input double              InpMaxCostR             = 0.30;               // Maximum round-trip cost per entry, fraction of its risk (0 = off)
+input bool                InpUseTimeStop          = true;               // Time stop ON (false = no "close at market: TIME"; the position runs to its SL / TP)
 input int                 InpMaxHoldMin           = 120;                // Time stop per position, minutes (max 120)
 
 input group "==== SESSION, RISK, EXECUTION ===="
@@ -98,13 +105,14 @@ input int                 InpServerOffsetH        = 0;                  // Fixed
 input bool                InpUseSession           = true;               // Entries 08:00 London .. 14:45 New York, Mon-Fri
 input bool                InpCancelAtSessionEnd   = true;               // Cancel pending orders at 14:45 New York (false = keep them until filled / expired)
 input bool                InpEntriesAfterSessionEnd = false;            // Allow NEW orders after 14:45 New York, until 16:44 New York (Mon-Fri)
+input bool                InpFlatBeforeRollover   = true;               // Close positions at 16:44 New York (false = held over the rollover / weekend: swap, gaps)
 input double              InpRiskPct              = 0.20;               // Risk per SETUP, % equity incl. commission (max 0.20), split over the entries
 input double              InpDailyLossPct         = 1.00;               // Planned daily loss, % (FX day 17:00 NY; max 1.00)
 input int                 InpMaxTradesDay         = 0;                  // Max positions per FX day (0 = no limit)
 input double              InpCommissionPerLotSide = 3.50;               // Commission per lot per side, account ccy (UNVERIFIED)
 input int                 InpSlippageTicks        = 1;                  // Slippage ticks (sizing, cost check)
 input int                 InpMaxSpreadPts         = 0;                  // Max spread in points (0 = off)
-input long                InpMagic                = 2610091;            // Magic number (v2 / v3)
+input long                InpMagic                = 2610091;            // Magic number (v2 / v3 / v4)
 input int                 InpDeviationPts         = 30;                 // Max deviation for market orders, points
 input int                 InpWarmupBars           = 5000;               // Closed bars processed at start (never traded)
 input bool                InpLogCsv               = true;               // CSV logs in the Common Files folder
@@ -154,7 +162,7 @@ struct BfTradeCtx
   };
 
 // A position with this EA's symbol and magic that no level owns (restart, or a fill that raced a cancel): managed
-// with its server SL/TP, the time stop and the 16:44 New York flat.
+// with its server SL/TP, the time stop and the 16:44 New York flat (each only while its v4 switch is ON).
 struct BfOrphan
   {
    ulong             posId;
@@ -824,8 +832,7 @@ void AddOrphan(const ulong posId, const datetime fillTime, const string why)
    g_orph[g_nOrph].lastTry    = 0;
    g_nOrph++;
    g_log.Error("position " + IntegerToString((long)posId) + " (opened " + CBfLogger::Ts(fillTime) + ") is managed " +
-               "without a setup (" + why + "): server SL/TP, the " + IntegerToString(g_maxHold) + "-min time stop " +
-               "and the 16:44 New York flat apply");
+               "without a setup (" + why + "): server SL/TP" + ExitsLogText() + " apply");
   }
 
 void RemoveOrphan(const int i)
@@ -875,8 +882,30 @@ ulong PosIdOfMarketFill(void)
    return(0);
   }
 
-// 16:44-17:00 New York: positions must be flat before the rollover; no new order, no pending order (any session
-// setting)
+// v4 exit switches: the two market closes that are not server orders (InpUseTimeStop, InpFlatBeforeRollover)
+bool TimeStopDue(const datetime fillTime, const datetime now)
+  {
+   return(InpUseTimeStop && (long)now >= (long)fillTime + (long)g_maxHold * 60);
+  }
+
+bool RolloverFlatDue(const datetime fillTime, const datetime now)
+  {
+   return(InpFlatBeforeRollover && g_ses.FlatDue(fillTime, now));
+  }
+
+// ", the 120-min time stop and the 16:44 New York flat" (only the exits that are ON)
+string ExitsLogText(void)
+  {
+   string t = "";
+   if(InpUseTimeStop)
+      t += ", the " + IntegerToString(g_maxHold) + "-min time stop";
+   if(InpFlatBeforeRollover)
+      t += (InpUseTimeStop ? " and" : ",") + " the 16:44 New York flat";
+   return(t);
+  }
+
+// 16:44-17:00 New York: no new order, no pending order over the rollover (any session setting; also with
+// InpFlatBeforeRollover = false, which only lets POSITIONS cross it)
 bool InRolloverWindow(void)
   {
    int m = CBfSession::MinuteOfDay(g_ses.ServerToNY(TimeCurrent()));
@@ -1344,8 +1373,9 @@ void SyncTrade(void)
                   continue;
                if(!g_ctx.lv[k].cancelWanted)
                  {
-                  // 16:44-17:00 New York (whatever InpUseSession / InpCancelAtSessionEnd are): no pending order over the
-                  // rollover, because a fill there would be closed at once by the 16:44 flat
+                  // 16:44-17:00 New York (whatever InpUseSession / InpCancelAtSessionEnd / InpFlatBeforeRollover are):
+                  // no pending order over the rollover (a fill there would be closed at once by the 16:44 flat, or
+                  // with the flat OFF would open in the rollover spread)
                   g_ctx.lv[k].cancelWanted = true;
                   g_nRollDel++;
                   g_log.Info(LevelTag(k) + "16:44-17:00 New York ROLLOVER: the pending order is deleted (this is the " +
@@ -1607,13 +1637,12 @@ void ManagePositions(void)
    for(k = 0; k < BF_NLEV; k++)
      {
       //--- a pending level that is partly filled (the rest is still being deleted): its position, whose identifier is
-      //    the order ticket, gets the time stop and the 16:44 flat from POSITION_TIME
+      //    the order ticket, gets the time stop and the 16:44 flat from POSITION_TIME (each while its switch is ON)
       if(g_ctx.lv[k].state == BF_XS_PENDING && g_ctx.lv[k].orderTicket > 0 &&
          g_trade.SelectPositionById(g_ctx.lv[k].orderTicket, tk) && PositionSelectByTicket(tk))
         {
          datetime pt = (datetime)PositionGetInteger(POSITION_TIME);
-         if(((long)now >= (long)pt + (long)g_maxHold * 60 || g_ses.FlatDue(pt, now)) && MgmtAllowed() &&
-            RetryDue(g_ctx.lv[k].lastTry))
+         if((TimeStopDue(pt, now) || RolloverFlatDue(pt, now)) && MgmtAllowed() && RetryDue(g_ctx.lv[k].lastTry))
            {
             if(g_trade.ClosePosition(tk))
                g_log.Info(LevelTag(k) + "partly filled position closed at market (time stop / 16:44 New York flat)");
@@ -1624,14 +1653,14 @@ void ManagePositions(void)
          continue;
       if(!g_trade.SelectPositionById(g_ctx.lv[k].posId, tk))
          continue;
-      //--- time stop: now >= fill_time + max_hold (<= 120 min)
-      if((long)now >= (long)g_ctx.lv[k].fillTime + (long)g_maxHold * 60)
+      //--- time stop: now >= fill_time + max_hold (<= 120 min); v4: only while InpUseTimeStop is ON
+      if(TimeStopDue(g_ctx.lv[k].fillTime, now))
         {
          CloseLevel(k, tk, "TIME");
          continue;
         }
-      //--- before the rollover: flat at 16:44 New York
-      if(g_ses.FlatDue(g_ctx.lv[k].fillTime, now))
+      //--- before the rollover: flat at 16:44 New York; v4: only while InpFlatBeforeRollover is ON
+      if(RolloverFlatDue(g_ctx.lv[k].fillTime, now))
         {
          CloseLevel(k, tk, "ROLLOVER");
          continue;
@@ -1656,7 +1685,7 @@ void ManageOrphans(void)
         }
       if(!g_trade.tradingAllowed)
          continue;
-      if((long)now >= (long)g_orph[i].fillTime + (long)g_maxHold * 60 || g_ses.FlatDue(g_orph[i].fillTime, now))
+      if(TimeStopDue(g_orph[i].fillTime, now) || RolloverFlatDue(g_orph[i].fillTime, now))
         {
          if(!MgmtAllowed() || !RetryDue(g_orph[i].lastTry))
             continue;
@@ -1915,6 +1944,14 @@ string FiltersText(void)
           " | cancel at window end " + canc + " | rollover order deletes " + IntegerToString(g_nRollDel));
   }
 
+// v4 exit switches as one line (panel, start log, self-check)
+string ExitsText(void)
+  {
+   return("exits: server SL/TP | time stop " + (InpUseTimeStop ? IntegerToString(g_maxHold) + " min" : "OFF (switch)") +
+          " | 16:44 New York flat " + (InpFlatBeforeRollover ? "ON" : "OFF (switch)") +
+          ((InpUseTimeStop && InpFlatBeforeRollover) ? "" : " | NOT a research trial (hard rule <= 120 min)"));
+  }
+
 void UpdatePanel(void)
   {
    string perm = "";
@@ -1922,26 +1959,27 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v3 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v4 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
                      FibText(g_fib[2]) + " | SL " + FibText(g_stopFib) + "+" + IntegerToString(g_stopBuf) + "t TP " +
                      FibText(g_tgtFib) + " | " + DirectionText() + (g_tradeLogic ? "" : " | IFVG: display only"));
    g_render.PanelSet(2, FiltersText());
-   g_render.PanelSet(3, "tracking: wait " + IntegerToString(g_det.PhaseCount(BF_PH_WAIT)) + " zone " +
+   g_render.PanelSet(3, ExitsText());
+   g_render.PanelSet(4, "tracking: wait " + IntegerToString(g_det.PhaseCount(BF_PH_WAIT)) + " zone " +
                      IntegerToString(g_det.PhaseCount(BF_PH_ZONE)) + " breakout " +
                      IntegerToString(g_det.PhaseCount(BF_PH_BREAK)) + " leg " +
                      IntegerToString(g_det.PhaseCount(BF_PH_LEG)) + " ordered " +
                      IntegerToString(g_det.PhaseCount(BF_PH_ORDERED)) + " filled " +
                      IntegerToString(g_det.PhaseCount(BF_PH_FILLED)));
-   g_render.PanelSet(4, DiagFunnel());
-   g_render.PanelSet(5, DiagSkips());
-   g_render.PanelSet(6, DiagWaits());
-   g_render.PanelSet(7, DiagEnded());
-   g_render.PanelSet(8, DiagOrders());
-   g_render.PanelSet(9, "orders/positions: " + CtxText());
-   g_render.PanelSet(10, "today: " + DoubleToString(g_risk.RealisedToday(), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
+   g_render.PanelSet(5, DiagFunnel());
+   g_render.PanelSet(6, DiagSkips());
+   g_render.PanelSet(7, DiagWaits());
+   g_render.PanelSet(8, DiagEnded());
+   g_render.PanelSet(9, DiagOrders());
+   g_render.PanelSet(10, "orders/positions: " + CtxText());
+   g_render.PanelSet(11, "today: " + DoubleToString(g_risk.RealisedToday(), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
                      " | lockout: " + (g_risk.Lockout() ? "YES" : "no") + " | positions " +
                      IntegerToString(g_risk.TradesToday()) + " | last: " + g_lastEvent);
    g_render.PanelDraw();
@@ -2008,6 +2046,14 @@ void SelfCheck(void)
    if(vpp > 0.0 && vmin > 0.0 && budget > 0.0)
       maxStop = (budget / vmin - 2.0 * g_commSide) / vpp;
    g_log.Info("SELF-CHECK " + FiltersText());
+   g_log.Info("SELF-CHECK " + ExitsText());
+   if(!InpUseTimeStop || !InpFlatBeforeRollover)
+      g_log.Info("SELF-CHECK note: " + (!InpUseTimeStop ? "no time stop" : "") +
+                 ((!InpUseTimeStop && !InpFlatBeforeRollover) ? " and " : "") +
+                 (!InpFlatBeforeRollover ? "no 16:44 New York flat" : "") + " - a position runs to its SL / TP" +
+                 (!InpFlatBeforeRollover ? " and may be held over the rollover and the weekend (swap; a gap can fill " +
+                  "the stop worse than planned, so a loss can exceed the 0.20 % budget)" : "") +
+                 "; one setup at a time, so no new setup trades while it is open");
    if(!InpUseCostFilter || (g_maxCostR <= 0.0))
       g_log.Info("SELF-CHECK note: the cost filter is off - an entry may be placed even when spread + commission + " +
                  "slippage are a large part of its risk (small Fibonacci legs)");
@@ -2270,12 +2316,13 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v3: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v4: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
-   g_log.Info("start v3: " + FiltersText());
+   g_log.Info("start v4: " + FiltersText());
+   g_log.Info("start v4: " + ExitsText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);
@@ -2397,9 +2444,11 @@ void OnDeinit(const int reason)
         }
       //--- removal / chart or terminal close / template / program stop: nothing would run the time stop and the
       //    16:44 flat any more, so this EA's positions are closed (raw requests). Recompile, input change and chart
-      //    change keep them: the restarted EA adopts them at once (Reconcile).
-      if(canSend && (reason == REASON_REMOVE || reason == REASON_CHARTCLOSE || reason == REASON_CLOSE ||
-                     reason == REASON_TEMPLATE || reason == REASON_PROGRAM))
+      //    change keep them: the restarted EA adopts them at once (Reconcile). v4: with both exit switches OFF the
+      //    EA has no market exit to run, so the positions are kept with their server SL/TP.
+      if(canSend && (InpUseTimeStop || InpFlatBeforeRollover) &&
+         (reason == REASON_REMOVE || reason == REASON_CHARTCLOSE || reason == REASON_CLOSE ||
+          reason == REASON_TEMPLATE || reason == REASON_PROGRAM))
         {
          for(i = PositionsTotal() - 1; i >= 0; i--)
            {
@@ -2411,9 +2460,10 @@ void OnDeinit(const int reason)
         }
       if(reason != REASON_RECOMPILE && g_trade.SelectPosition(tk))
          g_log.Error("stop (reason " + IntegerToString(reason) + "): position " + IntegerToString((long)tk) +
-                     " stays open with its server SL/TP only - the 120-min time stop and the 16:44 New York flat NO " +
-                     "LONGER RUN unless the EA runs again on " + _Symbol + " with magic " + IntegerToString(InpMagic) +
-                     ". Otherwise close it manually.");
+                     " stays open with its server SL/TP only" + ((InpUseTimeStop || InpFlatBeforeRollover) ?
+                     " - " + StringSubstr(ExitsLogText(), 2) + " NO LONGER RUN unless the EA runs again on " + _Symbol + " with magic " +
+                     IntegerToString(InpMagic) + ". Otherwise close it manually." :
+                     " (time stop and 16:44 flat are OFF by the v4 switches)"));
      }
    g_log.Info("stop (reason " + IntegerToString(reason) + ")" + note);
    g_log.Close();

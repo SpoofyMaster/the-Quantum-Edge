@@ -1,4 +1,4 @@
-# BprFvgEA v3: BPR rejection → breakout → Fibonacci pullback
+# BprFvgEA v4: BPR rejection → breakout → Fibonacci pullback
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 3.00; v3 = v2 plus the EA-only switches of §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 4.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -69,6 +69,7 @@ reference candle, the leg runs from a high `O` down to a low `X`, and sell limit
 | `InpMinRR` | `min_rr` | 0.0 | Minimum reward:risk per level (0 = off) |
 | `InpMaxCostR` | `max_cost_r` | 0.30 | Maximum round-trip cost per level, as a fraction of its risk (0 = off) |
 | `InpMaxHoldMin` | `max_hold_min` | 120 | Time stop per position, minutes (hard cap 120) |
+| `InpUseTimeStop` / `InpFlatBeforeRollover` | (EA only) | true / true | Exit switches (v4), §8. Off = not a research trial. |
 | `InpUseSession` | `use_session` | true | Entries 08:00 London → 14:45 New York, Mon–Fri. Orders are cancelled at 14:45 NY (EA: unless the switches of §8 change it). |
 | `InpUseCostFilter` / `InpUseRRFilter` | (EA only) | true / true | Switches, §8 |
 | `InpCancelAtSessionEnd` / `InpEntriesAfterSessionEnd` | (EA only) | true / false | Switches, §8 |
@@ -235,7 +236,7 @@ one placed level, the phase becomes `ORDERED` and `decisionBar = u`. With none, 
 | `NotifyRetry(id)` | **No order of the decision was sent**, for a transient reason: slot busy, breaker, risk baseline not ready, no tick, algo trading off, daily-loss budget | Every pending level goes back to `NONE`, and the phase becomes `LEG`. No record. |
 
 A fill on a level the detector has already cancelled cannot be passed back: the executor manages that position on
-its own. It still gets the time stop, the 16:44 New York flat and its server SL / TP.
+its own. It still gets the time stop, the 16:44 New York flat (each while its v4 switch is on) and its server SL / TP.
 
 ## 7. Event records (parity)
 
@@ -323,7 +324,8 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
 - **Account not confirmed yet** (terminal reconnecting): `NotifyRetry`. Only a REAL account is log-only.
 - **Daily loss** counts every deal of the EA's positions, whatever its magic, so manual closes count too.
 - **Removal.** When the EA is removed, or its chart or the terminal is closed, its positions are closed: nothing would
-  run their time stop any more. A recompile or an input change keeps them, and the restarted EA adopts them.
+  run their time stop any more. A recompile or an input change keeps them, and the restarted EA adopts them. v4: with
+  both exit switches off, they are kept with their server SL / TP (the EA has no market exit to run).
 - **EA-only switches (v3, owner request 2026-10-10).** These are not part of H-14's default rules, and the Python
   reference has no counterpart for them:
   - `InpUseCostFilter = false`: the executor passes `max_cost_r = 0` (off) to the detector.
@@ -352,6 +354,18 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   - for a market fill only, an excess-risk trim, as in v1.
 
   There is no partial TP and no break-even: the owner's rule has a single target.
+- **EA-only exit switches (v4, owner request 2026-10-10).** The owner saw positions closed by `close at market: TIME`
+  before they reached the final TP, and asked for an input:
+  - `InpUseTimeStop = false`: no time stop. `InpMaxHoldMin` is then unused.
+  - `InpFlatBeforeRollover = false`: no 16:44 New York flat. Positions may cross the 17:00 New York rollover and the
+    weekend (swap; a gap can fill the stop beyond the planned 0.20 %).
+
+  Both apply to the level positions, a partly filled order's position and the unowned (orphan) positions. Pending
+  orders keep every v3 rule: no order lives past the next 16:44 New York. Both default to `true` (= v3).
+  **Turning either off departs from the hard rule "every position closed ≤ 120 minutes after entry" (CLAUDE.md).** It
+  is the owner's decision for the Strategy Tester / demo. Such a run is not a research trial of H-14 and cannot support
+  any claim about it; the panel and the log mark it `NOT a research trial`. The detector and the Python reference are
+  unchanged: they never close positions. The harness's bar-based exit (`hold_bars`) models the default exits only.
 - **Diagnostics** (panel and Experts log):
   - the number of setups per phase;
   - counts of every `DONE` / `SKIP` reason;
