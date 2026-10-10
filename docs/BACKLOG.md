@@ -122,3 +122,6 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [ ] EXP011 Pre-register a backtest of H-14 (XAUUSD M1 2020-01 → 2025-06, spec defaults, bar-based simulator of the
   three entries). It needs a Python execution simulator for v2 first. Do not look at results before the
   pre-registration commit.
+- [x] EA-10 v3 (2026-10-10, journal day07): on/off switches `InpUseCostFilter`, `InpUseRRFilter`,
+  `InpCancelAtSessionEnd`. They are MQL5 only and mapped in the executor; the detector and Python are unchanged.
+- [?] U-14 User: compile v3. Optionally run the tester with the switches off and send the `[BFEA]` lines and the CSVs.

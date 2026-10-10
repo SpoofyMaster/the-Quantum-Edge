@@ -1,4 +1,26 @@
-# BprFvgEA v2: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+# BprFvgEA v3: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+
+> **v3 (2026-10-10)** = v2 plus three on/off switches, at the owner's request. They let entries go out even when they
+> would be skipped for **cost**, **reward:risk** or the **14:45 New York session end**:
+>
+> | Input | Default | `false` means |
+> |---|---|---|
+> | `InpUseCostFilter` | true | Entries are placed whatever their round-trip cost (`InpMaxCostR` is ignored). No more `SKIP (COST)`. |
+> | `InpUseRRFilter` | true | Entries are placed whatever their reward:risk (`InpMinRR` is ignored). No more `SKIP (RR)`. The default `InpMinRR` is already 0 (off). |
+> | `InpCancelAtSessionEnd` | true | Pending limit orders are **not** cancelled at 14:45 New York (no more `CANCEL (SESSION_END)`). They stay until they fill, the leg expires (`InpLegExpiryBars`) or a new high re-anchors the setup. |
+>
+> With all three at `true`, v3 behaves exactly like v2.
+>
+> **What the switches do not change:**
+> - **New orders after 14:45 New York.** Those still need `InpUseSession = false`, which also removes the 08:00
+>   London start.
+> - **The 16:44–17:00 New York rollover rule.** Pending orders are still deleted then, because a fill there would be
+>   closed at once by the 16:44 flat. The log calls this `ROLLOVER`, but the record reason is `SESSION_END`, and the
+>   panel counts these deletes separately.
+> - **The hard limits:** 0.20 % risk per setup, 1 % daily loss, 120-minute time stop, tester / demo only.
+>
+> **Implementation.** The switches live in the EA only. The executor passes a disabled filter to the detector as 0
+> (= off) and withholds the session-end signal, so the detector and its Python reference are unchanged.
 
 One Expert Advisor that does two things:
 
@@ -130,7 +152,9 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpFib1` / `InpFib2` / `InpFib3` | 50 / 61.8 / 71 | Entry retracements in % of the leg. 0 turns an entry off. |
 | `InpStopFib` / `InpStopBufferTicks` | 100 / 10 | Stop at this retracement (100 = the leg origin) plus this many ticks |
 | `InpTargetFib` | 0 | Take-profit retracement. 0 = the leg high (long) or low (short); negative = an extension beyond it. |
+| `InpUseRRFilter` | true | **v3 switch.** `false`: the reward:risk filter is off, whatever `InpMinRR` says |
 | `InpMinRR` | 0 | Minimum reward:risk per entry (0 = off) |
+| `InpUseCostFilter` | true | **v3 switch.** `false`: the cost filter is off, whatever `InpMaxCostR` says. Entries go out even when costs are a large part of their risk. |
 | `InpMaxCostR` | 0.30 | Skip an entry whose round-trip cost (spread + commission + 2 ticks of slippage) exceeds this fraction of its risk (0 = off) |
 | `InpMaxHoldMin` | 120 | Time stop per position, minutes (capped at 120) |
 
@@ -139,14 +163,15 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | Input | Default | Meaning |
 |---|---|---|
 | `InpServerMode` / `InpServerOffsetH` | NY+7 / 0 | Server time → UTC. NY+7 is IC Markets (`UNVERIFIED`). The [self-check](#self-check-at-start) prints the resulting entry window. |
-| `InpUseSession` | true | New orders only 08:00 London → 14:45 New York, Mon–Fri. Pending orders are cancelled at 14:45 New York. |
+| `InpUseSession` | true | New orders only 08:00 London → 14:45 New York, Mon–Fri. Pending orders are cancelled at 14:45 New York (unless `InpCancelAtSessionEnd = false`). |
+| `InpCancelAtSessionEnd` | true | **v3 switch.** `false`: pending orders are kept after 14:45 New York until they fill or the leg expires. They are still deleted at the 16:44–17:00 New York rollover. |
 | `InpRiskPct` | 0.20 | Risk **per setup**, % of equity incl. commission, split over the entries (capped at 0.20) |
 | `InpDailyLossPct` | 1.00 | Planned daily loss, % (capped at 1.00) |
 | `InpMaxTradesDay` | 0 | Maximum positions per FX day (0 = no limit) |
 | `InpCommissionPerLotSide` | 3.50 | Commission per lot per side, account currency (`UNVERIFIED`) |
 | `InpSlippageTicks` | 1 | Added to the stop distance for sizing, and to the cost check |
 | `InpMaxSpreadPts` | 0 | No new orders while the spread is above this (0 = off) |
-| `InpMagic` | 2610091 | Magic number. It differs from v1, so v1 positions are not mixed in. |
+| `InpMagic` | 2610091 | Magic number, the same for v2 and v3. It differs from v1, so v1 positions are not mixed in. |
 | `InpDeviationPts` | 30 | Market orders (an entry whose price is already reached when it is sent) |
 | `InpWarmupBars` | 5000 | Closed bars processed at start. Setups created during warm-up are never traded. |
 | `InpLogCsv` | true | CSV logs in the Common Files folder |
@@ -243,14 +268,15 @@ The panel (top left) answers "why is nothing happening?" at a glance:
 |---|---|---|
 | 1 | `mode: TESTER \| algo trading: ON` | `REAL: LOG-ONLY` or `algo trading: OFF - …` means no order can go out; the reason is spelled out. |
 | 2 | `rules: touches <= 2, 2 closes, FVG LUXALGO \| entries 50.0% 61.8% 71.0% \| …` | The active rules |
-| 3 | `tracking: wait 3 zone 1 breakout 0 leg 1 ordered 0 filled 0` | Setups in each phase now |
-| 4 | `funnel: BPRs 57 \| touches 31 \| breakouts 9 (failed 3) \| confirmed 6 \| limits placed 9 \| closed 2` | How far setups get, cumulative since start |
-| 5 | `entries skipped: missed 1 cost 7 rr 0 bad 0 \| dropped: size 0 refused 0 expired 0` | Why decided entries were not sent: `cost` → `InpMaxCostR`; `size` → the account is too small for the minimum volume; `refused` → the broker refused (see row 8 and the log) |
-| 6 | `waiting: no FVG 12 bars \| blocked: session 40 slot 0 risk 0 spread 0 \| retried 0 \| re-anchored 2` | Ready setups that could not decide, and why |
-| 7 | `ended: broken 30 expired 4 3rd touch 2 leg broken 3 no level 1 session 0 refused 0` | How setups ended without a trade |
-| 8 | `orders: accepted 9 refused 0 \| last error: …` | Broker responses, with the last retcode |
-| 9 | `orders/positions: #12 LONG SL … TP …: L1 limit … \| L2 open 0.04 @ …` | The live orders and positions |
-| 10 | `today: … \| lockout: no \| positions 2 \| last: …` | Daily risk state and the last event |
+| 3 | `switches: cost filter <= 0.30 R \| RR filter off (InpMinRR = 0) \| cancel at 14:45 NY ON \| entry window … \| rollover deletes 0` | **v3:** the state of the three switches and the entry window |
+| 4 | `tracking: wait 3 zone 1 breakout 0 leg 1 ordered 0 filled 0` | Setups in each phase now |
+| 5 | `funnel: BPRs 57 \| touches 31 \| breakouts 9 (failed 3) \| confirmed 6 \| entry decisions 9 (orders accepted 9) \| closed 2` | How far setups get, cumulative since start |
+| 6 | `entries skipped: missed 1 cost 7 rr 0 bad 0 \| dropped: size 0 refused 0 expired 0` | Why decided entries were not sent: `cost` → `InpUseCostFilter` / `InpMaxCostR`; `rr` → `InpUseRRFilter` / `InpMinRR`; `size` → the account is too small for the minimum volume; `refused` → the broker refused (see row 9 and the log) |
+| 7 | `waiting: no FVG 12 bars \| blocked: session 40 slot 0 daily-risk 0 spread/catch-up 0 \| retried 0 \| re-anchored 2` | Ready setups that could not decide, and why |
+| 8 | `ended: broken 30 … session 0 (rollover deletes 0) refused 0 …` | How setups ended without a trade |
+| 9 | `orders: accepted 9 refused 0 \| filling … \| last error: …` | Broker responses, with the last retcode |
+| 10 | `orders/positions: #12 LONG SL … TP …: L1 limit … \| L2 open 0.04 @ …` | The live orders and positions |
+| 11 | `today: … \| lockout: no \| positions 2 \| last: …` | Daily risk state and the last event |
 
 The same rows go to the Experts log as `DIAG` lines at every new FX day and when the EA stops.
 

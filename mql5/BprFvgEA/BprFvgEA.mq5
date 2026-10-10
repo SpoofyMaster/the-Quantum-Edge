@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 2)                                        |
+//| BprFvgEA.mq5  (version 3)                                        |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -18,6 +18,10 @@
 // Specification (single source of truth): research/indicators/BPR_BREAKOUT_FIB_SPEC.md ("spec s.N" below).
 // Python reference with the same detector records: qe/strategies/bpr_breakout.py.
 // Version 1 (H-13 sweep / MSS / far-edge limit rules, REJECTED by EXP010) is frozen in mql5/archive/BprFvgEA_v1_H13.
+// Version 3 = version 2 + three EA-only switches (owner request 2026-10-10): InpUseCostFilter, InpUseRRFilter and
+// InpCancelAtSessionEnd. The executor maps them onto the detector's existing settings (max cost 0 = off, min RR 0 =
+// off, no session-cancel signal), so the pure detector and its Python reference are unchanged; with the switches at
+// their defaults (true) v3 behaves exactly as v2.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -30,7 +34,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "2.00"
+#property version     "3.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -82,7 +86,9 @@ input double              InpFib3                 = 71.0;               // Entry
 input double              InpStopFib              = 100.0;              // Stop-loss: retracement % (100 = the leg origin)
 input int                 InpStopBufferTicks      = 10;                 // Stop-loss: extra ticks beyond that level
 input double              InpTargetFib            = 0.0;                // Take-profit: retracement % (0 = the leg high/low; <0 = extension)
+input bool                InpUseRRFilter          = true;               // Reward:risk filter ON (false = entries placed whatever their RR)
 input double              InpMinRR                = 0.0;                // Minimum reward:risk per entry (0 = off)
+input bool                InpUseCostFilter        = true;               // Cost filter ON (false = entries placed whatever their cost)
 input double              InpMaxCostR             = 0.30;               // Maximum round-trip cost per entry, fraction of its risk (0 = off)
 input int                 InpMaxHoldMin           = 120;                // Time stop per position, minutes (max 120)
 
@@ -90,13 +96,14 @@ input group "==== SESSION, RISK, EXECUTION ===="
 input ENUM_BF_SERVER_TIME InpServerMode           = BF_SERVER_NY_PLUS_7;// Server time convention
 input int                 InpServerOffsetH        = 0;                  // Fixed-offset mode only: server = UTC + hours
 input bool                InpUseSession           = true;               // Entries 08:00 London .. 14:45 New York, Mon-Fri
+input bool                InpCancelAtSessionEnd   = true;               // Cancel pending orders at 14:45 New York (false = keep them until filled / expired)
 input double              InpRiskPct              = 0.20;               // Risk per SETUP, % equity incl. commission (max 0.20), split over the entries
 input double              InpDailyLossPct         = 1.00;               // Planned daily loss, % (FX day 17:00 NY; max 1.00)
 input int                 InpMaxTradesDay         = 0;                  // Max positions per FX day (0 = no limit)
 input double              InpCommissionPerLotSide = 3.50;               // Commission per lot per side, account ccy (UNVERIFIED)
 input int                 InpSlippageTicks        = 1;                  // Slippage ticks (sizing, cost check)
 input int                 InpMaxSpreadPts         = 0;                  // Max spread in points (0 = off)
-input long                InpMagic                = 2610091;            // Magic number (v2)
+input long                InpMagic                = 2610091;            // Magic number (v2 / v3)
 input int                 InpDeviationPts         = 30;                 // Max deviation for market orders, points
 input int                 InpWarmupBars           = 5000;               // Closed bars processed at start (never traded)
 input bool                InpLogCsv               = true;               // CSV logs in the Common Files folder
@@ -238,6 +245,7 @@ int            g_nLogOnly     = 0;      // decisions not sent because the accoun
 string         g_mgmtBlock    = "";     // management sends paused (algo trading off): logged when it changes
 int            g_nExpPre      = 0;      // setups expired before the breakout confirmation
 int            g_nExpLeg      = 0;      // setups expired after the confirmation (no pullback / FVG / fill in time)
+int            g_nRollDel     = 0;      // pending orders deleted by the 16:44 New York rollover rule
 
 //--- validated copies of the inputs
 int            g_len          = 5;
@@ -446,8 +454,9 @@ void BuildParams(void)
    g_bp.stopFib              = g_stopFib;
    g_bp.stopBufferTicks      = g_stopBuf;
    g_bp.targetFib            = g_tgtFib;
-   g_bp.minRR                = g_minRR;
-   g_bp.maxCostR             = g_maxCostR;
+   // v3 switches (EA only): a filter that is switched off is passed to the detector as 0 = off
+   g_bp.minRR                = InpUseRRFilter ? g_minRR : 0.0;
+   g_bp.maxCostR             = InpUseCostFilter ? g_maxCostR : 0.0;
    g_bp.maxHoldMin           = g_maxHold;
    g_bp.useSession           = InpUseSession;
    g_bp.commissionPerLotSide = g_commSide;
@@ -1311,8 +1320,12 @@ void SyncTrade(void)
                   continue;
                if(!g_ctx.lv[k].cancelWanted)
                  {
-                  // 16:44-17:00 New York (also with InpUseSession = false): no pending order over the rollover
+                  // 16:44-17:00 New York (whatever InpUseSession / InpCancelAtSessionEnd are): no pending order over the
+                  // rollover, because a fill there would be closed at once by the 16:44 flat
                   g_ctx.lv[k].cancelWanted = true;
+                  g_nRollDel++;
+                  g_log.Info(LevelTag(k) + "16:44-17:00 New York ROLLOVER: the pending order is deleted (this is the " +
+                             "rollover rule, not the 14:45 session end; recorded with reason SESSION_END)");
                   if(!g_ctx.lv[k].cancelled)
                     {
                      g_ctx.lv[k].cancelled = true;
@@ -1650,7 +1663,9 @@ void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool s
       env.sp = q.ask - q.bid;                    // spread at the decision moment (first tick of bar u+1)
    env.slotFree       = SlotFree();
    env.sessionEntryOk = g_ses.EntryOk(nextOpen);
-   env.sessionCancel  = g_ses.SessionCancel(nextOpen);
+   // v3 switch: with InpCancelAtSessionEnd = false the detector never gets the 14:45 New York cancel signal, so pending
+   // orders stay until they fill, the leg expires (InpLegExpiryBars) or the 16:44 New York rollover rule deletes them
+   env.sessionCancel  = InpCancelAtSessionEnd ? g_ses.SessionCancel(nextOpen) : false;
    env.riskOk         = g_risk.RiskOk();         // the order-error breaker is checked (and reported) by ExecBatch
    // a catch-up bar (not the last closed bar) has no decision tick: its spread is unknown -> no entry on it
    env.spreadOk       = (!stale && (g_maxSpreadPts <= 0 || env.sp <= (double)g_maxSpreadPts * _Point + 1e-12));
@@ -1806,7 +1821,8 @@ string DiagEnded(void)
           IntegerToString(St(BF_STAT_DONE + BF_R_TOUCH_LIMIT)) + " leg broken " +
           IntegerToString(St(BF_STAT_DONE + BF_R_LEG_BROKEN)) + " no level " +
           IntegerToString(St(BF_STAT_DONE + BF_R_NO_LEVEL)) + " session " +
-          IntegerToString(St(BF_STAT_DONE + BF_R_SESSION_END)) + " refused " +
+          IntegerToString(St(BF_STAT_DONE + BF_R_SESSION_END)) + " (rollover deletes " + IntegerToString(g_nRollDel) +
+          ") refused " +
           IntegerToString(St(BF_STAT_DONE + BF_R_ORDER_FAILED)) + " size " +
           IntegerToString(St(BF_STAT_DONE + BF_R_SIZE_BELOW_MIN)) + " geometry " +
           IntegerToString(St(BF_STAT_DONE + BF_R_BAD_GEOMETRY)) + " capacity " +
@@ -1833,6 +1849,18 @@ void LogDiagnostics(const string when)
    g_log.Info("DIAG " + when + " | " + DiagOrders());
   }
 
+// v3 switches as one line (panel, start log, self-check)
+string FiltersText(void)
+  {
+   string cost = !InpUseCostFilter ? "OFF (switch)" : ((g_maxCostR > 0.0) ? "<= " + DoubleToString(g_maxCostR, 2) + " R" :
+                                                       "off (InpMaxCostR = 0)");
+   string rr   = !InpUseRRFilter ? "OFF (switch)" : ((g_minRR > 0.0) ? ">= " + DoubleToString(g_minRR, 2) :
+                                                   "off (InpMinRR = 0)");
+   return("switches: cost filter " + cost + " | RR filter " + rr + " | cancel at 14:45 NY " +
+          (InpCancelAtSessionEnd ? "ON" : "OFF") + " | entry window " + (InpUseSession ? "08:00 LDN-14:45 NY" : "OFF") +
+          " | rollover deletes " + IntegerToString(g_nRollDel));
+  }
+
 void UpdatePanel(void)
   {
    string perm = "";
@@ -1840,25 +1868,26 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v2 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v3 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
                      FibText(g_fib[2]) + " | SL " + FibText(g_stopFib) + "+" + IntegerToString(g_stopBuf) + "t TP " +
                      FibText(g_tgtFib) + " | " + DirectionText() + (g_tradeLogic ? "" : " | IFVG: display only"));
-   g_render.PanelSet(2, "tracking: wait " + IntegerToString(g_det.PhaseCount(BF_PH_WAIT)) + " zone " +
+   g_render.PanelSet(2, FiltersText());
+   g_render.PanelSet(3, "tracking: wait " + IntegerToString(g_det.PhaseCount(BF_PH_WAIT)) + " zone " +
                      IntegerToString(g_det.PhaseCount(BF_PH_ZONE)) + " breakout " +
                      IntegerToString(g_det.PhaseCount(BF_PH_BREAK)) + " leg " +
                      IntegerToString(g_det.PhaseCount(BF_PH_LEG)) + " ordered " +
                      IntegerToString(g_det.PhaseCount(BF_PH_ORDERED)) + " filled " +
                      IntegerToString(g_det.PhaseCount(BF_PH_FILLED)));
-   g_render.PanelSet(3, DiagFunnel());
-   g_render.PanelSet(4, DiagSkips());
-   g_render.PanelSet(5, DiagWaits());
-   g_render.PanelSet(6, DiagEnded());
-   g_render.PanelSet(7, DiagOrders());
-   g_render.PanelSet(8, "orders/positions: " + CtxText());
-   g_render.PanelSet(9, "today: " + DoubleToString(g_risk.RealisedToday(), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
+   g_render.PanelSet(4, DiagFunnel());
+   g_render.PanelSet(5, DiagSkips());
+   g_render.PanelSet(6, DiagWaits());
+   g_render.PanelSet(7, DiagEnded());
+   g_render.PanelSet(8, DiagOrders());
+   g_render.PanelSet(9, "orders/positions: " + CtxText());
+   g_render.PanelSet(10, "today: " + DoubleToString(g_risk.RealisedToday(), 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
                      " | lockout: " + (g_risk.Lockout() ? "YES" : "no") + " | positions " +
                      IntegerToString(g_risk.TradesToday()) + " | last: " + g_lastEvent);
    g_render.PanelDraw();
@@ -1923,6 +1952,10 @@ void SelfCheck(void)
               " SPECIFIED " + (((expm & SYMBOL_EXPIRATION_SPECIFIED) != 0) ? "yes" : "no"));
    if(vpp > 0.0 && vmin > 0.0 && budget > 0.0)
       maxStop = (budget / vmin - 2.0 * g_commSide) / vpp;
+   g_log.Info("SELF-CHECK " + FiltersText());
+   if(!InpUseCostFilter || (g_maxCostR <= 0.0))
+      g_log.Info("SELF-CHECK note: the cost filter is off - an entry may be placed even when spread + commission + " +
+                 "slippage are a large part of its risk (small Fibonacci legs)");
    g_log.Info("SELF-CHECK risk: " + DoubleToString(g_riskPct, 2) + "% per setup = " + DoubleToString(budget, 2) + " " +
               AccountInfoString(ACCOUNT_CURRENCY) + " per entry (" + IntegerToString(g_nLevels) + " entries) | volume min " +
               DoubleToString(vmin, 2) + " step " + DoubleToString(g_trade.VolumeStep(), 2) +
@@ -2174,11 +2207,12 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v2: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v3: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
+   g_log.Info("start v3: " + FiltersText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);

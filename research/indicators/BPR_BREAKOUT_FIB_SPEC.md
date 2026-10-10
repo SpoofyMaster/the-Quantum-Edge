@@ -322,6 +322,15 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
 - **Daily loss** counts every deal of the EA's positions, whatever its magic, so manual closes count too.
 - **Removal.** When the EA is removed, or its chart or the terminal is closed, its positions are closed: nothing would
   run their time stop any more. A recompile or an input change keeps them, and the restarted EA adopts them.
+- **EA-only switches (v3, owner request 2026-10-10).** These are not part of H-14's default rules, and the Python
+  reference has no counterpart for them:
+  - `InpUseCostFilter = false`: the executor passes `max_cost_r = 0` (off) to the detector.
+  - `InpUseRRFilter = false`: the executor passes `min_rr = 0` (off).
+  - `InpCancelAtSessionEnd = false`: `env.sessionCancel` is always false, so the 14:45 New York cancel (§4.3 step 4,
+    §4.4 step 3) never fires. The entry window and the 16:44 rollover rule still apply.
+
+  The first two equal `max_cost_r = 0` / `min_rr = 0` in the reference. Any backtest that uses a switch is a new
+  trial.
 - **Positions.** Each one has:
   - its server SL / TP;
   - a time stop `fill_time + max_hold_min` (at most 120 min);

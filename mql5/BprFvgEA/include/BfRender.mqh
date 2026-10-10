@@ -32,7 +32,7 @@
 #define BF_NSLOTS         80      // 4 kinds x BF_MAXB slots (draw cache)
 #define BF_SK_KEEP        40      // setups whose drawings stay on the chart (v2 spec s.8)
 #define BF_SK_BARS        15      // Fibonacci lines run this many bars past the leg extreme / decision
-#define BF_PANEL_ROWS     10
+#define BF_PANEL_ROWS     11
 
 //+------------------------------------------------------------------+
 //| Colour helpers (MQL5 colour layout is 0x00BBGGRR)                |
