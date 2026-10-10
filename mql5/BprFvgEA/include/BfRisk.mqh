@@ -42,6 +42,8 @@ private:
    int               m_trades;          // positions opened by this EA in the current FX day (distinct position ids)
    bool              m_lockout;
    double            m_lastBudget;      // equity * risk% of the last SizeLots call (account currency)
+   ulong             m_foreign[];       // v4: position ids proven NOT opened by this EA (OlderPositionToday cache)
+   int               m_nForeign;
 
 public:
                      CBfRisk(void)
@@ -58,6 +60,8 @@ public:
       m_trades       = 0;
       m_lockout      = false;
       m_lastBudget   = 0.0;
+      m_nForeign     = 0;
+      ArrayResize(m_foreign, 0);
      }
 
    void              Init(const string sym, const long magic, const double riskPct, const double dayLossPct,
@@ -75,6 +79,8 @@ public:
       m_trades       = 0;
       m_lockout      = false;
       m_lastBudget   = 0.0;
+      m_nForeign     = 0;
+      ArrayResize(m_foreign, 0);
      }
 
    double            RiskPct(void)
@@ -136,10 +142,52 @@ public:
       return(false);
      }
 
+   //--- v4: today's result of position pid if THIS EA opened it (its IN deal has this symbol + magic), else 0. Used for
+   //    a deal of today whose position was opened before Recompute's 4-day window: a position held for days with the
+   //    v4 exit switches off. HistorySelectByPosition replaces the history selection, so it runs after both passes.
+   //    A position whose entry deals were found and are all another program's is cached in m_foreign (an entry deal
+   //    never changes), so it is not looked up again on every bar; an EA entry inside the window still wins (ids).
+   double            OlderPositionToday(CBfSession &ses, const ulong pid)
+     {
+      int    j;
+      int    n;
+      ulong  d;
+      bool   ours   = false;
+      bool   anyIn  = false;
+      double sum    = 0.0;
+      if(!HistorySelectByPosition((long)pid))
+         return(0.0);
+      n = HistoryDealsTotal();
+      for(j = 0; j < n; j++)
+        {
+         d = HistoryDealGetTicket(j);
+         if(d == 0)
+            continue;
+         if(HistoryDealGetInteger(d, DEAL_ENTRY) == (long)DEAL_ENTRY_IN)
+           {
+            anyIn = true;
+            if(HistoryDealGetString(d, DEAL_SYMBOL) == m_sym && HistoryDealGetInteger(d, DEAL_MAGIC) == m_magic)
+               ours = true;
+           }
+         if(ses.FxDay((datetime)HistoryDealGetInteger(d, DEAL_TIME)) == m_fxDay)
+            sum += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION) +
+                   HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_FEE);
+        }
+      if(!ours && anyIn && !HasId(m_foreign, m_nForeign, pid))
+        {
+         ArrayResize(m_foreign, m_nForeign + 1, 16);
+         m_foreign[m_nForeign] = pid;
+         m_nForeign++;
+        }
+      return(ours ? sum : 0.0);
+     }
+
    //--- rebuilds the realised P&L and the trade count of the current FX day from the deal history.
    //    Pass 1: the positions this EA opened (an IN deal with this symbol + magic). Pass 2: every deal of those
    //    positions inside the FX day, WHATEVER its magic: a manual / mobile / script close of an EA position carries
    //    magic 0 or a foreign magic, and its loss must still count towards the daily limit.
+   //    v4: a deal of today whose position has no IN deal of this EA in the 4-day window (another program's position,
+   //    or an EA position held for days with the exit switches off) is checked by position (OlderPositionToday).
    void              Recompute(CBfSession &ses)
      {
       int      i;
@@ -150,6 +198,8 @@ public:
       ulong    pid;
       ulong    ids[];
       ulong    dayIds[];
+      ulong    cand[];
+      int      nCand = 0;
       datetime now = TimeCurrent();
       bool     inDay;
       m_realised = 0.0;
@@ -190,11 +240,24 @@ public:
             continue;
          pid   = (ulong)HistoryDealGetInteger(d, DEAL_POSITION_ID);
          inDay = (ses.FxDay((datetime)HistoryDealGetInteger(d, DEAL_TIME)) == m_fxDay);
-         if(!inDay || !HasId(ids, nIds, pid))
+         if(!inDay)
             continue;
+         if(!HasId(ids, nIds, pid))
+           {
+            if(pid != 0 && !HasId(cand, nCand, pid) && !HasId(m_foreign, m_nForeign, pid))
+              {
+               ArrayResize(cand, nCand + 1, 16);
+               cand[nCand] = pid;
+               nCand++;
+              }
+            continue;
+           }
          m_realised += HistoryDealGetDouble(d, DEAL_PROFIT) + HistoryDealGetDouble(d, DEAL_COMMISSION) +
                        HistoryDealGetDouble(d, DEAL_SWAP) + HistoryDealGetDouble(d, DEAL_FEE);
         }
+      // not counted in m_trades: those positions were opened on an earlier FX day
+      for(i = 0; i < nCand; i++)
+         m_realised += OlderPositionToday(ses, cand[i]);
       m_trades = nDay;
       if(!m_lockout && m_dayStartEq > 0.0 && -m_realised >= DayLimit() - 1e-9)
          m_lockout = true;
@@ -212,6 +275,8 @@ public:
       m_fxDay    = fxDay;
       m_lockout  = false;
       m_realised = 0.0;
+      m_nForeign = 0;                                    // the cache only needs today's position ids
+      ArrayResize(m_foreign, 0);
       Recompute(ses);
       // equity at the start of the FX day: current equity minus what was already realised today (restart-safe)
       m_dayStartEq = eq - m_realised;

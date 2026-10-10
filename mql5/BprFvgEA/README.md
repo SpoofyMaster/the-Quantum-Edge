@@ -17,14 +17,22 @@
 >   research trial of H-14**; the panel and the log say so (`NOT a research trial`).
 > - **Risk.** The 0.20 % per setup is the loss at the stop-loss. Held over the rollover or a weekend, a position pays
 >   swap (not in the cost check) and a price gap can fill the stop worse than planned, so a loss can exceed 0.20 %.
->   The 1 % daily limit counts a loss on the FX day the position is closed.
+>   The 1 % daily limit counts a loss on the FX day the position is closed, also for a position held for more than
+>   the 4 days of history the daily count normally reads (it is then looked up by position).
+> - **Only `InpFlatBeforeRollover = false`:** the time stop still runs, but it can fall after 16:44 New York, e.g. a
+>   fill at 15:03 New York is due at 17:03: the position is held over the 17:00 rollover (swap, triple on Wednesday;
+>   the rollover spread). If the market is closed then (a daily break, or
+>   after the Friday close) the close waits for the first tick after the reopen, so the position can be held over the
+>   weekend. This is why the panel marks this case `NOT a research trial` too.
 > - **One setup at a time.** While a position is open, no new setup trades. Without the time stop this can last for
 >   hours or days.
 > - **Unchanged:** pending orders are still deleted at the 16:44–17:00 New York rollover and never live past the
 >   next 16:44 New York (server-side expiry); no new order is sent then. Only **positions** may now cross the rollover.
 > - **Removing the EA** (or closing its chart or the terminal) no longer closes its positions when **both** switches
 >   are off: the EA has no market exit to run, and the positions keep their server SL / TP. With either switch on,
->   they are closed as before.
+>   they are closed as before. If you start the EA again later **with a switch on**, a kept position is closed at
+>   market on the first tick if it is already past `InpMaxHoldMin` (only with `InpUseTimeStop = true`; the time stop
+>   counts from the fill) or was opened before the last 16:44 New York (only with `InpFlatBeforeRollover = true`).
 > - **Implementation.** EA only (`TimeStopDue`, `RolloverFlatDue` in `BprFvgEA.mq5`). The detector and the Python
 >   reference are unchanged; they never closed positions.
 
@@ -60,7 +68,8 @@
 >
 >   The log calls these deletes `ROLLOVER`, but the record reason is `SESSION_END`, so these setups also count in the
 >   panel's `session` count. The panel shows the number of deleted orders next to it.
-> - **The hard limits:** 0.20 % risk per setup, 1 % daily loss, 120-minute time stop, tester / demo only.
+> - **The hard limits:** 0.20 % risk per setup, 1 % daily loss, 120-minute time stop (switchable since v4), tester /
+>   demo only.
 >
 > **Implementation.** The switches live in the EA only. The executor passes a disabled filter to the detector as 0
 > (= off) and withholds the session-end signal, so the detector and its Python reference are unchanged.
@@ -128,10 +137,11 @@ v2:
     with three entries);
   - **1.00 % planned daily loss** per FX day (from 17:00 New York), then lockout;
   - one setup with orders or positions at a time;
-  - every position is closed at most **120 minutes after its fill** and before **16:44 New York** (the defaults;
-    the v4 switches `InpUseTimeStop` / `InpFlatBeforeRollover` can turn these two exits off, see the top);
   - no martingale, grid, averaging down or size increase after losses. The three Fibonacci entries are a fixed plan,
     decided once, with a fixed total risk. They are never added after a loss.
+- **Default exits** (on by default; since v4 each can be switched off for the tester / demo, and a run with either off
+  is **not a research trial**, see the top): every position is closed at most **120 minutes after its fill**
+  (`InpUseTimeStop`) and before **16:44 New York** (`InpFlatBeforeRollover`).
 - **One EA instance per account.** The daily budget is per instance.
 - **Locked final-test period.** Do not use data from **2025-07-01 onward** to choose or tune anything.
 - **Broker values are `UNVERIFIED`:**
@@ -415,8 +425,8 @@ All of these are inputs or are stated in the spec (§0):
   orders left from before are deleted.
 - **Fills that race a cancel.** A fill that happens just as the EA cancels the order is managed without its setup.
 - **Stopping the EA.**
-  - Removing the EA, or closing its chart or the terminal, **closes its positions**: no time stop would run any
-    more. It also deletes its pending orders. v4: with `InpUseTimeStop = false` **and** `InpFlatBeforeRollover =
+  - Removing the EA, or closing its chart or the terminal, **closes its positions**: its market exits (the time stop
+    and / or the 16:44 New York flat, whichever is on) would not run any more. It also deletes its pending orders. v4: with `InpUseTimeStop = false` **and** `InpFlatBeforeRollover =
     false`, the positions are kept with their server SL / TP.
   - A recompile, an input change or a timeframe change keeps the positions, and the restarted EA manages them again.
 - **Spread and decision time.** Decisions use the spread at the first tick of the next bar. The Python reference uses

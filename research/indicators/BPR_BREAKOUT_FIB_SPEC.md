@@ -322,9 +322,11 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
 - **Rollover window** 16:44–17:00 New York, whatever `use_session` is set to: no decision is sent (`NotifyRetry`), and
   pending orders are deleted (`SESSION_END`).
 - **Account not confirmed yet** (terminal reconnecting): `NotifyRetry`. Only a REAL account is log-only.
-- **Daily loss** counts every deal of the EA's positions, whatever its magic, so manual closes count too.
+- **Daily loss** counts every deal of the EA's positions, whatever its magic, so manual closes count too. It reads the
+  last 4 days of history; v4: a deal of today whose position has no EA entry deal in that window (a position held for
+  days with the exit switches off) is looked up by position, and counted when the EA opened it.
 - **Removal.** When the EA is removed, or its chart or the terminal is closed, its positions are closed: nothing would
-  run their time stop any more. A recompile or an input change keeps them, and the restarted EA adopts them. v4: with
+  run their time stop / 16:44 New York flat (whichever is on) any more. A recompile or an input change keeps them, and the restarted EA adopts them. v4: with
   both exit switches off, they are kept with their server SL / TP (the EA has no market exit to run).
 - **EA-only switches (v3, owner request 2026-10-10).** These are not part of H-14's default rules, and the Python
   reference has no counterpart for them:
@@ -359,6 +361,9 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   - `InpUseTimeStop = false`: no time stop. `InpMaxHoldMin` is then unused.
   - `InpFlatBeforeRollover = false`: no 16:44 New York flat. Positions may cross the 17:00 New York rollover and the
     weekend (swap; a gap can fill the stop beyond the planned 0.20 %).
+
+  With only the flat off, the time stop can fall after 16:44 New York (in the rollover spread) or after the Friday
+  close, when the close waits for the reopen.
 
   Both apply to the level positions, a partly filled order's position and the unowned (orphan) positions. Pending
   orders keep every v3 rule: no order lives past the next 16:44 New York. Both default to `true` (= v3).

@@ -832,7 +832,7 @@ void AddOrphan(const ulong posId, const datetime fillTime, const string why)
    g_orph[g_nOrph].lastTry    = 0;
    g_nOrph++;
    g_log.Error("position " + IntegerToString((long)posId) + " (opened " + CBfLogger::Ts(fillTime) + ") is managed " +
-               "without a setup (" + why + "): server SL/TP" + ExitsLogText() + " apply");
+               "without a setup (" + why + "): " + ExitsListText());
   }
 
 void RemoveOrphan(const int i)
@@ -893,15 +893,37 @@ bool RolloverFlatDue(const datetime fillTime, const datetime now)
    return(InpFlatBeforeRollover && g_ses.FlatDue(fillTime, now));
   }
 
-// ", the 120-min time stop and the 16:44 New York flat" (only the exits that are ON)
-string ExitsLogText(void)
+// the EA's market exits that are ON: "the 120-min time stop and the 16:44 New York flat" ("" when both are OFF)
+string MarketExitsText(void)
   {
-   string t = "";
+   string ts = "the " + IntegerToString(g_maxHold) + "-min time stop";
+   if(InpUseTimeStop && InpFlatBeforeRollover)
+      return(ts + " and the 16:44 New York flat");
    if(InpUseTimeStop)
-      t += ", the " + IntegerToString(g_maxHold) + "-min time stop";
+      return(ts);
    if(InpFlatBeforeRollover)
-      t += (InpUseTimeStop ? " and" : ",") + " the 16:44 New York flat";
-   return(t);
+      return("the 16:44 New York flat");
+   return("");
+  }
+
+// every exit of a position: "server SL/TP, the 120-min time stop and the 16:44 New York flat apply"
+string ExitsListText(void)
+  {
+   if(InpUseTimeStop && InpFlatBeforeRollover)
+      return("server SL/TP, " + MarketExitsText() + " apply");
+   if(InpUseTimeStop || InpFlatBeforeRollover)
+      return("server SL/TP and " + MarketExitsText() + " apply");
+   return("only server SL/TP apply (time stop and 16:44 flat OFF)");
+  }
+
+// which market exit is due for a position filled at fillTime ("" = none)
+string DueExitText(const datetime fillTime, const datetime now)
+  {
+   if(TimeStopDue(fillTime, now))
+      return("time stop");
+   if(RolloverFlatDue(fillTime, now))
+      return("16:44 New York flat");
+   return("");
   }
 
 // 16:44-17:00 New York: no new order, no pending order over the rollover (any session setting; also with
@@ -1046,7 +1068,7 @@ void ExecBatch(const BfIntent &its[], const int n)
             wait = "order-error breaker (3 refused decisions; resets after 30 min) - last error: " + g_trade.lastError;
          else
             if(InRolloverWindow())
-               wait = "16:44-17:00 New York (positions must be flat before the rollover)";
+               wait = "16:44-17:00 New York (no new order over the rollover)";
             else
                if(SecondsToRolloverCut() < 120)
                   wait = "less than 2 minutes before the 16:44 New York rollover";
@@ -1645,7 +1667,7 @@ void ManagePositions(void)
          if((TimeStopDue(pt, now) || RolloverFlatDue(pt, now)) && MgmtAllowed() && RetryDue(g_ctx.lv[k].lastTry))
            {
             if(g_trade.ClosePosition(tk))
-               g_log.Info(LevelTag(k) + "partly filled position closed at market (time stop / 16:44 New York flat)");
+               g_log.Info(LevelTag(k) + "partly filled position closed at market (" + DueExitText(pt, now) + ")");
            }
          continue;
         }
@@ -1690,8 +1712,8 @@ void ManageOrphans(void)
          if(!MgmtAllowed() || !RetryDue(g_orph[i].lastTry))
             continue;
          if(g_trade.ClosePosition(tk))
-            g_log.Info("unowned position " + IntegerToString((long)g_orph[i].posId) + " closed at market (time stop / " +
-                       "16:44 New York flat)");
+            g_log.Info("unowned position " + IntegerToString((long)g_orph[i].posId) + " closed at market (" +
+                       DueExitText(g_orph[i].fillTime, now) + ")");
          else
            {
             g_orph[i].closeFails++;
@@ -1949,7 +1971,7 @@ string ExitsText(void)
   {
    return("exits: server SL/TP | time stop " + (InpUseTimeStop ? IntegerToString(g_maxHold) + " min" : "OFF (switch)") +
           " | 16:44 New York flat " + (InpFlatBeforeRollover ? "ON" : "OFF (switch)") +
-          ((InpUseTimeStop && InpFlatBeforeRollover) ? "" : " | NOT a research trial (hard rule <= 120 min)"));
+          ((InpUseTimeStop && InpFlatBeforeRollover) ? "" : " | NOT a research trial (H-14 exits changed)"));
   }
 
 void UpdatePanel(void)
@@ -2047,13 +2069,21 @@ void SelfCheck(void)
       maxStop = (budget / vmin - 2.0 * g_commSide) / vpp;
    g_log.Info("SELF-CHECK " + FiltersText());
    g_log.Info("SELF-CHECK " + ExitsText());
-   if(!InpUseTimeStop || !InpFlatBeforeRollover)
-      g_log.Info("SELF-CHECK note: " + (!InpUseTimeStop ? "no time stop" : "") +
-                 ((!InpUseTimeStop && !InpFlatBeforeRollover) ? " and " : "") +
-                 (!InpFlatBeforeRollover ? "no 16:44 New York flat" : "") + " - a position runs to its SL / TP" +
-                 (!InpFlatBeforeRollover ? " and may be held over the rollover and the weekend (swap; a gap can fill " +
-                  "the stop worse than planned, so a loss can exceed the 0.20 % budget)" : "") +
-                 "; one setup at a time, so no new setup trades while it is open");
+   if(!InpUseTimeStop && !InpFlatBeforeRollover)
+      g_log.Info("SELF-CHECK note: no time stop and no 16:44 New York flat - a position runs to its SL / TP and may be " +
+                 "held over the rollover and the weekend (swap; a gap can fill the stop worse than planned, so a loss " +
+                 "can exceed the 0.20 % budget); one setup at a time, so no new setup trades while it is open");
+   else
+      if(!InpUseTimeStop)
+         g_log.Info("SELF-CHECK note: no time stop - a position runs to its SL / TP or is closed at 16:44 New York; " +
+                    "one setup at a time, so no new setup trades while it is open");
+      else
+         if(!InpFlatBeforeRollover)
+            g_log.Info("SELF-CHECK note: no 16:44 New York flat - a position is closed by its SL / TP or the " +
+                       IntegerToString(g_maxHold) + "-min time stop, which can fall after 16:44 New York: the position " +
+                       "may then be held over the 17:00 New York rollover (swap, triple on Wednesday; rollover " +
+                       "spread) and, while the market is closed (daily break, Friday close), until it reopens " +
+                       "(weekend, gap risk beyond the 0.20 % budget)");
    if(!InpUseCostFilter || (g_maxCostR <= 0.0))
       g_log.Info("SELF-CHECK note: the cost filter is off - an entry may be placed even when spread + commission + " +
                  "slippage are a large part of its risk (small Fibonacci legs)");
@@ -2362,7 +2392,8 @@ void ClosePositionRaw(const ulong tk)
       else
          rq.type_filling = ORDER_FILLING_RETURN;
    if(OrderSend(rq, rs) && (rs.retcode == TRADE_RETCODE_DONE || rs.retcode == TRADE_RETCODE_DONE_PARTIAL))
-      g_log.Info("stop: closed position " + IntegerToString((long)tk) + " (EA removed: no time stop would run)");
+      g_log.Info("stop: closed position " + IntegerToString((long)tk) + " (EA removed: " + MarketExitsText() +
+                 " would no longer run)");
    else
       g_log.Error("stop: could not close position " + IntegerToString((long)tk) + " (retcode " +
                   IntegerToString((long)rs.retcode) + " " + rs.comment + ") - CLOSE IT MANUALLY");
@@ -2461,7 +2492,7 @@ void OnDeinit(const int reason)
       if(reason != REASON_RECOMPILE && g_trade.SelectPosition(tk))
          g_log.Error("stop (reason " + IntegerToString(reason) + "): position " + IntegerToString((long)tk) +
                      " stays open with its server SL/TP only" + ((InpUseTimeStop || InpFlatBeforeRollover) ?
-                     " - " + StringSubstr(ExitsLogText(), 2) + " NO LONGER RUN unless the EA runs again on " + _Symbol + " with magic " +
+                     " - " + MarketExitsText() + " will NO LONGER RUN unless the EA runs again on " + _Symbol + " with magic " +
                      IntegerToString(InpMagic) + ". Otherwise close it manually." :
                      " (time stop and 16:44 flat are OFF by the v4 switches)"));
      }
