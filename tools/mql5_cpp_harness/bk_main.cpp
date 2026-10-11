@@ -7,6 +7,8 @@
 #include <cstdlib>
 #include <cstring>
 
+static int sessCancelBar = -1, sessOffBar = -1;   // v5 tests: one bar with env.sessionCancel / !env.sessionEntryOk
+
 static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom, int &holdBars, const char *kv)
   {
    std::string s(kv);
@@ -34,11 +36,15 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "digits") p.digits = (int)v;
    else if(k == "comm_price") p.commPrice = v;
    else if(k == "use_session") p.useSession = v != 0;
+   else if(k == "anticipate") p.anticipate = v != 0;                 // v5, EA only (no Python counterpart)
+   else if(k == "leg_break_on_close") p.legBreakOnClose = v != 0;    // v5, EA only (no Python counterpart)
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
    else if(k == "sp") sp = v;
    else if(k == "trade_from") tradeFrom = (int)v;
    else if(k == "hold_bars") holdBars = (int)v;
+   else if(k == "sess_cancel") sessCancelBar = (int)v;
+   else if(k == "sess_off") sessOffBar = (int)v;
   }
 
 static std::string Num(double v) { char b[64]; snprintf(b, 64, "%.17g", v); return b; }
@@ -122,7 +128,10 @@ int main(int argc, char **argv)
       BfEnv env;
       BfClearEnv(env);
       env.slotFree = !det.HasOrderOrPosition();
-      env.sessionEntryOk = true; env.sessionCancel = false; env.riskOk = true; env.spreadOk = true; env.sp = sp;
+      // v5 anticipate: the setup whose own pending limits alone hold the slot (the EA reads it from its context)
+      env.slotOwner = (p.anticipate && !env.slotFree) ? det.PendingOwner() : 0;
+      env.sessionEntryOk = (u != sessOffBar); env.sessionCancel = (u == sessCancelBar);
+      env.riskOk = true; env.spreadOk = true; env.sp = sp;
       det.OnBarClosed(u, O.data(), H.data(), L.data(), C.data(), st, ev, env);
       for(int k = 0; k < det.IntentCount(); k++)
         {

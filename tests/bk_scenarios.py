@@ -139,6 +139,40 @@ def scenarios() -> dict[str, list]:
     return sc
 
 
+def v5_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v5 entry switches (tests/test_bpr_breakout_v5_switches.py). They are also in the
+    parity set at the default settings, where the EA must still equal the (v4) Python reference."""
+    b = base()
+    nolux = scenarios()["no_lux_fvg"]
+    sq = {
+        # the owner's case: last new high on 20, ONE candle (21) falls through all entries and below the origin 99.5,
+        # 22 goes through the stop 99.40
+        "fast_pullback": b + [bar(101.2, 102.0, 101.15, 101.9), bar(101.9, 101.95, 99.45, 99.6),
+                              bar(99.6, 99.7, 99.3, 99.35)],
+        # no LuxAlgo FVG after the reference candle: 20 wicks below the origin and closes above it, 21 closes below
+        "wick_below_origin": nolux[:20] + [bar(101.2, 101.25, 99.45, 100.3), bar(100.3, 100.35, 99.3, 99.4)],
+        # as above, but 20 closes EXACTLY on the origin, 21 one tick below
+        "close_on_origin": nolux[:20] + [bar(101.2, 101.25, 99.45, 99.5), bar(99.5, 99.6, 99.45, 99.49)],
+        # the first pullback candle 19 wicks below the origin and closes at 100.3
+        "wick_then_decide": b[:19] + [bar(101.5, 101.55, 99.45, 100.3)],
+        # the confirmation candle 17 spikes to 102.5 and closes at 100.3, beyond every entry; 18 pulls back up
+        "spike_confirm": b[:17] + [bar(100.8, 102.5, 100.25, 100.3), bar(100.3, 101.0, 100.25, 100.95)],
+        # pending limits from the leg to 101.6; 20 spikes to 104.0 (new extreme) and closes at 100.7, beyond every
+        # new entry, without reaching the old ones; 21 comes back to 101.0; 22 dips to 100.7
+        "spike_reanchor": b + [bar(101.2, 104.0, 100.6, 100.7), bar(100.7, 101.05, 100.65, 101.0),
+                               bar(101.0, 101.0, 100.7, 100.75)],
+        # as spike_confirm, but the next candle 18 is an ordinary pullback candle that also closes beyond every entry
+        "spike_then_low": b[:17] + [bar(100.8, 102.5, 100.25, 100.3), bar(100.3, 100.4, 100.25, 100.3)],
+        # the confirmation candle spikes to 102.5 and closes at 100.9: beyond the 50 % entry only
+        "spike_confirm_mid": b[:17] + [bar(100.8, 102.5, 100.25, 100.9)],
+        # a second new high on 20 after a pullback on 19, then 21 (leg expiry tests)
+        "late_high": b + [bar(101.2, 102.0, 101.15, 101.9), bar(101.9, 101.95, 101.6, 101.7)],
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""

@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 4)                                        |
+//| BprFvgEA.mq5  (version 5)                                        |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -28,6 +28,13 @@
 // defaults behave exactly as v3. Turning either OFF departs from the project's hard rule "every position closed
 // <= 120 minutes after entry": that is the owner's decision for the Strategy Tester / demo, and such runs are not
 // research trials of H-14 (see the README).
+// Version 5 = version 4 + two entry switches (owner request 2026-10-11, "LEG_BROKEN ... when price pulls back quickly
+// the EA did not anticipate it"): InpAnticipateEntries places the limits as soon as the breakout is confirmed (and
+// moves them at every new high / low) instead of after a closed pullback candle, so a fast pullback fills them;
+// InpLegBreakOnClose ends a setup with LEG_BROKEN only when a candle CLOSES beyond the leg origin. Both default to
+// false (= v4). They change the pure detector (include/BfDetector.mqh, params anticipate / legBreakOnClose) but not
+// its Python reference: the parity harness covers the defaults, and tests/test_bpr_breakout_v5_switches.py checks the
+// switched-on rules on the C++ transliteration only.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -40,7 +47,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "4.00"
+#property version     "5.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -86,6 +93,8 @@ input bool                InpRejectBeforeBreak    = false;              // Stric
 input ENUM_BF_FVGRULE     InpFvgRule              = BF_FVGRULE_LUXALGO; // FVG needed in the breakout leg
 input int                 InpSetupExpiryBars      = 240;                // Bars after the BPR's creation to confirm a breakout
 input int                 InpLegExpiryBars        = 60;                 // Bars after the confirmation to place / fill entries
+input bool                InpAnticipateEntries    = false;              // Place the limits as soon as the breakout is confirmed (no pullback candle needed); moved at every new high/low
+input bool                InpLegBreakOnClose      = false;              // LEG_BROKEN only when a candle CLOSES beyond the leg origin (false = a wick is enough)
 input double              InpFib1                 = 50.0;               // Entry 1: retracement % of the leg (0 = off)
 input double              InpFib2                 = 61.8;               // Entry 2: retracement % (0 = off)
 input double              InpFib3                 = 71.0;               // Entry 3: retracement % (0 = off)
@@ -112,7 +121,7 @@ input int                 InpMaxTradesDay         = 0;                  // Max p
 input double              InpCommissionPerLotSide = 3.50;               // Commission per lot per side, account ccy (UNVERIFIED)
 input int                 InpSlippageTicks        = 1;                  // Slippage ticks (sizing, cost check)
 input int                 InpMaxSpreadPts         = 0;                  // Max spread in points (0 = off)
-input long                InpMagic                = 2610091;            // Magic number (v2 / v3 / v4)
+input long                InpMagic                = 2610091;            // Magic number (v2 .. v5)
 input int                 InpDeviationPts         = 30;                 // Max deviation for market orders, points
 input int                 InpWarmupBars           = 5000;               // Closed bars processed at start (never traded)
 input bool                InpLogCsv               = true;               // CSV logs in the Common Files folder
@@ -131,6 +140,7 @@ struct BfLevelCtx
    int               state;             // BF_XS_*
    bool              cancelled;         // the detector cancelled this level: it is never reported to the detector again
    bool              cancelWanted;      // a delete failed: retried on the next ticks
+   bool              deleted;           // v5: the server confirmed the delete (the terminal may list it a moment longer)
    bool              partialDel;        // the rest of a partly filled limit was deleted
    bool              market;            // sent as a market order (its live price was already at / through P)
    bool              fillCheck;         // market fill: its actual risk has not been checked yet
@@ -176,6 +186,7 @@ void ResetLevel(BfLevelCtx &x)
    x.state        = BF_XS_NONE;
    x.cancelled    = false;
    x.cancelWanted = false;
+   x.deleted      = false;
    x.partialDel   = false;
    x.market       = false;
    x.fillCheck    = false;
@@ -454,6 +465,9 @@ void BuildParams(void)
    g_bp.maxTouches           = g_maxTouches;
    g_bp.confirmCloses        = g_confirm;
    g_bp.rejectBeforeBreak    = InpRejectBeforeBreak;
+   // v5 switches (EA only; false = v4)
+   g_bp.anticipate           = InpAnticipateEntries;
+   g_bp.legBreakOnClose      = InpLegBreakOnClose;
    g_bp.fvgRule              = (int)InpFvgRule;
    g_bp.setupExpiryBars      = g_setupExp;
    g_bp.legExpiryBars        = g_legExp;
@@ -868,6 +882,99 @@ bool SlotFree(void)
    return(!CtxBusy() && g_nOrph == 0 && g_trade.OwnPositions() == 0 && g_trade.OwnPendingOrders() == 0);
   }
 
+// v5 (InpAnticipateEntries): the id of the setup whose own pending limits are ALL that holds the slot (no position,
+// no unowned position, no other order, no level being deleted or partly filled); 0 otherwise. Given to the detector as
+// env.slotOwner: after a re-anchor on a new extreme, that setup may cancel and re-decide its limits on the same bar.
+int SlotOwner(void)
+  {
+   int   k;
+   int   i;
+   int   nPend = 0;
+   ulong tk;
+   if(!InpAnticipateEntries || !g_ctx.active || g_nOrph != 0 || g_trade.OwnPositions() != 0)
+      return(0);
+   for(k = 0; k < BF_NLEV; k++)
+     {
+      if(g_ctx.lv[k].state == BF_XS_OPEN)
+         return(0);
+      if(g_ctx.lv[k].state == BF_XS_PENDING)
+        {
+         if(g_ctx.lv[k].cancelled || g_ctx.lv[k].cancelWanted || g_ctx.lv[k].partialDel || g_ctx.lv[k].orderTicket == 0)
+            return(0);
+         nPend++;
+        }
+     }
+   if(nPend == 0)
+      return(0);
+   for(i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      tk = OrderGetTicket(i);
+      if(tk == 0 || !IsOwnPendingOrder())
+         continue;
+      if(!IsTrackedOrder(tk))
+         return(0);
+      if(OrderGetDouble(ORDER_VOLUME_CURRENT) < OrderGetDouble(ORDER_VOLUME_INITIAL) - 1e-9)
+         return(0);                              // partly filled: a position exists or is about to
+     }
+   return(g_ctx.id);
+  }
+
+// a pending order of this EA that the context deleted (server-confirmed) but the terminal may still list for a moment
+bool IsDeletedCtxOrder(const ulong tk)
+  {
+   int k;
+   if(!g_ctx.active || tk == 0)
+      return(false);
+   for(k = 0; k < BF_NLEV; k++)
+      if(g_ctx.lv[k].state == BF_XS_DONE && g_ctx.lv[k].deleted && g_ctx.lv[k].orderTicket == tk)
+         return(true);
+   return(false);
+  }
+
+// The slot check of a decision of setup id. v5: after an anticipated re-anchor the setup's old limits were just
+// deleted on this tick; they no longer count even if the terminal still lists them. Anything else (a level still
+// pending or open, a position, an unowned position, another order) keeps the slot busy.
+bool SlotFreeFor(const int id)
+  {
+   int   i;
+   int   k;
+   bool  hs = false;
+   ulong tk;
+   //--- every level of this setup deleted on this tick must be proven fill-free by its history order (no filled
+   //    volume) BEFORE anything else: a part that filled just before the delete may not be in the terminal's position
+   //    list yet. Not proven -> wait (NotifyRetry); a later bar decides after SyncTrade / Reconcile have seen it.
+   if(InpAnticipateEntries && g_ctx.active && g_ctx.id == id)
+      for(k = 0; k < BF_NLEV; k++)
+        {
+         tk = g_ctx.lv[k].orderTicket;
+         if(!g_ctx.lv[k].deleted || tk == 0)
+            continue;
+         if(!hs)
+           {
+            if(!HistorySelect((datetime)((long)g_ctx.decisionTime - 86400), (datetime)((long)TimeCurrent() + 3600)))
+               return(false);
+            hs = true;
+           }
+         if(!HistoryOrderSelect(tk) ||
+            HistoryOrderGetDouble(tk, ORDER_VOLUME_INITIAL) - HistoryOrderGetDouble(tk, ORDER_VOLUME_CURRENT) > 1e-9)
+            return(false);
+        }
+   if(SlotFree())
+      return(true);
+   if(!InpAnticipateEntries || !g_ctx.active || g_ctx.id != id || CtxBusy() || g_nOrph != 0 ||
+      g_trade.OwnPositions() != 0)
+      return(false);
+   for(i = OrdersTotal() - 1; i >= 0; i--)
+     {
+      tk = OrderGetTicket(i);
+      if(tk == 0 || !IsOwnPendingOrder())
+         continue;
+      if(!IsDeletedCtxOrder(tk))
+         return(false);
+     }
+   return(true);
+  }
+
 string LevelTag(const int k)
   {
    return("#" + IntegerToString(g_ctx.id) + " L" + IntegerToString(k + 1) + " ");
@@ -993,7 +1100,8 @@ void ExecCancel(const BfIntent &it)
      {
       g_log.Info(LevelTag(k) + "pending order deleted (" + BfReasonName(it.reason) + ")");
       // a part filled just before the delete becomes a position no level owns: Reconcile() adopts it
-      g_ctx.lv[k].state = BF_XS_DONE;
+      g_ctx.lv[k].state   = BF_XS_DONE;
+      g_ctx.lv[k].deleted = true;
       return;
      }
    if(!OrderSelect(g_ctx.lv[k].orderTicket))
@@ -1061,7 +1169,7 @@ void ExecBatch(const BfIntent &its[], const int n)
    if(!g_trade.TradePermission(why))
       wait = "trading not permitted: " + why;
    else
-      if(!SlotFree())
+      if(!SlotFreeFor(id))
          wait = "slot busy (an order or position of this EA exists)";
       else
          if(g_trade.Breaker())
@@ -1413,6 +1521,7 @@ void SyncTrade(void)
                   g_log.Info(LevelTag(k) + "pending order deleted (retry)");
                   g_ctx.lv[k].cancelWanted = false;
                   g_ctx.lv[k].state        = BF_XS_DONE;
+                  g_ctx.lv[k].deleted      = true;
                  }
                continue;
               }
@@ -1756,6 +1865,7 @@ void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool s
    if(SymbolInfoTick(_Symbol, q) && q.ask > 0.0 && q.bid > 0.0)
       env.sp = q.ask - q.bid;                    // spread at the decision moment (first tick of bar u+1)
    env.slotFree       = SlotFree();
+   env.slotOwner      = env.slotFree ? 0 : SlotOwner();   // v5: 0 unless InpAnticipateEntries
    // v3 switches (the detector uses both signals only with InpUseSession = true):
    // - InpEntriesAfterSessionEnd: new orders also from 14:45 to 16:44 New York (the entry window ends at 16:44)
    // - InpCancelAtSessionEnd = false: no cancel when the entry window ends; pending orders stay until they fill, the leg
@@ -1951,6 +2061,14 @@ void LogDiagnostics(const string when)
    g_log.Info("DIAG " + when + " | " + DiagOrders());
   }
 
+// v5 switches as one short text (panel rules row, start log, self-check)
+string EntryModeText(void)
+  {
+   return("entries " + (InpAnticipateEntries ? "ANTICIPATED (at confirmation, moved at each new extreme)" :
+                        "after a pullback candle") + ", leg broken by a " + (InpLegBreakOnClose ? "CLOSE" : "wick") +
+          " beyond the origin");
+  }
+
 // v3 switches as one line (panel, start log, self-check)
 string FiltersText(void)
   {
@@ -1981,12 +2099,13 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v4 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v5 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
                      FibText(g_fib[2]) + " | SL " + FibText(g_stopFib) + "+" + IntegerToString(g_stopBuf) + "t TP " +
-                     FibText(g_tgtFib) + " | " + DirectionText() + (g_tradeLogic ? "" : " | IFVG: display only"));
+                     FibText(g_tgtFib) + " | " + DirectionText() + " | " + EntryModeText() +
+                     (g_tradeLogic ? "" : " | IFVG: display only"));
    g_render.PanelSet(2, FiltersText());
    g_render.PanelSet(3, ExitsText());
    g_render.PanelSet(4, "tracking: wait " + IntegerToString(g_det.PhaseCount(BF_PH_WAIT)) + " zone " +
@@ -2069,6 +2188,12 @@ void SelfCheck(void)
       maxStop = (budget / vmin - 2.0 * g_commSide) / vpp;
    g_log.Info("SELF-CHECK " + FiltersText());
    g_log.Info("SELF-CHECK " + ExitsText());
+   g_log.Info("SELF-CHECK " + EntryModeText());
+   if(InpAnticipateEntries)
+      g_log.Info("SELF-CHECK note: anticipated entries - the limits wait in the book from the confirmation (once the " +
+                 "FVG condition holds) and are deleted and sent again at every new high / low of the leg (up to 3 " +
+                 "deletes + 3 orders per bar while the leg extends); a fast pullback fills them instead of ending the " +
+                 "setup with LEG_BROKEN, and a pullback through the stop-loss stops them out");
    if(!InpUseTimeStop && !InpFlatBeforeRollover)
       g_log.Info("SELF-CHECK note: no time stop and no 16:44 New York flat - a position runs to its SL / TP and may be " +
                  "held over the rollover and the weekend (swap; a gap can fill the stop worse than planned, so a loss " +
@@ -2346,13 +2471,14 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v4: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v5: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
-   g_log.Info("start v4: " + FiltersText());
-   g_log.Info("start v4: " + ExitsText());
+   g_log.Info("start v5: " + FiltersText());
+   g_log.Info("start v5: " + ExitsText());
+   g_log.Info("start v5: " + EntryModeText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);

@@ -293,11 +293,35 @@ private:
       return(lu < m_s[i].X);
      }
 
-   bool              OriginBroken(const int i, const double hu, const double lu)
+   //--- v5 legBreakOnClose: only the close counts (a wick beyond the origin does not break the leg)
+   bool              OriginBroken(const int i, const double hu, const double lu, const double cu)
      {
+      if(m_p.legBreakOnClose)
+        {
+         if(m_s[i].dir > 0)
+            return(cu < m_s[i].O);
+         return(cu > m_s[i].O);
+        }
       if(m_s[i].dir > 0)
          return(lu < m_s[i].O);
       return(hu > m_s[i].O);
+     }
+
+   //--- spec s.4.2 FVG condition: an FVG of the setup's direction after the reference candle (always met with NONE)
+   bool              FvgOk(const int i)
+     {
+      if(m_p.fvgRule == BF_FVGRULE_NONE)
+         return(true);
+      return(((m_s[i].dir > 0) ? m_fvgUp : m_fvgDn) > m_s[i].ref);
+     }
+
+   //--- a decision bar: ready with the FVG condition, otherwise counted as a bar without an FVG
+   void              MarkReady(const int i)
+     {
+      if(FvgOk(i))
+         m_s[i].ready = true;
+      else
+         Stat(BF_STAT_NO_FVG);
      }
 
    void              Confirm(const int i, const int u)
@@ -306,6 +330,9 @@ private:
       m_s[i].confirmBar = u;
       AddEvent(u, BF_EV_CONFIRM, m_s[i], 0, BF_R_NONE);
       Stat(BF_STAT_CONFIRM);
+      //--- v5 anticipate: the orders may be decided on the confirmation bar itself, without a pullback candle
+      if(m_p.anticipate)
+         MarkReady(i);
      }
 
    //+---------------------------------------------------------------+
@@ -421,7 +448,7 @@ private:
       if(ph == BF_PH_LEG)
         {
          //--- 4.2
-         if(OriginBroken(i, h[u], l[u]))
+         if(OriginBroken(i, h[u], l[u], c[u]))
            {
             SetDone(i, u, BF_R_LEG_BROKEN);
             return;
@@ -435,12 +462,11 @@ private:
            {
             m_s[i].X    = (d > 0) ? h[u] : l[u];
             m_s[i].xBar = u;
-            return;
+            //--- v5 anticipate: a new-extreme bar is a decision bar too (the orders wait at the updated Fibonacci)
+            if(!m_p.anticipate)
+               return;
            }
-         if(m_p.fvgRule == BF_FVGRULE_NONE || ((d > 0) ? m_fvgUp : m_fvgDn) > m_s[i].ref)
-            m_s[i].ready = true;
-         else
-            Stat(BF_STAT_NO_FVG);
+         MarkReady(i);
          return;
         }
       if(ph == BF_PH_ORDERED)
@@ -454,9 +480,15 @@ private:
             m_s[i].xBar  = u;
             m_s[i].phase = BF_PH_LEG;
             Stat(BF_STAT_REANCHOR);
+            //--- v5 anticipate: decided again on this bar at the new extreme; the slot its own cancelled orders held
+            //    is given to it through env.slotOwner (Decide). Not after the leg's expiry and not on a session-cancel
+            //    bar: there the orders would have been cancelled anyway (steps 3-4), and the next LEG bar ends the
+            //    setup as in v4.
+            if(m_p.anticipate && u - m_s[i].confirmBar <= m_p.legExpiryBars && !(m_p.useSession && env.sessionCancel))
+               MarkReady(i);
             return;
            }
-         if(OriginBroken(i, h[u], l[u]))
+         if(OriginBroken(i, h[u], l[u], c[u]))
            {
             CancelPending(i, u, BF_R_LEG_BROKEN);
             SetDone(i, u, BF_R_LEG_BROKEN);
@@ -606,6 +638,24 @@ private:
                      nPl++;
                     }
         }
+      //--- v5 anticipate: on a bar that only anticipation makes a decision bar (the confirmation bar, or a bar with a
+      //    new extreme), a close beyond EVERY entry (a spike) does not end the setup: nothing is recorded, it stays in
+      //    LEG and decides again on a later bar, as v4 would on the next pullback candle
+      if(nPl == 0 && m_p.anticipate && (u == m_s[i].confirmBar || u == m_s[i].xBar))
+        {
+         int nOn   = 0;
+         int nMiss = 0;
+         for(k = 0; k < BF_NLEV; k++)
+           {
+            if(why[k] < 0)
+               continue;
+            nOn++;
+            if(why[k] == BF_R_MISSED)
+               nMiss++;
+           }
+         if(nOn > 0 && nMiss == nOn)
+            return(false);
+        }
       if(nPl > 0)
         {
          m_s[i].SL   = RoundTick(SL);
@@ -653,12 +703,17 @@ private:
       int i;
       int nReady  = 0;
       int blocked = -1;
+      int own     = -1;                                         // v5: ready setup that owns the busy slot
       for(i = 0; i < m_n; i++)
          if(m_s[i].phase == BF_PH_LEG && m_s[i].ready)
+           {
             nReady++;
+            if(m_p.anticipate && env.slotOwner > 0 && m_s[i].id == env.slotOwner)
+               own = i;
+           }
       if(nReady == 0)
          return;
-      if(!env.slotFree)
+      if(!env.slotFree && own < 0)
          blocked = BF_STAT_BLK_SLOT;
       else
          if(m_p.useSession && !env.sessionEntryOk)
@@ -673,6 +728,15 @@ private:
         {
          for(i = 0; i < nReady; i++)
             Stat(blocked);
+         return;
+        }
+      //--- v5 anticipate: the slot is held only by the owner's own pending limits, which it cancelled on this bar
+      //    (re-anchor): the owner decides again; every other ready setup waits for the slot
+      if(!env.slotFree)
+        {
+         for(i = 0; i < nReady - 1; i++)
+            Stat(BF_STAT_BLK_SLOT);
+         TryDecide(own, u, c, env);
          return;
         }
       for(i = 0; i < m_n; i++)
@@ -848,6 +912,26 @@ public:
       ResetLevels(i);
       m_s[i].phase = BF_PH_LEG;
       Stat(BF_STAT_RETRY);
+     }
+
+   //--- harness environment (v5 anticipate): the id of the only ORDERED setup while no setup is FILLED (its own pending
+   //    limits are all that holds the slot), else 0
+   int               PendingOwner(void)
+     {
+      int i;
+      int id = 0;
+      for(i = 0; i < m_n; i++)
+        {
+         if(m_s[i].phase == BF_PH_FILLED)
+            return(0);
+         if(m_s[i].phase == BF_PH_ORDERED)
+           {
+            if(id != 0)
+               return(0);
+            id = m_s[i].id;
+           }
+        }
+      return(id);
      }
 
    //--- harness environment: slot_free = no setup ORDERED or FILLED

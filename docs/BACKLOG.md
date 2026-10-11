@@ -129,3 +129,9 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   v3). Off departs from the ≤ 120-min hard rule at the owner's request (tester / demo only); such runs are not research
   trials of H-14. MQL5 only; the detector and Python are unchanged.
 - [?] U-15 User: compile v4 and send every compiler message.
+- [x] EA-12 v5 (2026-10-11, journal day08): entry switches `InpAnticipateEntries` (limits from the confirmation, moved
+  at every new extreme, same-bar re-decision through `env.slotOwner`) and `InpLegBreakOnClose`. Both default off = v4.
+  The MQL5 detector is changed; the Python reference is not (owner: MQL5 only). They are checked on the C++
+  transliteration by `tests/test_bpr_breakout_v5_switches.py`.
+- [?] U-16 User: compile v5 and send every compiler message. Then try `InpAnticipateEntries = true` in the tester
+  and send the `[BFEA]` lines of a setup that used to end in `LEG_BROKEN`.

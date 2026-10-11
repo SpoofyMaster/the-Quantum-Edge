@@ -168,10 +168,15 @@ def _run_both(exe, tmp_path, bars, params, sp, trade_from=0, hold_bars=120):
 
 
 def _crafted():
-    from bk_scenarios import boundary_cases, scenarios
+    from bk_scenarios import boundary_cases, mirror, scenarios, v5_sequences
 
     out = []
-    for name, bars in scenarios().items():
+    seqs = dict(scenarios())
+    # the v5 switch sequences at the default settings (switches off): the EA must still equal the v4 reference
+    for name, bars in v5_sequences().items():
+        seqs[f"v5_{name}"] = bars
+        seqs[f"v5_short_{name}"] = mirror(bars)
+    for name, bars in seqs.items():
         for rule in ("ANY_GAP", "LUXALGO", "NONE"):
             out.append((f"{name}-{rule}", bars, {"fvg_rule": rule}))
         out.append((f"{name}-strict", bars, {"fvg_rule": "ANY_GAP", "reject_before_break": True}))

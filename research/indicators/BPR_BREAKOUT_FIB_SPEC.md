@@ -1,4 +1,4 @@
-# BprFvgEA v4: BPR rejection → breakout → Fibonacci pullback
+# BprFvgEA v5: BPR rejection → breakout → Fibonacci pullback
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 4.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 5.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -62,6 +62,8 @@ reference candle, the leg runs from a high `O` down to a low `X`, and sell limit
 | `InpFvgRule` | `fvg_rule` | `LUXALGO` | `LUXALGO` / `ANY_GAP` / `NONE` (`NONE` drops the FVG condition) |
 | `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation |
 | `InpLegExpiryBars` | `leg_expiry_bars` | 60 | Bars after confirmation during which orders may be placed or filled |
+| `InpAnticipateEntries` | (MQL5 only: `anticipate`) | false | v5: decide without a pullback candle (§4.2–§5 notes) |
+| `InpLegBreakOnClose` | (MQL5 only: `legBreakOnClose`) | false | v5: `originBroken` uses the close (§4.2 note) |
 | `InpFib1` / `2` / `3` | `fib_levels` | 50.0 / 61.8 / 71.0 | Entry retracements, % of the leg (0 = off) |
 | `InpStopFib` | `stop_fib` | 100.0 | Stop at this retracement, % (100 = the leg origin) |
 | `InpStopBufferTicks` | `stop_buffer_ticks` | 10 | Extra ticks beyond the stop level |
@@ -176,12 +178,23 @@ These rules apply from `confirmBar + 1` onwards. `ready` is reset to false at th
 
    A pullback bar without an FVG counts in the diagnostics (`noFvg`); the setup keeps waiting.
 
+**v5 notes (MQL5 detector only; both off = the rules above):**
+- **`legBreakOnClose`:** `originBroken(u)` is long `c[u] < O`, short `c[u] > O`, instead of the low / high. This also
+  applies in §4.3.
+- **`anticipate`:** every bar of this phase is a decision bar. After steps 1–2, a new extreme updates `X` and the bar
+  is **not** skipped: `ready = (fvgBar[d] > ref)` (or true with `NONE`) on new-extreme and pullback bars alike. A bar
+  without an FVG counts in `noFvg`. The confirmation bar is a decision bar too: in §4.1 steps 4 and 5, right after
+  `CONFIRM`, `ready` is set with the same FVG condition.
+
 ### 4.3 Phase `ORDERED` (at least one level pending, none filled)
 
 1. **`newExt(u)` → re-anchor.**
    - every pending level is cancelled, with a `CANCEL(k, NEW_EXTREME)` record and a cancel intent;
    - all levels go back to `NONE`, `X` is updated, and the phase becomes `LEG`;
-   - `ready = false` for this bar.
+   - `ready = false` for this bar. v5 `anticipate`: `ready` is set with the FVG condition instead, so the setup decides
+     again **on this bar** at the new extreme (see §5, slot owner). This happens only while
+     `u − confirmBar ≤ leg_expiry_bars`, and not when `use_session && env.sessionCancel`. Otherwise it stays
+     `ready = false`, and the next `LEG` bar ends the setup as in v4.
 2. **`originBroken(u)`** → every pending level is cancelled (`CANCEL(k, LEG_BROKEN)`), then `DONE(LEG_BROKEN)`.
 3. **`u − confirmBar > leg_expiry_bars`** → every pending level is cancelled (`CANCEL(k, EXPIRED)`), then
    `DONE(EXPIRED)`.
@@ -204,6 +217,18 @@ happens through `NotifyClosed`, or through step 1–3 when the filled positions 
 **When.** A decision needs all of `env.slotFree`, (`use_session` → `env.sessionEntryOk`), `env.riskOk` and
 `env.spreadOk`, on bars `u ≥ trade_from`. If any is false, no setup decides on this bar. The ready setups count in
 the `blocked*` diagnostics and try again on the next bar.
+
+**v5 slot owner (`anticipate`).** `env.slotOwner` is the id of the setup whose own pending limits are all that held
+the slot when the bar closed. The executor sets it only when there is no position, no unowned position, no other
+order, and no level being deleted or partly filled. When `env.slotFree` is false and that setup is ready (it
+re-anchored on this bar), the slot condition counts as met **for that setup only**. The other conditions still apply.
+It alone may decide; every other ready setup counts as `blocked slot`. Its cancel intents come before its new place
+intents in the same bar, and the executor deletes the old limits before it sends the new ones.
+
+**v5 early bars (`anticipate`).** The confirmation bar and new-extreme bars are decision bars only because of
+`anticipate`. On such a bar (`u = confirmBar` or `u = xBar`), suppose no level can be placed and **every** enabled level
+is `MISSED`. Then nothing is recorded and the setup stays in `LEG`, instead of ending `DONE(NO_LEVEL)`. Any other
+reason, or an ordinary pullback bar, keeps the v4 rule.
 
 **Which setup.** Setups in phase `LEG` with `ready = true`, in creation order. The first that places at least one
 level ends step 5: one setup per bar. A setup that places nothing ends `DONE(NO_LEVEL)`, and the next one is tried.
@@ -356,6 +381,21 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   - for a market fill only, an excess-risk trim, as in v1.
 
   There is no partial TP and no break-even: the owner's rule has a single target.
+- **Entry switches (v5, owner request 2026-10-11, MQL5 only).**
+  - **What they change.** `InpAnticipateEntries` (`anticipate`) and `InpLegBreakOnClose` (`legBreakOnClose`) change
+    the **detector** (§4.2, §4.3, §5 notes). The Python reference does not have them; both off = v4.
+  - **Executor.**
+    - `env.slotOwner` comes from `SlotOwner()`.
+    - The decision's slot check is `SlotFreeFor(id)`.
+      - It first requires the account history to prove that every level of this setup deleted on this tick had no
+        filled volume. A part filled just before the delete may not be in the position list yet.
+      - It then treats this context's own server-confirmed deleted orders as gone, even if the terminal still lists
+        them.
+      - `SlotOwner()` also returns 0 while a tracked order is partly filled.
+    - A failed delete, or an old order that filled first, keeps the slot busy. Nothing new is sent (`NotifyRetry`),
+      so old and new limits of one setup can never both fill.
+  - **Verification.** `tests/test_bpr_breakout_v5_switches.py` checks the rules on the C++ transliteration only.
+  - **Research status.** Either switch is a rule change, so a backtest with it is a new hypothesis, not H-14.
 - **EA-only exit switches (v4, owner request 2026-10-10).** The owner saw positions closed by `close at market: TIME`
   before they reached the final TP, and asked for an input:
   - `InpUseTimeStop = false`: no time stop. `InpMaxHoldMin` is then unused.

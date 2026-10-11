@@ -1,4 +1,52 @@
-# BprFvgEA v4: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+# BprFvgEA v5: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+
+> **v5 (2026-10-11)** = v4 plus two on/off switches for the **entries**, at the owner's request ("the EA didnt place
+> orders and the reason is LEG_BROKEN, but sometime this broken leg is the retracement so when price pulls back the EA
+> didnt anticipate it"):
+>
+> | Input | Default | `true` means |
+> |---|---|---|
+> | `InpAnticipateEntries` | false | The three limits are placed **as soon as the breakout is confirmed** (the second close beyond the level), once the FVG condition holds, without waiting for a pullback candle. At every new high (long) / low (short) of the leg they are **moved**: deleted and sent again at the new Fibonacci on the same bar. A fast pullback then **fills them** instead of ending the setup with `LEG_BROKEN`. |
+> | `InpLegBreakOnClose` | false | `LEG_BROKEN` only when a candle **closes** beyond the leg origin (the 100 % level). A wick beyond it no longer ends the setup. |
+>
+> With both at `false`, v5 behaves exactly like v4.
+>
+> **Why v4 missed these trades.** v4 decides the orders when a pullback candle has **closed** and sends them at the
+> next candle's open. When one candle falls from the leg high through 50 / 61.8 / 71 % and below the origin, the
+> retracement is over before any order exists, and the candle's low below the origin ends the setup (`LEG_BROKEN`).
+>
+> **Which switch does what:**
+> - **`InpAnticipateEntries` is the one that catches the fast pullback.** The orders are already in the book when it
+>   starts.
+>   - Orders exist only once the FVG condition holds (with the `LUXALGO` rule, the FVG often appears one candle after
+>     the confirmation) and the slot is free.
+>   - Moves stop when `InpLegExpiryBars` has passed, and on a candle that ends the entry window, as orders would.
+>   - A spike candle that closes beyond **every** entry on one of these extra decision candles (the confirmation or a
+>     new extreme) does not end the setup: it waits for the next candle, as v4 waits for its pullback candle.
+> - **`InpLegBreakOnClose` alone does not.** After a candle that wicked below the origin, entries above its close are
+>   already passed (`SKIP MISSED`); only those still below the close are placed. It helps when the wick comes back up.
+>   The origin and the stop stay where they were, even though the wick traded through them.
+>
+> **Read before switching them on:**
+> - **A pullback that goes through the stop is a loss now.** The stop stays at the origin minus `InpStopBufferTicks`
+>   (10 ticks). A fast pullback that breaks the origin by more than that fills the limits and **stops them out**.
+>   Before, it was a no-trade `LEG_BROKEN`. To give such pullbacks room, widen the stop (`InpStopFib` above 100, or
+>   more `InpStopBufferTicks`). Each entry's risk stays within its share of the 0.20 %, because the lot size follows
+>   the stop distance.
+> - **Many order changes.** While the leg extends, every new high deletes and re-sends up to 3 limits: up to 6 trade
+>   requests per candle on M1. Each re-send counts as an "entry decision" on the panel, and `re-anchored` counts the
+>   moves.
+> - **Still one setup at a time.** The setup that moves its own orders may reuse its slot on the same candle; other
+>   setups wait. The old orders are deleted before the new ones are sent. The new ones go out only if the account
+>   history proves that no deleted order filled, even partly. Otherwise (a failed delete, a fill just before the
+>   delete, history not available yet) nothing new is sent, and the setup decides again on a later candle.
+> - **Not a research trial of H-14.** Either switch changes the entry rules, so a backtest with them is a new
+>   hypothesis that needs its own pre-registration.
+> - **Implementation (MQL5 only).**
+>   - Detector: `anticipate` and `legBreakOnClose` in `include/BfDetector.mqh`.
+>   - Executor: `SlotOwner` / `SlotFreeFor` in `BprFvgEA.mq5`.
+>   - The Python reference is unchanged, so the parity harness covers the defaults. The switched-on rules are checked
+>     on the C++ copy of the MQL5 detector by `tests/test_bpr_breakout_v5_switches.py`.
 
 > **v4 (2026-10-10)** = v3 plus two on/off switches for the **position exits**, at the owner's request ("the EA close
 > automatically position on `close at market: TIME` so the EA stop the trade to go to the final TP"):
@@ -203,6 +251,8 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpFvgRule` | LUXALGO | FVG needed in the breakout leg. `LUXALGO`: an FVG the LuxAlgo engine makes (displacement candle + gap). `ANY_GAP`: any 3-candle gap. `NONE`: no FVG needed. |
 | `InpSetupExpiryBars` | 240 | The breakout must be confirmed within this many bars of the BPR's creation |
 | `InpLegExpiryBars` | 60 | After the confirmation, orders may be placed or filled for this many bars |
+| `InpAnticipateEntries` | false | **v5 switch.** `true`: the limits are placed from the confirmation (FVG condition still needed), without waiting for a pullback candle, and moved at every new high / low of the leg. A fast pullback fills them instead of ending in `LEG_BROKEN`. |
+| `InpLegBreakOnClose` | false | **v5 switch.** `true`: `LEG_BROKEN` only when a candle closes beyond the leg origin (a wick is not enough). |
 | `InpFib1` / `InpFib2` / `InpFib3` | 50 / 61.8 / 71 | Entry retracements in % of the leg. 0 turns an entry off. |
 | `InpStopFib` / `InpStopBufferTicks` | 100 / 10 | Stop at this retracement (100 = the leg origin) plus this many ticks |
 | `InpTargetFib` | 0 | Take-profit retracement. 0 = the leg high (long) or low (short); negative = an extension beyond it. |
@@ -270,7 +320,7 @@ Every step uses **closed bars only**.
 4. **Leg.**
    - After `B2`, the EA tracks the leg high `X` and updates it on every new high.
    - The leg origin `O` is the lowest low since the last touch began.
-   - A low below `O` ends the setup (`LEG_BROKEN`).
+   - A low below `O` ends the setup (`LEG_BROKEN`). With `InpLegBreakOnClose = true`, only a close below `O` does.
 5. **FVG.** At least one bullish FVG must have formed after the reference candle. With the `LUXALGO` rule it is a
    LuxAlgo FVG: a displacement candle plus a gap. Until then the setup waits; the panel counts these bars as
    `no FVG`.
@@ -286,8 +336,13 @@ Every step uses **closed bars only**.
    - its costs exceed 0.30 of its risk (`COST`; switched off with `InpUseCostFilter = false`).
 
    The three entries share 0.20 % of equity: 0.067 % each.
+
+   **With `InpAnticipateEntries = true`**, no pullback candle is needed. The orders are computed on the confirmation
+   candle `B2` (if the FVG condition already holds; otherwise on the first candle where it does) and on every later
+   candle of the leg.
 7. **Re-anchor.** A new high **before any fill** cancels the orders (`CANCEL NEW_EXTREME`). The EA updates `X` and
-   places new orders on the next pullback candle.
+   places new orders on the next pullback candle. With `InpAnticipateEntries = true`, it places them on the same
+   candle at the new Fibonacci, so orders wait in the book during the whole leg.
 8. **After a fill.** When the target is touched or a new high comes, the remaining limits are cancelled
    (`CANCEL TARGET`). Each position exits at:
    - its SL or TP;
@@ -432,6 +487,12 @@ All of these are inputs or are stated in the spec (§0):
 - **Spread and decision time.** Decisions use the spread at the first tick of the next bar. The Python reference uses
   a constant or modelled spread.
 - **No news filter.**
+- **v5 switches (`InpAnticipateEntries`, `InpLegBreakOnClose`).**
+  - They exist in the MQL5 detector only. The Python reference and the parity harness cover the default rules.
+  - The switched-on rules are tested on the C++ copy of the MQL5 detector, under the harness's bar-based fills, not
+    in MT5.
+  - On a live or demo server, the terminal can list a deleted order for a moment. The EA tolerates this for its own
+    just-deleted orders. Anything else that keeps the slot busy postpones the move by one candle.
 
 ## Verification so far
 
@@ -440,6 +501,7 @@ All of these are inputs or are stated in the spec (§0):
 | Test | What it checks |
 |---|---|
 | `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 67 hand-built sequences (with the strict-rejection option too), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
+| `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (42 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 17 of 18 deliberate bugs caught; the 18th only differs in a state the slot rule makes unreachable. |
 | `tests/test_bpr_breakout_strategy.py` | 53 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
 | `tools/mql5_static_check.py mql5/BprFvgEA` | Mechanical check: names and brackets. It cannot find MQL5 type errors. |
 

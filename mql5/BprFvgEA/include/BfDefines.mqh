@@ -277,6 +277,12 @@ struct BfParams
    double            minRR;               // 0 = off
    double            maxCostR;            // 0 = off
    int               maxHoldMin;          // executor only (<= 120)
+   // v5 (EA only; the Python reference has no counterpart, both false = v4)
+   bool              anticipate;          // decide without a pullback candle: on the confirmation bar and on every leg
+                                          // bar (FVG condition still required); a new extreme re-anchors and re-decides
+                                          // on the same bar
+   bool              legBreakOnClose;     // LEG_BROKEN only when a candle CLOSES beyond the leg origin (false = any
+                                          // low / high beyond it)
    // session / execution
    bool              useSession;
    double            commissionPerLotSide; // account currency per lot per side (UNVERIFIED); informative
@@ -310,6 +316,8 @@ void BfDefaultParams(BfParams &p)
    p.minRR                = 0.0;
    p.maxCostR             = 0.30;
    p.maxHoldMin           = 120;
+   p.anticipate           = false;
+   p.legBreakOnClose      = false;
    p.useSession           = true;
    p.commissionPerLotSide = 3.50;
    p.slippageTicks        = 1.0;
@@ -339,6 +347,8 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.minRR                = src.minRR;
    dst.maxCostR             = src.maxCostR;
    dst.maxHoldMin           = src.maxHoldMin;
+   dst.anticipate           = src.anticipate;
+   dst.legBreakOnClose      = src.legBreakOnClose;
    dst.useSession           = src.useSession;
    dst.commissionPerLotSide = src.commissionPerLotSide;
    dst.slippageTicks        = src.slippageTicks;
@@ -370,6 +380,8 @@ struct BfEnv
    bool              riskOk;              // no lockout, trade limit not reached
    bool              spreadOk;            // spread filter passed
    double            sp;                  // spread at the decision moment (price units)
+   int               slotOwner;           // v5: id of the setup whose own pending limits are all that holds the slot
+                                          // (0 = none); with anticipate it may re-decide after its re-anchor
   };
 
 void BfClearEnv(BfEnv &e)
@@ -380,6 +392,7 @@ void BfClearEnv(BfEnv &e)
    e.riskOk         = false;
    e.spreadOk       = false;
    e.sp             = 0.0;
+   e.slotOwner      = 0;
   }
 
 //+------------------------------------------------------------------+
