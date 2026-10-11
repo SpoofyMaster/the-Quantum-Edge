@@ -140,7 +140,6 @@ struct BfLevelCtx
    int               state;             // BF_XS_*
    bool              cancelled;         // the detector cancelled this level: it is never reported to the detector again
    bool              cancelWanted;      // a delete failed: retried on the next ticks
-   bool              deleted;           // v5: the server confirmed the delete (the terminal may list it a moment longer)
    bool              partialDel;        // the rest of a partly filled limit was deleted
    bool              market;            // sent as a market order (its live price was already at / through P)
    bool              fillCheck;         // market fill: its actual risk has not been checked yet
@@ -186,7 +185,6 @@ void ResetLevel(BfLevelCtx &x)
    x.state        = BF_XS_NONE;
    x.cancelled    = false;
    x.cancelWanted = false;
-   x.deleted      = false;
    x.partialDel   = false;
    x.market       = false;
    x.fillCheck    = false;
@@ -257,6 +255,13 @@ int            g_warmArmed    = 0;
 int            g_warmDone     = 0;
 bool           g_recoveryLive = false;  // the restart recovery has run while trading was permitted
 long           g_lastStrayDel = 0;
+// v5 (InpAnticipateEntries): pending orders this EA deleted in the last minute (server-confirmed), until their history
+// order proves that no part filled; also tolerated when the terminal still lists them for a moment
+#define BF_MAX_DEL 16
+ulong          g_delTk[BF_MAX_DEL];
+datetime       g_delAt[BF_MAX_DEL];
+bool           g_delOk[BF_MAX_DEL];     // proven fill-free
+int            g_nDel         = 0;
 string         g_runText      = "";
 int            g_nRetry       = 0;      // decisions put back because of a transient condition
 string         g_lastWait     = "";     // last transient condition
@@ -919,57 +924,104 @@ int SlotOwner(void)
    return(g_ctx.id);
   }
 
-// a pending order of this EA that the context deleted (server-confirmed) but the terminal may still list for a moment
-bool IsDeletedCtxOrder(const ulong tk)
+// v5: a server-confirmed delete of this EA's pending order (kept one minute; the oldest entry makes room)
+void NoteDeleted(const ulong tk)
   {
-   int k;
-   if(!g_ctx.active || tk == 0)
-      return(false);
-   for(k = 0; k < BF_NLEV; k++)
-      if(g_ctx.lv[k].state == BF_XS_DONE && g_ctx.lv[k].deleted && g_ctx.lv[k].orderTicket == tk)
+   int j;
+   if(!InpAnticipateEntries || tk == 0)
+      return;
+   if(g_nDel >= BF_MAX_DEL)
+     {
+      for(j = 1; j < g_nDel; j++)
+        {
+         g_delTk[j - 1] = g_delTk[j];
+         g_delAt[j - 1] = g_delAt[j];
+         g_delOk[j - 1] = g_delOk[j];
+        }
+      g_nDel--;
+     }
+   g_delTk[g_nDel] = tk;
+   g_delAt[g_nDel] = TimeCurrent();
+   g_delOk[g_nDel] = false;
+   g_nDel++;
+  }
+
+// drops the entries older than one minute: by then SyncTrade / Reconcile have seen any fill of those orders
+void ExpireDeleted(void)
+  {
+   int  j;
+   int  n    = 0;
+   long now  = (long)TimeCurrent();
+   for(j = 0; j < g_nDel; j++)
+     {
+      if(now - (long)g_delAt[j] > 60)
+         continue;
+      g_delTk[n] = g_delTk[j];
+      g_delAt[n] = g_delAt[j];
+      g_delOk[n] = g_delOk[j];
+      n++;
+     }
+   g_nDel = n;
+  }
+
+bool IsRecentlyDeleted(const ulong tk)
+  {
+   int j;
+   for(j = 0; j < g_nDel; j++)
+      if(g_delTk[j] == tk)
          return(true);
    return(false);
   }
 
-// The slot check of a decision of setup id. v5: after an anticipated re-anchor the setup's old limits were just
-// deleted on this tick; they no longer count even if the terminal still lists them. Anything else (a level still
-// pending or open, a position, an unowned position, another order) keeps the slot busy.
-bool SlotFreeFor(const int id)
+// v5: every order deleted in the last minute must be proven fill-free by its history order (no filled volume) before
+// a new batch is sent: a part that filled just before the delete may not be in the terminal's position list yet.
+// Outside the tester the history of a just-deleted order can lag the server reply by a moment: polled up to ~0.5 s.
+bool DeletedOrdersProven(void)
+  {
+   int   j;
+   int   tries;
+   ulong tk;
+   long  now;
+   bool  tester = ((bool)MQLInfoInteger(MQL_TESTER) || (bool)MQLInfoInteger(MQL_OPTIMIZATION));
+   ExpireDeleted();
+   for(j = 0; j < g_nDel; j++)
+     {
+      if(g_delOk[j])
+         continue;
+      tk = g_delTk[j];
+      for(tries = 0; ; tries++)
+        {
+         now = (long)TimeCurrent();
+         if(HistorySelect((datetime)(now - 2 * 86400), (datetime)(now + 3600)) && HistoryOrderSelect(tk))
+            break;
+         if(tester || tries >= 20)
+            return(false);                       // not in the history yet: not proven
+         Sleep(25);
+        }
+      if(HistoryOrderGetDouble(tk, ORDER_VOLUME_INITIAL) - HistoryOrderGetDouble(tk, ORDER_VOLUME_CURRENT) > 1e-9)
+         return(false);                          // a part filled: wait until Reconcile manages it
+      g_delOk[j] = true;
+     }
+   return(true);
+  }
+
+// The slot check of a decision. v5: orders this EA just deleted (server-confirmed) no longer count even if
+// the terminal still lists them (with anticipation the same setup re-decides on the tick of its re-anchor). Anything
+// else (a level still pending or open, a position, an unowned position, another order) keeps the slot busy.
+bool SlotFreeForDecision(void)
   {
    int   i;
-   int   k;
-   bool  hs = false;
    ulong tk;
-   //--- every level of this setup deleted on this tick must be proven fill-free by its history order (no filled
-   //    volume) BEFORE anything else: a part that filled just before the delete may not be in the terminal's position
-   //    list yet. Not proven -> wait (NotifyRetry); a later bar decides after SyncTrade / Reconcile have seen it.
-   if(InpAnticipateEntries && g_ctx.active && g_ctx.id == id)
-      for(k = 0; k < BF_NLEV; k++)
-        {
-         tk = g_ctx.lv[k].orderTicket;
-         if(!g_ctx.lv[k].deleted || tk == 0)
-            continue;
-         if(!hs)
-           {
-            if(!HistorySelect((datetime)((long)g_ctx.decisionTime - 86400), (datetime)((long)TimeCurrent() + 3600)))
-               return(false);
-            hs = true;
-           }
-         if(!HistoryOrderSelect(tk) ||
-            HistoryOrderGetDouble(tk, ORDER_VOLUME_INITIAL) - HistoryOrderGetDouble(tk, ORDER_VOLUME_CURRENT) > 1e-9)
-            return(false);
-        }
    if(SlotFree())
       return(true);
-   if(!InpAnticipateEntries || !g_ctx.active || g_ctx.id != id || CtxBusy() || g_nOrph != 0 ||
-      g_trade.OwnPositions() != 0)
+   if(!InpAnticipateEntries || CtxBusy() || g_nOrph != 0 || g_trade.OwnPositions() != 0)
       return(false);
    for(i = OrdersTotal() - 1; i >= 0; i--)
      {
       tk = OrderGetTicket(i);
       if(tk == 0 || !IsOwnPendingOrder())
          continue;
-      if(!IsDeletedCtxOrder(tk))
+      if(!IsRecentlyDeleted(tk))
          return(false);
      }
    return(true);
@@ -1100,8 +1152,8 @@ void ExecCancel(const BfIntent &it)
      {
       g_log.Info(LevelTag(k) + "pending order deleted (" + BfReasonName(it.reason) + ")");
       // a part filled just before the delete becomes a position no level owns: Reconcile() adopts it
-      g_ctx.lv[k].state   = BF_XS_DONE;
-      g_ctx.lv[k].deleted = true;
+      g_ctx.lv[k].state = BF_XS_DONE;
+      NoteDeleted(g_ctx.lv[k].orderTicket);
       return;
      }
    if(!OrderSelect(g_ctx.lv[k].orderTicket))
@@ -1169,7 +1221,10 @@ void ExecBatch(const BfIntent &its[], const int n)
    if(!g_trade.TradePermission(why))
       wait = "trading not permitted: " + why;
    else
-      if(!SlotFreeFor(id))
+      if(InpAnticipateEntries && !DeletedOrdersProven())
+         wait = "an order deleted just now is not yet proven fill-free in the account history";
+      else
+      if(!SlotFreeForDecision())
          wait = "slot busy (an order or position of this EA exists)";
       else
          if(g_trade.Breaker())
@@ -1521,7 +1576,7 @@ void SyncTrade(void)
                   g_log.Info(LevelTag(k) + "pending order deleted (retry)");
                   g_ctx.lv[k].cancelWanted = false;
                   g_ctx.lv[k].state        = BF_XS_DONE;
-                  g_ctx.lv[k].deleted      = true;
+                  NoteDeleted(g_ctx.lv[k].orderTicket);
                  }
                continue;
               }
@@ -1665,7 +1720,10 @@ void Reconcile(void)
          continue;
       g_lastStrayDel = now;
       if(g_trade.DeleteOrder(tk))
+        {
+         NoteDeleted(tk);
          g_log.Info("stray pending order " + IntegerToString((long)tk) + " deleted");
+        }
       else
          g_log.Error("stray pending order " + IntegerToString((long)tk) + " not deleted: " + g_trade.lastError +
                      " (retried in 5 s)");
@@ -2459,6 +2517,7 @@ int OnInit()
    g_sumR         = 0.0;
    g_nR           = 0;
    g_lastStrayDel = 0;
+   g_nDel         = 0;
    g_nRetry       = 0;
    g_lastWait     = "";
    g_nLogOnly     = 0;

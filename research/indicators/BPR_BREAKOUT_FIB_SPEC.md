@@ -194,7 +194,8 @@ These rules apply from `confirmBar + 1` onwards. `ready` is reset to false at th
    - `ready = false` for this bar. v5 `anticipate`: `ready` is set with the FVG condition instead, so the setup decides
      again **on this bar** at the new extreme (see §5, slot owner). This happens only while
      `u − confirmBar ≤ leg_expiry_bars`, and not when `use_session && env.sessionCancel`. Otherwise it stays
-     `ready = false`, and the next `LEG` bar ends the setup as in v4.
+     `ready = false`. After the expiry, the next `LEG` bar ends the setup (`EXPIRED`). After a session-cancel bar it
+     stays in `LEG` and decides again on a later bar inside the entry window, as v4 does after a re-anchor.
 2. **`originBroken(u)`** → every pending level is cancelled (`CANCEL(k, LEG_BROKEN)`), then `DONE(LEG_BROKEN)`.
 3. **`u − confirmBar > leg_expiry_bars`** → every pending level is cancelled (`CANCEL(k, EXPIRED)`), then
    `DONE(EXPIRED)`.
@@ -226,9 +227,10 @@ It alone may decide; every other ready setup counts as `blocked slot`. Its cance
 intents in the same bar, and the executor deletes the old limits before it sends the new ones.
 
 **v5 early bars (`anticipate`).** The confirmation bar and new-extreme bars are decision bars only because of
-`anticipate`. On such a bar (`u = confirmBar` or `u = xBar`), suppose no level can be placed and **every** enabled level
-is `MISSED`. Then nothing is recorded and the setup stays in `LEG`, instead of ending `DONE(NO_LEVEL)`. Any other
-reason, or an ordinary pullback bar, keeps the v4 rule.
+`anticipate`. On such a bar (`u = confirmBar` or `u = xBar`), if no level can be placed, whatever the skip reasons
+(`MISSED`, `COST`, `RR`, `BAD_LEVEL`), nothing is recorded and the setup stays in `LEG` instead of ending
+`DONE(NO_LEVEL)`. So `anticipate` never ends a setup on a bar where v4 would not decide. An ordinary pullback bar keeps
+the v4 rule.
 
 **Which setup.** Setups in phase `LEG` with `ready = true`, in creation order. The first that places at least one
 level ends step 5: one setup per bar. A setup that places nothing ends `DONE(NO_LEVEL)`, and the next one is tried.
@@ -386,12 +388,14 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
     the **detector** (§4.2, §4.3, §5 notes). The Python reference does not have them; both off = v4.
   - **Executor.**
     - `env.slotOwner` comes from `SlotOwner()`.
-    - The decision's slot check is `SlotFreeFor(id)`.
-      - It first requires the account history to prove that every level of this setup deleted on this tick had no
-        filled volume. A part filled just before the delete may not be in the position list yet.
-      - It then treats this context's own server-confirmed deleted orders as gone, even if the terminal still lists
-        them.
-      - `SlotOwner()` also returns 0 while a tracked order is partly filled.
+    - **Before a batch.** `DeletedOrdersProven()` requires the account history to show no filled volume for every
+      pending order this EA deleted (server-confirmed) in the last minute, for any setup. A part filled just before a
+      delete may not be in the position list yet.
+      - Outside the tester, a history record not yet available is polled for up to about 0.5 s.
+      - Otherwise `NotifyRetry`.
+    - **The slot check.** `SlotFreeForDecision()` then treats those deleted orders as gone, even if the terminal
+      still lists them.
+    - `SlotOwner()` returns 0 while a tracked order is partly filled.
     - A failed delete, or an old order that filled first, keeps the slot busy. Nothing new is sent (`NotifyRetry`),
       so old and new limits of one setup can never both fill.
   - **Verification.** `tests/test_bpr_breakout_v5_switches.py` checks the rules on the C++ transliteration only.

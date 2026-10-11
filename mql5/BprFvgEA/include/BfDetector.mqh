@@ -482,8 +482,9 @@ private:
             Stat(BF_STAT_REANCHOR);
             //--- v5 anticipate: decided again on this bar at the new extreme; the slot its own cancelled orders held
             //    is given to it through env.slotOwner (Decide). Not after the leg's expiry and not on a session-cancel
-            //    bar: there the orders would have been cancelled anyway (steps 3-4), and the next LEG bar ends the
-            //    setup as in v4.
+            //    bar, where the orders would have been cancelled anyway (steps 3-4): after the expiry the next LEG bar
+            //    ends the setup (EXPIRED); after a session-cancel bar it stays in LEG and decides again on a later bar
+            //    inside the entry window, as v4 does after a re-anchor.
             if(m_p.anticipate && u - m_s[i].confirmBar <= m_p.legExpiryBars && !(m_p.useSession && env.sessionCancel))
                MarkReady(i);
             return;
@@ -638,24 +639,12 @@ private:
                      nPl++;
                     }
         }
-      //--- v5 anticipate: on a bar that only anticipation makes a decision bar (the confirmation bar, or a bar with a
-      //    new extreme), a close beyond EVERY entry (a spike) does not end the setup: nothing is recorded, it stays in
-      //    LEG and decides again on a later bar, as v4 would on the next pullback candle
+      //--- v5 anticipate: the confirmation bar and new-extreme bars are decision bars only because of anticipation.
+      //    A decision there that cannot place any level (every entry beyond a spike's close, or COST / RR / BAD_LEVEL
+      //    on a leg that is still short) does not end the setup: nothing is recorded, it stays in LEG and decides
+      //    again on a later bar - a new extreme re-sizes the leg, an ordinary pullback candle applies the v4 rule.
       if(nPl == 0 && m_p.anticipate && (u == m_s[i].confirmBar || u == m_s[i].xBar))
-        {
-         int nOn   = 0;
-         int nMiss = 0;
-         for(k = 0; k < BF_NLEV; k++)
-           {
-            if(why[k] < 0)
-               continue;
-            nOn++;
-            if(why[k] == BF_R_MISSED)
-               nMiss++;
-           }
-         if(nOn > 0 && nMiss == nOn)
-            return(false);
-        }
+         return(false);
       if(nPl > 0)
         {
          m_s[i].SL   = RoundTick(SL);

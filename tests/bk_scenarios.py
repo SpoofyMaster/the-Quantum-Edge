@@ -163,8 +163,14 @@ def v5_sequences() -> dict[str, list]:
                                bar(101.0, 101.0, 100.7, 100.75)],
         # as spike_confirm, but the next candle 18 is an ordinary pullback candle that also closes beyond every entry
         "spike_then_low": b[:17] + [bar(100.8, 102.5, 100.25, 100.3), bar(100.3, 100.4, 100.25, 100.3)],
-        # the confirmation candle spikes to 102.5 and closes at 100.9: beyond the 50 % entry only
-        "spike_confirm_mid": b[:17] + [bar(100.8, 102.5, 100.25, 100.9)],
+        # the confirmation candle spikes to 102.5 and closes at 100.9 (beyond the 50 % entry only); 18 is an ordinary
+        # pullback candle closing at 100.8
+        "spike_confirm_mid": b[:17] + [bar(100.8, 102.5, 100.25, 100.9), bar(100.9, 101.0, 100.7, 100.8)],
+        # a short leg at the confirmation: touch 14 (origin 99.5), reject 15, breakout 16, confirmation + gap 17 with
+        # X = 100.35 (leg 0.85: costs above 0.30 of the risk), new high 101.0 on 18, pullback 19
+        "short_leg_confirm": prefix() + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.15, 100.0, 100.1),
+                                         bar(100.1, 100.3, 100.05, 100.25), bar(100.25, 100.35, 100.2, 100.3),
+                                         bar(100.3, 101.0, 100.3, 100.95), bar(100.95, 100.95, 100.7, 100.8)],
         # a second new high on 20 after a pullback on 19, then 21 (leg expiry tests)
         "late_high": b + [bar(101.2, 102.0, 101.15, 101.9), bar(101.9, 101.95, 101.6, 101.7)],
     }

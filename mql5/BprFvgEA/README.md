@@ -21,8 +21,10 @@
 >   - Orders exist only once the FVG condition holds (with the `LUXALGO` rule, the FVG often appears one candle after
 >     the confirmation) and the slot is free.
 >   - Moves stop when `InpLegExpiryBars` has passed, and on a candle that ends the entry window, as orders would.
->   - A spike candle that closes beyond **every** entry on one of these extra decision candles (the confirmation or a
->     new extreme) does not end the setup: it waits for the next candle, as v4 waits for its pullback candle.
+>   - The extra decision candles (the confirmation, a new extreme) never end a setup. If nothing can be placed there,
+>     the setup waits and decides again later, as v4 waits for its pullback candle. That happens when a spike closes
+>     beyond every entry, or when the leg is still too short for the cost filter. On an ordinary pullback candle
+>     the v4 rules apply.
 > - **`InpLegBreakOnClose` alone does not.** After a candle that wicked below the origin, entries above its close are
 >   already passed (`SKIP MISSED`); only those still below the close are placed. It helps when the wick comes back up.
 >   The origin and the stop stay where they were, even though the wick traded through them.
@@ -38,13 +40,14 @@
 >   moves.
 > - **Still one setup at a time.** The setup that moves its own orders may reuse its slot on the same candle; other
 >   setups wait. The old orders are deleted before the new ones are sent. The new ones go out only if the account
->   history proves that no deleted order filled, even partly. Otherwise (a failed delete, a fill just before the
->   delete, history not available yet) nothing new is sent, and the setup decides again on a later candle.
+>   history proves that no order the EA deleted in the last minute filled, even partly. On a live or demo server the
+>   EA waits up to about half a second for that history. Otherwise (a failed delete, a fill just before the delete,
+>   history still missing) nothing new is sent, and the setup decides again on a later candle.
 > - **Not a research trial of H-14.** Either switch changes the entry rules, so a backtest with them is a new
 >   hypothesis that needs its own pre-registration.
 > - **Implementation (MQL5 only).**
 >   - Detector: `anticipate` and `legBreakOnClose` in `include/BfDetector.mqh`.
->   - Executor: `SlotOwner` / `SlotFreeFor` in `BprFvgEA.mq5`.
+>   - Executor: `SlotOwner`, `DeletedOrdersProven` and `SlotFreeForDecision` in `BprFvgEA.mq5`.
 >   - The Python reference is unchanged, so the parity harness covers the defaults. The switched-on rules are checked
 >     on the C++ copy of the MQL5 detector by `tests/test_bpr_breakout_v5_switches.py`.
 
@@ -501,7 +504,7 @@ All of these are inputs or are stated in the spec (§0):
 | Test | What it checks |
 |---|---|
 | `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 67 hand-built sequences (with the strict-rejection option too), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
-| `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (42 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 17 of 18 deliberate bugs caught; the 18th only differs in a state the slot rule makes unreachable. |
+| `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (44 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles and short legs on the extra decision candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 18 of 19 deliberate bugs caught; the 19th only differs in a state the slot rule makes unreachable. |
 | `tests/test_bpr_breakout_strategy.py` | 53 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
 | `tools/mql5_static_check.py mql5/BprFvgEA` | Mechanical check: names and brackets. It cannot find MQL5 type errors. |
 

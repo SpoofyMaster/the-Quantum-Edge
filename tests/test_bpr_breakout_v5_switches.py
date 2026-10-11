@@ -281,12 +281,32 @@ def test_all_missed_on_a_pullback_candle_still_ends_the_setup(exe, tmp_path, d):
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long", "short"])
-def test_mixed_skips_on_an_early_bar_end_the_setup(exe, tmp_path, d):
-    """Only an all-MISSED early bar waits. On the confirmation candle 17 the 50 % entry is MISSED and the other two
-    fail the cost filter (max_cost_r=0.01): nothing can be placed -> DONE(NO_LEVEL) on 17."""
-    recs, _ = run(exe, tmp_path, seq("spike_confirm_mid", d), fvg_rule=FVG["ANY_GAP"], anticipate=1, max_cost_r=0.01)
-    assert [(r["ev"], r["k"], r["reason"]) for r in at(recs, 17) if r["ev"] != "CONFIRM"] == \
-        [("SKIP", 1, "MISSED"), ("SKIP", 2, "COST"), ("SKIP", 3, "COST"), ("DONE", 0, "NO_LEVEL")]
+def test_mixed_skips_on_an_early_bar_wait(exe, tmp_path, d):
+    """Any reason, not only MISSED: on the confirmation candle 17 the 50 % entry is MISSED and the other two fail the
+    cost filter (max_cost_r=0.01). Nothing is recorded on 17; the ordinary pullback candle 18 decides exactly as v4
+    (here: nothing placeable -> DONE(NO_LEVEL) on 18, the v4 rule)."""
+    bars = seq("spike_confirm_mid", d)
+    dflt, _ = run(exe, tmp_path, bars, fvg_rule=FVG["ANY_GAP"], max_cost_r=0.01)
+    recs, _ = run(exe, tmp_path, bars, fvg_rule=FVG["ANY_GAP"], anticipate=1, max_cost_r=0.01)
+    assert [r["ev"] for r in at(recs, 17)] == ["CONFIRM"]
+    key = lambda r: (r["ev"], r["k"], r["reason"])  # noqa: E731
+    assert [key(r) for r in at(recs, 18)] == [key(r) for r in at(dflt, 18)]
+    assert [key(r) for r in at(recs, 18)][-1] == ("DONE", 0, "NO_LEVEL")
+
+
+@pytest.mark.parametrize("d", [1, -1], ids=["long", "short"])
+def test_short_leg_at_the_confirmation_is_not_lost(exe, tmp_path, d):
+    """Default costs (max_cost_r 0.30): the leg at the confirmation (0.85) is too short for every entry (COST). v4
+    never decides there and places three limits on the pullback 19 (X = 101.0). Anticipated: nothing on 17 (no
+    DONE), the three limits on the new high 18 at the same prices v4 uses on 19."""
+    bars = seq("short_leg_confirm", d)
+    dflt, _ = run(exe, tmp_path, bars, fvg_rule=FVG["ANY_GAP"])
+    recs, _ = run(exe, tmp_path, bars, fvg_rule=FVG["ANY_GAP"], anticipate=1)
+    assert len(at(dflt, 19, "PLACE_LIMIT")) == 3
+    assert [r["ev"] for r in at(recs, 17)] == ["CONFIRM"]
+    assert not [r for r in recs if r["ev"] == "DONE"]
+    px = lambda rs: [(r["k"], r["P"], r["SL"], r["TP"]) for r in rs]  # noqa: E731
+    assert px(at(recs, 18, "PLACE_LIMIT")) == px(at(dflt, 19, "PLACE_LIMIT"))
 
 
 # ---------------------------------------------------------------------------------------------------------------
