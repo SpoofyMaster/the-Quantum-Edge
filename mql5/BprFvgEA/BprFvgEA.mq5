@@ -2459,7 +2459,10 @@ void RecoverState(const bool fromInit)
       if(g_trade.tradingAllowed)
         {
          if(g_trade.DeleteOrder(tk))
+           {
+            NoteDeleted(tk);                     // v5: covered by the fill-free proof like any other delete
             g_log.Info("restart: deleted the pending order " + IntegerToString((long)tk) + " left from before");
+           }
          else
             g_log.Error("restart: could not delete the pending order " + IntegerToString((long)tk) + ": " +
                         g_trade.lastError + " (Reconcile retries it)");
