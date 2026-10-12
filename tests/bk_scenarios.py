@@ -179,6 +179,54 @@ def v5_sequences() -> dict[str, list]:
     return sq
 
 
+def v6_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v6 setups (tests/test_bpr_breakout_v6_setups.py): the reversal setup and the touch
+    entry. Also in the parity set at the default settings (CONTINUATION, no touch entry). Bullish BPR [98.0, 99.9]
+    armed on 13 (prefix); mirror() gives the bearish / long side."""
+    p = prefix()
+    sq = {
+        # T1 on 14 (its low 99.5 = the reversal level, its high 100.2 = the reversal leg origin); 15 closes below
+        # 99.5 (reversal breakout), 16 closes below it again (confirmation, short; gap 99.35 < low[14] 99.5);
+        # 17 new low 98.4; 18 pullback -> three sell limits; 19 fills the 50 % (99.3); 20 reaches the target
+        "reversal": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.2, 99.3),
+                         bar(99.3, 99.35, 98.8, 98.9), bar(98.9, 98.95, 98.4, 98.5),
+                         bar(98.5, 98.8, 98.45, 98.7), bar(98.7, 99.4, 98.65, 99.35),
+                         bar(99.35, 99.4, 98.3, 98.35)],
+        # 15 closes below 99.5 (reversal breakout), 16 closes back above it (BREAK_FAIL: still the same touch);
+        # 17 is a rejection (above the zone), 18 closes above the touch level 99.8 of candle 16 (continuation breakout
+        # with BOTH), 19 confirms
+        "rev_fail_then_cont": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.2, 99.3),
+                                   bar(99.3, 99.8, 99.25, 99.7), bar(99.95, 100.0, 99.92, 99.95),
+                                   bar(99.95, 100.4, 99.93, 100.3), bar(100.3, 100.8, 100.25, 100.7)],
+        # T1 on 14, rejection 15, T2 on 16 (its low 99.6 = the new reversal level), 17 closes at 99.55: below the
+        # T2 candle's low but above the T1 candle's low -> reversal breakout; 18 confirms
+        "rev_t2": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.15, 99.95, 100.1),
+                       bar(100.1, 100.12, 99.6, 99.8), bar(99.8, 99.85, 99.5, 99.55),
+                       bar(99.55, 99.6, 99.1, 99.2), bar(99.2, 99.25, 98.9, 99.0)],
+        # 15 breaks the BPR (low 97.9) but closes above the T1 candle's low (no reversal); 16 does not touch and closes
+        # above the touch level (100.1, high of 15): a continuation breakout - not any more once the BPR is broken (BOTH)
+        "broken_then_up": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.1, 97.9, 99.6),
+                               bar(99.95, 100.5, 99.95, 100.4), bar(100.4, 100.8, 100.35, 100.7)],
+        # continuation breakout on 15; 16 closes above the level again but its low breaks the BPR (97.9): no
+        # confirmation once the BPR is broken (BOTH: BREAK_FAIL)
+        "broken_in_break": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.1, 100.7, 100.05, 100.6),
+                                bar(100.6, 100.65, 97.9, 100.3), bar(100.3, 100.6, 100.2, 100.5)],
+        # 15 closes EXACTLY on the T1 candle's low 99.5 (no reversal: the rule is strict); 16 closes below it
+        "rev_close_on_level": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.3, 99.5),
+                                   bar(99.5, 99.55, 99.2, 99.3), bar(99.3, 99.35, 98.9, 99.0)],
+        # same touch: 15 dips to 99.3 (closes 99.6, no reversal), 16 makes a new high 100.3 (the reversal leg restarts
+        # there: its extreme is reset to 16's low 99.7); 17 closes below 99.5 (low 99.4), 18 confirms: X = 99.4, not 99.3
+        "rev_new_origin": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.3, 99.6),
+                               bar(99.75, 100.3, 99.7, 99.8), bar(99.8, 99.85, 99.4, 99.45),
+                               bar(99.45, 99.5, 99.41, 99.42)],
+        # the T1 candle 14 already breaks the BPR (low 97.9 < 98.0): no touch entry; CONTINUATION ends BROKEN
+        "t1_breaks": p + [bar(100.1, 100.2, 97.9, 99.0), bar(99.0, 99.2, 98.6, 98.7)],
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""

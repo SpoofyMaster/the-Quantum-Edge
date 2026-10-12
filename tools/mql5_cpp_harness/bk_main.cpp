@@ -38,6 +38,9 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "use_session") p.useSession = v != 0;
    else if(k == "anticipate") p.anticipate = v != 0;                 // v5, EA only (no Python counterpart)
    else if(k == "leg_break_on_close") p.legBreakOnClose = v != 0;    // v5, EA only (no Python counterpart)
+   else if(k == "setup_type") p.setupType = (int)v;                  // v6, EA only: 0 CONT, 1 REVERSAL, 2 BOTH
+   else if(k == "touch_entry") p.touchEntry = v != 0;                // v6, EA only
+   else if(k == "touch_rr") p.touchTargetRR = v;                     // v6, EA only
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
    else if(k == "sp") sp = v;
@@ -50,6 +53,8 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
 static std::string Num(double v) { char b[64]; snprintf(b, 64, "%.17g", v); return b; }
 
 struct HOrd { double P, SL, TP; int dir, bar; };
+// v6 touch entry: a market order decided on bar 'bar', opened at the next bar's open, then like a filled level
+struct HTouch { int id, dir, bar; double SL, TP, P; bool open; };
 
 int main(int argc, char **argv)
   {
@@ -73,13 +78,19 @@ int main(int argc, char **argv)
    static CBfDetector det;
    det.Init(p, tradeFrom);
    std::map<std::pair<int, int>, HOrd> pend, pos;      // (id, k), ordered like Python's sorted()
+   std::vector<HTouch> touch;                           // v6: at most one (slot rule); printed as H_TOUCH_* lines
+   auto hline = [&](int n, const HTouch &t, const char *ev)
+     {
+      printf("{\"n\":%d,\"id\":%d,\"ev\":\"%s\",\"dir\":%d,\"k\":0,\"reason\":null,\"P\":%s,\"SL\":%s,\"TP\":%s,\"O\":null,\"X\":null}\n",
+             n, t.id, ev, t.dir, Num(t.P).c_str(), Num(t.SL).c_str(), Num(t.TP).c_str());
+     };
    auto flush = [&]()
      {
       for(int k = 0; k < det.EventCount(); k++)
         {
          BfEvent e;
          det.GetEvent(k, e);
-         bool px = (e.ev == BF_EV_PLACE_LIMIT);
+         bool px = (e.ev == BF_EV_PLACE_LIMIT || e.ev == BF_EV_TOUCH_ENTRY);
          bool ox = (e.ev == BF_EV_PLACE_LIMIT || e.ev == BF_EV_CONFIRM);
          printf("{\"n\":%d,\"id\":%d,\"ev\":\"%s\",\"dir\":%d,\"k\":%d,\"reason\":%s,\"P\":%s,\"SL\":%s,\"TP\":%s,\"O\":%s,\"X\":%s}\n",
                 e.n, e.id, BfEventName(e.ev).c_str(), e.dir, e.k,
@@ -105,6 +116,29 @@ int main(int argc, char **argv)
          if(out) { std::pair<int, int> key = it->first; it = pos.erase(it); det.NotifyClosed(key.first, key.second); }
          else ++it;
         }
+      // v6 touch entries: open at this bar's open (decided on an earlier bar), exits from the next bar on
+      for(auto it = touch.begin(); it != touch.end();)
+        {
+         HTouch &t = *it;
+         if(!t.open)
+           {
+            double e = (t.dir > 0) ? O[u] + sp : O[u];
+            double risk = t.dir * (e - t.SL);
+            if(risk <= 0.0) { hline(u, t, "H_TOUCH_SKIP"); it = touch.erase(it); continue; }
+            t.P = e; t.TP = e + t.dir * p.touchTargetRR * risk; t.open = true; t.bar = u;
+            hline(u, t, "H_TOUCH_OPEN");
+            ++it;
+            continue;
+           }
+         bool out = false;
+         if(t.bar < u)
+           {
+            if(t.dir > 0) out = (l <= t.SL || h >= t.TP || u - t.bar >= holdBars);
+            else out = (h + sp >= t.SL || l + sp <= t.TP || u - t.bar >= holdBars);
+           }
+         if(out) { hline(u, t, "H_TOUCH_CLOSE"); it = touch.erase(it); }
+         else ++it;
+        }
       // fills of levels decided on an earlier bar
       for(auto it = pend.begin(); it != pend.end();)
         {
@@ -127,9 +161,21 @@ int main(int argc, char **argv)
       ProcessBar(ep, st, u, O.data(), H.data(), L.data(), C.data(), ev);
       BfEnv env;
       BfClearEnv(env);
-      env.slotFree = !det.HasOrderOrPosition();
-      // v5 anticipate: the setup whose own pending limits alone hold the slot (the EA reads it from its context)
-      env.slotOwner = (p.anticipate && !env.slotFree) ? det.PendingOwner() : 0;
+      env.slotFree = !det.HasOrderOrPosition() && touch.empty();
+      // v5 anticipate: the setup whose own pending limits alone hold the slot; v6 touch entry: or whose own touch
+      // position does (the EA reads both from its context, hedging accounts)
+      env.slotOwner = 0;
+      if(!env.slotFree && (p.anticipate || p.touchEntry))
+        {
+         int occ = det.OccupyingId();
+         int tid = touch.empty() ? 0 : touch[0].id;
+         int own = 0;
+         bool ok = (occ >= 0);
+         if(ok && occ > 0 && (det.PhaseOf(occ) != BF_PH_ORDERED || !p.anticipate)) ok = false;
+         if(ok && occ > 0 && tid > 0 && occ != tid) ok = false;
+         if(ok) own = (occ > 0) ? occ : tid;
+         env.slotOwner = own;
+        }
       env.sessionEntryOk = (u != sessOffBar); env.sessionCancel = (u == sessCancelBar);
       env.riskOk = true; env.spreadOk = true; env.sp = sp;
       det.OnBarClosed(u, O.data(), H.data(), L.data(), C.data(), st, ev, env);
@@ -140,6 +186,7 @@ int main(int argc, char **argv)
          std::pair<int, int> key(it.id, it.k);
          if(it.type == BF_EV_PLACE_LIMIT) pend[key] = HOrd{it.P, it.SL, it.TP, it.dir, u};
          else if(it.type == BF_EV_CANCEL) pend.erase(key);
+         else if(it.type == BF_EV_TOUCH_ENTRY) touch.push_back(HTouch{it.id, it.dir, u, it.SL, it.TP, it.P, false});
         }
       det.ClearIntents();
       flush();

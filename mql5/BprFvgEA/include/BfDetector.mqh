@@ -85,6 +85,12 @@ private:
          m_ev[m_nEv].SL = s.SL;
          m_ev[m_nEv].TP = s.TP;
         }
+      if(evType == BF_EV_TOUCH_ENTRY)
+        {
+         m_ev[m_nEv].P  = s.tP;
+         m_ev[m_nEv].SL = s.tSL;
+         m_ev[m_nEv].TP = s.tTP;
+        }
       if(evType == BF_EV_CONFIRM || evType == BF_EV_PLACE_LIMIT)
         {
          m_ev[m_nEv].O = s.O;
@@ -95,7 +101,7 @@ private:
       m_ev[m_nEv].B           = s.B;
       m_ev[m_nEv].T           = s.T;
       m_ev[m_nEv].touches     = s.touches;
-      m_ev[m_nEv].lvl         = s.lvl;
+      m_ev[m_nEv].lvl         = s.rev ? s.lvlR : s.lvl;
       m_ev[m_nEv].ref         = s.ref;
       m_ev[m_nEv].brkBar      = s.brkBar;
       m_ev[m_nEv].confirmBar  = s.confirmBar;
@@ -113,6 +119,8 @@ private:
          m_ev[m_nEv].snLvP[j]   = s.lvP[j];
          m_ev[m_nEv].snLvRsn[j] = s.lvRsn[j];
         }
+      m_ev[m_nEv].zdir        = s.zdir;
+      m_ev[m_nEv].rev         = s.rev;
       m_nEv++;
      }
 
@@ -135,6 +143,12 @@ private:
          m_in[m_nIn].P  = s.lvP[k - 1];
          m_in[m_nIn].SL = s.SL;
          m_in[m_nIn].TP = s.TP;
+        }
+      if(type == BF_EV_TOUCH_ENTRY)
+        {
+         m_in[m_nIn].P  = s.tP;
+         m_in[m_nIn].SL = s.tSL;
+         m_in[m_nIn].TP = s.tTP;
         }
       m_nIn++;
      }
@@ -242,17 +256,74 @@ private:
       return(true);
      }
 
-   //--- spec s.2 helpers
+   //--- v6 setup types
+   bool              HasCont(void)
+     {
+      return(m_p.setupType != BF_SETUP_REVERSAL);
+     }
+
+   bool              HasRev(void)
+     {
+      return(m_p.setupType != BF_SETUP_CONTINUATION);
+     }
+
+   //--- spec s.2 helpers. Before the confirmation they use the BPR's direction (zdir); v1-v5 had dir == zdir there.
    bool              Beyond(const int i, const double cu)
      {
-      if(m_s[i].dir > 0)
+      if(m_s[i].zdir > 0)
          return(cu > m_s[i].lvl);
       return(cu < m_s[i].lvl);
      }
 
+   //--- v6 reversal breakout: a close beyond the opposite extreme of the candle that made the latest touch (below
+   //    its low for a bullish BPR, above its high for a bearish one)
+   bool              BeyondRev(const int i, const double cu)
+     {
+      if(m_s[i].zdir > 0)
+         return(cu < m_s[i].lvlR);
+      return(cu > m_s[i].lvlR);
+     }
+
+   //--- v6 reversal leg: origin = highest high (bullish BPR) since the latest touch began, extreme = lowest low after it
+   void              TrackRev(const int i, const int u, const double hu, const double lu)
+     {
+      if(m_s[i].zdir > 0)
+        {
+         if(hu > m_s[i].rO)
+           {
+            m_s[i].rO    = hu;
+            m_s[i].rOBar = u;
+            m_s[i].rX    = lu;
+            m_s[i].rXBar = u;
+           }
+         else
+            if(lu < m_s[i].rX)
+              {
+               m_s[i].rX    = lu;
+               m_s[i].rXBar = u;
+              }
+        }
+      else
+        {
+         if(lu < m_s[i].rO)
+           {
+            m_s[i].rO    = lu;
+            m_s[i].rOBar = u;
+            m_s[i].rX    = hu;
+            m_s[i].rXBar = u;
+           }
+         else
+            if(hu > m_s[i].rX)
+              {
+               m_s[i].rX    = hu;
+               m_s[i].rXBar = u;
+              }
+        }
+     }
+
    void              Track(const int i, const int u, const double hu, const double lu)
      {
-      if(m_s[i].dir > 0)
+      if(m_s[i].zdir > 0)
         {
          if(lu < m_s[i].O)
            {
@@ -335,40 +406,64 @@ private:
          MarkReady(i);
      }
 
+   //--- v6 reversal confirmation: the leg becomes the reversal leg (trade direction -zdir, set at the breakout)
+   void              ConfirmRev(const int i, const int u)
+     {
+      m_s[i].O    = m_s[i].rO;
+      m_s[i].oBar = m_s[i].rOBar;
+      m_s[i].X    = m_s[i].rX;
+      m_s[i].xBar = m_s[i].rXBar;
+      Confirm(i, u);
+     }
+
    //+---------------------------------------------------------------+
    //| spec s.4.1-s.4.4: one existing setup on closed bar u          |
    //+---------------------------------------------------------------+
    void              StepExisting(const int i, const int u, const double &h[], const double &l[], const double &c[],
                                   const BfEnv &env)
      {
-      int  d = m_s[i].dir;
+      int  d  = m_s[i].dir;
+      int  zd = m_s[i].zdir;
       int  ph = m_s[i].phase;
       bool tn;
       bool touched;
-      m_s[i].ready = false;
+      bool brokeNow;
+      m_s[i].ready      = false;
+      m_s[i].touchReady = false;
       if(ph == BF_PH_WAIT || ph == BF_PH_ZONE || ph == BF_PH_BREAK)
         {
-         //--- 4.1 steps 1-2
-         if((d > 0 && l[u] < m_s[i].B) || (d < 0 && h[u] > m_s[i].T))
+         //--- 4.1 steps 1-2. v6: with REVERSAL / BOTH a broken BPR only ends the continuation; the reversal goes on.
+         brokeNow = ((zd > 0 && l[u] < m_s[i].B) || (zd < 0 && h[u] > m_s[i].T));
+         if(brokeNow)
            {
-            SetDone(i, u, BF_R_BROKEN);
-            return;
+            if(!HasRev())
+              {
+               SetDone(i, u, BF_R_BROKEN);
+               return;
+              }
+            m_s[i].contOff = true;
            }
          if(u - m_s[i].created > m_p.setupExpiryBars)
            {
             SetDone(i, u, BF_R_EXPIRED);
             return;
            }
-         tn = (d > 0) ? (l[u] <= m_s[i].T) : (h[u] >= m_s[i].B);
-         //--- step 4: BREAK
+         tn = (zd > 0) ? (l[u] <= m_s[i].T) : (h[u] >= m_s[i].B);
+         //--- step 4: BREAK (continuation, or v6 reversal)
          if(ph == BF_PH_BREAK)
            {
-            if(Beyond(i, c[u]))
+            if(m_s[i].rev ? BeyondRev(i, c[u]) : (!m_s[i].contOff && Beyond(i, c[u])))
               {
                m_s[i].nClose++;
                Track(i, u, h[u], l[u]);
+               TrackRev(i, u, h[u], l[u]);
                if(m_s[i].nClose >= m_p.confirmCloses)
-                  Confirm(i, u);
+                 {
+                  if(m_s[i].rev)
+                     ConfirmRev(i, u);
+                  else
+                     Confirm(i, u);
+                 }
                m_s[i].inEp = tn;
                return;
               }
@@ -376,22 +471,48 @@ private:
             Stat(BF_STAT_BRK_FAIL);
             m_s[i].phase  = BF_PH_ZONE;
             m_s[i].nClose = 0;
+            if(m_s[i].rev)
+              {
+               m_s[i].rev = false;
+               m_s[i].dir = zd;
+              }
            }
          else
            {
             //--- step 5: ZONE + a candle that does NOT touch the zone closes beyond the level = breakout candle (a
             //    touching candle belongs to the touch: it becomes the reference candle in step 6). Stricter reading
             //    (rejectBeforeBreak): the previous candle must not have touched either (a rejection came first).
-            if(ph == BF_PH_ZONE && !tn && (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
+            if(ph == BF_PH_ZONE && HasCont() && DirAllowed(zd) && !m_s[i].contOff && !tn &&
+               (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].brkBar = u;
                m_s[i].nClose = 1;
                Track(i, u, h[u], l[u]);
+               TrackRev(i, u, h[u], l[u]);
                AddEvent(u, BF_EV_BREAKOUT, m_s[i], 0, BF_R_NONE);
                Stat(BF_STAT_BREAKOUT);
                if(m_s[i].nClose >= m_p.confirmCloses)
                   Confirm(i, u);
+               m_s[i].inEp = tn;
+               return;
+              }
+            //--- v6 step 5b: reversal breakout candle: ZONE + a close beyond the opposite extreme of the candle that
+            //    made the latest touch (lvlR). It may touch the zone (it goes through it). The trade direction becomes
+            //    -zdir from here.
+            if(ph == BF_PH_ZONE && HasRev() && DirAllowed(-zd) && BeyondRev(i, c[u]))
+              {
+               m_s[i].phase  = BF_PH_BREAK;
+               m_s[i].rev    = true;
+               m_s[i].dir    = -zd;
+               m_s[i].brkBar = u;
+               m_s[i].nClose = 1;
+               Track(i, u, h[u], l[u]);
+               TrackRev(i, u, h[u], l[u]);
+               AddEvent(u, BF_EV_BREAKOUT, m_s[i], 0, BF_R_NONE);
+               Stat(BF_STAT_BREAKOUT);
+               if(m_s[i].nClose >= m_p.confirmCloses)
+                  ConfirmRev(i, u);
                m_s[i].inEp = tn;
                return;
               }
@@ -413,23 +534,37 @@ private:
                   m_s[i].touchBar1 = u;
                else
                   m_s[i].touchBar2 = u;
-               if(d > 0)
+               if(zd > 0)
                  {
-                  m_s[i].O = l[u];
-                  m_s[i].X = h[u];
+                  m_s[i].O    = l[u];
+                  m_s[i].X    = h[u];
+                  m_s[i].rO   = h[u];
+                  m_s[i].rX   = l[u];
+                  m_s[i].lvlR = l[u];
                  }
                else
                  {
-                  m_s[i].O = h[u];
-                  m_s[i].X = l[u];
+                  m_s[i].O    = h[u];
+                  m_s[i].X    = l[u];
+                  m_s[i].rO   = l[u];
+                  m_s[i].rX   = h[u];
+                  m_s[i].lvlR = h[u];
                  }
-               m_s[i].oBar = u;
-               m_s[i].xBar = u;
+               m_s[i].oBar  = u;
+               m_s[i].xBar  = u;
+               m_s[i].rOBar = u;
+               m_s[i].rXBar = u;
+               //--- v6 touch entry: on the close of the T1 candle, if that candle did not break the BPR
+               if(m_p.touchEntry && m_s[i].touches == 1 && !brokeNow && DirAllowed(zd))
+                  m_s[i].touchReady = true;
               }
             else
+              {
                Track(i, u, h[u], l[u]);
+               TrackRev(i, u, h[u], l[u]);
+              }
             m_s[i].ref   = u;
-            m_s[i].lvl   = (d > 0) ? h[u] : l[u];
+            m_s[i].lvl   = (zd > 0) ? h[u] : l[u];
             m_s[i].phase = BF_PH_ZONE;
             m_s[i].inEp  = true;
            }
@@ -441,7 +576,10 @@ private:
                m_s[i].inEp = false;
               }
             if(m_s[i].phase == BF_PH_ZONE)
+              {
                Track(i, u, h[u], l[u]);
+               TrackRev(i, u, h[u], l[u]);
+              }
            }
          return;
         }
@@ -534,12 +672,15 @@ private:
      {
       int reason = BF_R_NONE;
       int dir    = z.pos;
-      if(!DirAllowed(dir))
+      //--- v6: a BPR is tracked if one of the directions it can be traded in is allowed (continuation: its own
+      //    direction; reversal: the opposite one)
+      if(!((HasCont() && DirAllowed(dir)) || (HasRev() && DirAllowed(-dir))))
          return;
       BfClearSetup(m_c);
       m_c.id      = m_nextId;
       m_nextId++;
       m_c.dir     = dir;
+      m_c.zdir    = dir;
       m_c.created = u;
       m_c.B       = z.box.bottom;
       m_c.T       = z.box.top;
@@ -685,6 +826,55 @@ private:
      }
 
    //+---------------------------------------------------------------+
+   //| v6: the touch entry of a setup whose T1 candle just closed:   |
+   //| a market order in the BPR's direction at the next open. Stop  |
+   //| beyond the BPR's far edge + the stop buffer, target           |
+   //| touchTargetRR x the risk. true = decided (record + intent).   |
+   //+---------------------------------------------------------------+
+   bool              TryTouch(const int i, const int u, const double &c[], const BfEnv &env)
+     {
+      int    zd   = m_s[i].zdir;
+      int    why  = BF_R_NONE;
+      double sp   = env.sp;
+      double tk   = m_p.tickSize;
+      double P;
+      double SL;
+      double risk;
+      double cost = sp + m_p.commPrice + 2.0 * m_p.slippageTicks * tk;
+      if(zd > 0)
+        {
+         P  = c[u] + sp;                                        // a buy fills at the ask
+         SL = m_s[i].B - (double)m_p.stopBufferTicks * tk;
+        }
+      else
+        {
+         P  = c[u];                                             // a sell fills at the bid
+         SL = m_s[i].T + (double)m_p.stopBufferTicks * tk + sp; // the stop of a sell is an ask level
+        }
+      risk = (double)zd * (P - SL);
+      if(risk <= 0.0 || m_p.touchTargetRR <= 0.0)
+         why = BF_R_BAD_LEVEL;
+      else
+         if(m_p.minRR > 0.0 && m_p.touchTargetRR < m_p.minRR)
+            why = BF_R_RR;
+         else
+            if(m_p.maxCostR > 0.0 && cost / risk > m_p.maxCostR)
+               why = BF_R_COST;
+      if(why != BF_R_NONE)
+        {
+         AddEvent(u, BF_EV_SKIP, m_s[i], 0, why);               // level 0 = the touch entry
+         Stat(BF_STAT_SKIP + why);
+         return(false);
+        }
+      m_s[i].tP  = RoundTick(P);
+      m_s[i].tSL = RoundTick(SL);
+      m_s[i].tTP = RoundTick(P + (double)zd * m_p.touchTargetRR * risk);
+      AddEvent(u, BF_EV_TOUCH_ENTRY, m_s[i], 0, BF_R_NONE);
+      AddIntent(BF_EV_TOUCH_ENTRY, m_s[i], 0, BF_R_NONE, u);
+      return(true);
+     }
+
+   //+---------------------------------------------------------------+
    //| spec s.5: decisions, creation order, one setup per bar        |
    //+---------------------------------------------------------------+
    void              Decide(const int u, const double &c[], const BfEnv &env)
@@ -694,12 +884,18 @@ private:
       int blocked = -1;
       int own     = -1;                                         // v5: ready setup that owns the busy slot
       for(i = 0; i < m_n; i++)
+        {
          if(m_s[i].phase == BF_PH_LEG && m_s[i].ready)
            {
             nReady++;
-            if(m_p.anticipate && env.slotOwner > 0 && m_s[i].id == env.slotOwner)
+            // v5 anticipate: its own pending limits hold the slot; v6 touch entry: its own touch position does
+            if((m_p.anticipate || m_p.touchEntry) && env.slotOwner > 0 && m_s[i].id == env.slotOwner)
                own = i;
            }
+         else
+            if(m_s[i].touchReady)
+               nReady++;                                        // v6: a touch entry on its T1 bar
+        }
       if(nReady == 0)
          return;
       if(!env.slotFree && own < 0)
@@ -730,6 +926,12 @@ private:
         }
       for(i = 0; i < m_n; i++)
         {
+         if(m_s[i].touchReady)
+           {
+            if(TryTouch(i, u, c, env))
+               return;
+            continue;
+           }
          if(m_s[i].phase != BF_PH_LEG || !m_s[i].ready)
             continue;
          if(TryDecide(i, u, c, env))
@@ -903,24 +1105,29 @@ public:
       Stat(BF_STAT_RETRY);
      }
 
-   //--- harness environment (v5 anticipate): the id of the only ORDERED setup while no setup is FILLED (its own pending
-   //    limits are all that holds the slot), else 0
-   int               PendingOwner(void)
+   //--- harness environment (v6): 0 = no setup ORDERED or FILLED, the id when exactly one is, -1 when more
+   int               OccupyingId(void)
      {
       int i;
       int id = 0;
       for(i = 0; i < m_n; i++)
         {
-         if(m_s[i].phase == BF_PH_FILLED)
-            return(0);
-         if(m_s[i].phase == BF_PH_ORDERED)
-           {
-            if(id != 0)
-               return(0);
-            id = m_s[i].id;
-           }
+         if(m_s[i].phase != BF_PH_ORDERED && m_s[i].phase != BF_PH_FILLED)
+            continue;
+         if(id != 0)
+            return(-1);
+         id = m_s[i].id;
         }
       return(id);
+     }
+
+   //--- the phase of setup id (BF_PH_NONE when it is no longer tracked)
+   int               PhaseOf(const int id)
+     {
+      int i = FindIndex(id);
+      if(i < 0)
+         return(BF_PH_NONE);
+      return(m_s[i].phase);
      }
 
    //--- harness environment: slot_free = no setup ORDERED or FILLED

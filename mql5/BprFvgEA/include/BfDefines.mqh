@@ -51,6 +51,14 @@ enum ENUM_BF_FVGRULE
    BF_FVGRULE_NONE    = 2         // NONE (no FVG needed)
   };
 
+// v6: which breakouts of a touched BPR are traded
+enum ENUM_BF_SETUPTYPE
+  {
+   BF_SETUP_CONTINUATION = 0,     // CONTINUATION (breakout in the BPR's direction, v1-v5)
+   BF_SETUP_REVERSAL     = 1,     // REVERSAL (breakout through the BPR, opposite direction)
+   BF_SETUP_BOTH         = 2      // BOTH (whichever breakout confirms first)
+  };
+
 enum ENUM_BF_SERVER_TIME
   {
    BF_SERVER_NY_PLUS_7 = 0,       // NY+7 (IC Markets and most NY-close brokers)
@@ -99,7 +107,8 @@ enum ENUM_BF_EVENT
    BF_EV_CANCEL      = 9,
    BF_EV_DROP        = 10,
    BF_EV_CLOSED      = 11,
-   BF_EV_DONE        = 12
+   BF_EV_DONE        = 12,
+   BF_EV_TOUCH_ENTRY = 13         // v6: market entry decided on the close of the T1 candle (record + intent)
   };
 
 // Setup phases (spec s.4)
@@ -209,6 +218,8 @@ string BfEventName(const int e)
       return("CLOSED");
    if(e == BF_EV_DONE)
       return("DONE");
+   if(e == BF_EV_TOUCH_ENTRY)
+      return("TOUCH_ENTRY");
    return("");
   }
 
@@ -283,6 +294,10 @@ struct BfParams
                                           // on the same bar
    bool              legBreakOnClose;     // LEG_BROKEN only when a candle CLOSES beyond the leg origin (false = any
                                           // low / high beyond it)
+   // v6 (EA only; the Python reference has no counterpart; CONTINUATION + false = v5)
+   int               setupType;           // ENUM_BF_SETUPTYPE
+   bool              touchEntry;          // market entry at the next open after the T1 candle, BPR direction
+   double            touchTargetRR;       // its take-profit in R (risk = entry -> stop beyond the BPR)
    // session / execution
    bool              useSession;
    double            commissionPerLotSide; // account currency per lot per side (UNVERIFIED); informative
@@ -318,6 +333,9 @@ void BfDefaultParams(BfParams &p)
    p.maxHoldMin           = 120;
    p.anticipate           = false;
    p.legBreakOnClose      = false;
+   p.setupType            = BF_SETUP_CONTINUATION;
+   p.touchEntry           = false;
+   p.touchTargetRR        = 1.5;
    p.useSession           = true;
    p.commissionPerLotSide = 3.50;
    p.slippageTicks        = 1.0;
@@ -349,6 +367,9 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.maxHoldMin           = src.maxHoldMin;
    dst.anticipate           = src.anticipate;
    dst.legBreakOnClose      = src.legBreakOnClose;
+   dst.setupType            = src.setupType;
+   dst.touchEntry           = src.touchEntry;
+   dst.touchTargetRR        = src.touchTargetRR;
    dst.useSession           = src.useSession;
    dst.commissionPerLotSide = src.commissionPerLotSide;
    dst.slippageTicks        = src.slippageTicks;
@@ -431,6 +452,21 @@ struct BfSetup
    int               lvSt[BF_NLEV];       // BF_LV_*
    double            lvP[BF_NLEV];        // entry price (rounded) once decided
    int               lvRsn[BF_NLEV];      // reason of SKIPPED / CANCELLED / DROPPED
+   // v6
+   int               zdir;                // the BPR's direction (+1 bullish, -1 bearish); 'dir' is the trade direction
+                                          // and becomes -zdir when a reversal breakout starts
+   bool              rev;                 // the breakout in progress / confirmed is a reversal
+   double            lvlR;                // reversal level: low (bullish BPR) / high (bearish) of the candle that made
+                                          // the latest touch (T1 or T2)
+   double            rO;                  // reversal leg origin: highest high (bullish BPR) / lowest low since the latest
+   int               rOBar;               // touch began
+   double            rX;                  // reversal leg extreme after rO
+   int               rXBar;
+   bool              contOff;             // the BPR was broken: no continuation breakout any more (REVERSAL / BOTH)
+   bool              touchReady;          // T1 on this bar with InpTouchEntry: may decide the touch entry (step 5)
+   double            tP;                  // touch entry: estimated entry, stop, target (record)
+   double            tSL;
+   double            tTP;
   };
 
 void BfClearSetup(BfSetup &s)
@@ -470,6 +506,18 @@ void BfClearSetup(BfSetup &s)
       s.lvP[k]   = 0.0;
       s.lvRsn[k] = BF_R_NONE;
      }
+   s.zdir        = 0;
+   s.rev         = false;
+   s.lvlR        = 0.0;
+   s.rO          = 0.0;
+   s.rOBar       = -1;
+   s.rX          = 0.0;
+   s.rXBar       = -1;
+   s.contOff     = false;
+   s.touchReady  = false;
+   s.tP          = 0.0;
+   s.tSL         = 0.0;
+   s.tTP         = 0.0;
   }
 
 void BfCopySetup(BfSetup &dst, const BfSetup &src)
@@ -509,6 +557,18 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
       dst.lvP[k]   = src.lvP[k];
       dst.lvRsn[k] = src.lvRsn[k];
      }
+   dst.zdir        = src.zdir;
+   dst.rev         = src.rev;
+   dst.lvlR        = src.lvlR;
+   dst.rO          = src.rO;
+   dst.rOBar       = src.rOBar;
+   dst.rX          = src.rX;
+   dst.rXBar       = src.rXBar;
+   dst.contOff     = src.contOff;
+   dst.touchReady  = src.touchReady;
+   dst.tP          = src.tP;
+   dst.tSL         = src.tSL;
+   dst.tTP         = src.tTP;
   }
 
 //+------------------------------------------------------------------+
@@ -517,10 +577,10 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
 //+------------------------------------------------------------------+
 struct BfIntent
   {
-   int               type;                // BF_EV_PLACE_LIMIT / BF_EV_CANCEL
+   int               type;                // BF_EV_PLACE_LIMIT / BF_EV_CANCEL / BF_EV_TOUCH_ENTRY (v6)
    int               id;
    int               dir;
-   int               k;                   // level 1..3
+   int               k;                   // level 1..3 (0 = the touch entry)
    int               reason;              // CANCEL only
    int               bar;                 // bar index of the decision / cancel
    double            P;
@@ -593,6 +653,8 @@ struct BfEvent
    int               snLvSt[BF_NLEV];
    double            snLvP[BF_NLEV];
    int               snLvRsn[BF_NLEV];
+   int               zdir;                // v6: the BPR's direction (dir is the trade direction)
+   bool              rev;                 // v6: reversal breakout (lvl is then the reversal level)
   };
 
 void BfClearEvent(BfEvent &e)
@@ -631,6 +693,8 @@ void BfClearEvent(BfEvent &e)
       e.snLvP[k]   = 0.0;
       e.snLvRsn[k] = BF_R_NONE;
      }
+   e.zdir        = 0;
+   e.rev         = false;
   }
 
 void BfCopyEvent(BfEvent &dst, const BfEvent &src)
@@ -669,6 +733,8 @@ void BfCopyEvent(BfEvent &dst, const BfEvent &src)
       dst.snLvP[k]   = src.snLvP[k];
       dst.snLvRsn[k] = src.snLvRsn[k];
      }
+   dst.zdir        = src.zdir;
+   dst.rev         = src.rev;
   }
 
 #endif

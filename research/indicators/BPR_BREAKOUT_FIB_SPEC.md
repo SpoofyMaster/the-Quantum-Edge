@@ -1,4 +1,4 @@
-# BprFvgEA v5: BPR rejection → breakout → Fibonacci pullback
+# BprFvgEA v6: BPR rejection → breakout → Fibonacci pullback (+ reversal setup, touch entry)
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 5.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 6.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -64,6 +64,8 @@ reference candle, the leg runs from a high `O` down to a low `X`, and sell limit
 | `InpLegExpiryBars` | `leg_expiry_bars` | 60 | Bars after confirmation during which orders may be placed or filled |
 | `InpAnticipateEntries` | (MQL5 only: `anticipate`) | false | v5: decide without a pullback candle (§4.2–§5 notes) |
 | `InpLegBreakOnClose` | (MQL5 only: `legBreakOnClose`) | false | v5: `originBroken` uses the close (§4.2 note) |
+| `InpSetupType` | (MQL5 only: `setupType`) | CONTINUATION | v6: CONTINUATION / REVERSAL / BOTH (§4.5) |
+| `InpTouchEntry` / `InpTouchTargetRR` | (MQL5 only: `touchEntry` / `touchTargetRR`) | false / 1.5 | v6: market entry after T1 (§5 touch entry) |
 | `InpFib1` / `2` / `3` | `fib_levels` | 50.0 / 61.8 / 71.0 | Entry retracements, % of the leg (0 = off) |
 | `InpStopFib` | `stop_fib` | 100.0 | Stop at this retracement, % (100 = the leg origin) |
 | `InpStopBufferTicks` | `stop_buffer_ticks` | 10 | Extra ticks beyond the stop level |
@@ -115,6 +117,8 @@ On bar `u`, the detector reads each new BPR the engine reports: the `BPR_UP` arr
 guards as v1 apply: both newest FVGs exist, and the BPR box exists with `pos ∈ {+1, −1}`.
 
 1. **Direction and filter.** `d = pos`. A BPR removed by the direction filter is never logged and gets no id.
+   v6: `zdir = d` (the BPR's direction; `dir` is the trade direction, `−zdir` after a reversal breakout). The BPR is
+   kept if `(continuation enabled && allowed(d)) || (reversal enabled && allowed(−d))`; with CONTINUATION this is v5.
 2. **Zone.** `B = box.bottom`, `T = box.top`: the box the chart shows.
 3. **Checks at creation**, in this order. The first that fails ends the setup as `DONE(reason)` on bar `u`:
    1. `T ≤ B` → `BAD_GEOMETRY`;
@@ -213,6 +217,34 @@ These rules apply only while a level is still pending:
 The setup becomes `CLOSED` (record `CLOSED`) once no level is pending and no level's position is open. That
 happens through `NotifyClosed`, or through step 1–3 when the filled positions have already closed.
 
+### 4.5 v6 reversal setup (`setupType` REVERSAL or BOTH; MQL5 detector only)
+
+Before the confirmation, every zone test of §4.1 uses `zdir` (the BPR's direction): `broken`, `touch`, the touch
+anchors and `lvl`. In v1–v5 `dir == zdir` there.
+
+The reversal adds four kinds of state:
+- **Trackers.** At a new touch (bullish BPR): `lvlR = l[u]`, the low of the candle that made the touch (T1 or T2).
+  The reversal leg starts at `rO = h[u]`, `rX = l[u]`. On every later pre-confirmation bar, `TrackRev(u)` runs: if
+  `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`. A bearish BPR is the
+  mirror image (`lvlR = h[u]`, `rO` = the lowest low, `rX` = the highest high after it). The continuation's
+  `Track(u)` keeps running as well, including on reversal breakout bars.
+- **Broken BPR (step 1).** With REVERSAL / BOTH, `broken(u)` does not end the setup. It sets `contOff`, so no
+  continuation breakout follows, and a continuation `BREAK` in progress fails.
+- **Reversal breakout (step 5b, after the continuation test of step 5).**
+  - **Condition.** Phase `ZONE`, the reversal enabled and `allowed(−zdir)`, and `BeyondRev(u)`: long BPR `c[u] < lvlR`,
+    short BPR `c[u] > lvlR`. The candle may touch the zone.
+  - **Then.** The phase becomes `BREAK` with `rev = true` and `dir = −zdir`, and record `BREAKOUT`, whose `dir` is the
+    trade direction.
+  - **In `BREAK`.** `rev` uses `BeyondRev` in place of `beyond`. Once `nClose ≥ confirm_closes`, `O = rO` and
+    `X = rX`, then `CONFIRM` as in §4.1.
+  - **`BREAK_FAIL`.** Sets `rev = false` and `dir = zdir`, and continues at step 6, as for a continuation.
+- **After the confirmation.** §4.2–§4.4 run unchanged with `dir = −zdir`:
+  - leg tracking by `newExt`, the pullback, the FVG of the trade direction after `ref`;
+  - the Fibonacci from `O` to `X`, `originBroken` against `O`;
+  - SL / TP and the decisions.
+
+With BOTH, whichever breakout confirms first decides. A failed one returns to `ZONE`, and either kind can follow.
+
 ## 5. Decisions (step 5)
 
 **When.** A decision needs all of `env.slotFree`, (`use_session` → `env.sessionEntryOk`), `env.riskOk` and
@@ -231,6 +263,21 @@ intents in the same bar, and the executor deletes the old limits before it sends
 (`MISSED`, `COST`, `RR`, `BAD_LEVEL`), nothing is recorded and the setup stays in `LEG` instead of ending
 `DONE(NO_LEVEL)`. So `anticipate` never ends a setup on a bar where v4 would not decide. An ordinary pullback bar keeps
 the v4 rule.
+
+**v6 touch entry (`touchEntry`).**
+- **When it is ready.** At a **new touch with `touches == 1`** (T1), if that candle did not break the BPR and
+  `allowed(zdir)`, the setup is `touchReady` for this bar only.
+- **Step 5.** A `touchReady` setup is a candidate like a ready `LEG` setup: same gates, creation order, one decision
+  per bar. It is never a slot owner: it needs `env.slotFree`.
+- **The decision (bullish BPR).** `P = c[u] + sp` (estimate), `SL = B − stop_buffer_ticks·tick`,
+  `risk = P − SL`, `TP = P + touchTargetRR·risk`. A bearish BPR: `P = c[u]`, `SL = T + buffer + sp`,
+  `TP = P − touchTargetRR·risk`.
+- **Skips.** `risk ≤ 0` → `SKIP(0, BAD_LEVEL)`; `min_rr > 0 && touchTargetRR < min_rr` → `SKIP(0, RR)`;
+  `cost / risk > max_cost_r` → `SKIP(0, COST)`. A skip does not end the setup or step 5: the next candidate is tried.
+- **Otherwise.** Record and intent `TOUCH_ENTRY` (level 0, with P / SL / TP).
+- **After it.** The detector does not follow the touch entry; the setup goes on.
+- **Slot owner.** A setup whose own touch position is all that holds the slot may still decide its limits
+  (`env.slotOwner`, hedging accounts; the executor sets it).
 
 **Which setup.** Setups in phase `LEG` with `ready = true`, in creation order. The first that places at least one
 level ends step 5: one setup per bar. A setup that places nothing ends `DONE(NO_LEVEL)`, and the next one is tried.
@@ -383,6 +430,25 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   - for a market fill only, an excess-risk trim, as in v1.
 
   There is no partial TP and no break-even: the owner's rule has a single target.
+- **v6 executor (owner request 2026-10-12, MQL5 only).**
+  - **`ExecTouch`.** Sends the `TOUCH_ENTRY` intent as a market order now, at the ask (buy) or bid (sell).
+    - **Gates.** The same as a batch: permission, an empty slot, the breaker, the rollover window, risk, tick,
+      direction.
+    - **SL.** The detector's.
+    - **TP.** `entry ± InpTouchTargetRR × |entry − SL|`, from the live price.
+    - **Size.** `LevelBudget(g_nShares)`, where `g_nShares` = Fibonacci entries + 1. The fib batches use the same
+      share, so a setup's total stays ≤ 0.20 %. The daily-loss check runs.
+    - **Not sent.** Logged; never retried.
+  - **The touch position (`g_tp`).** One at a time, outside the setup context.
+    - `ManageTouch` handles its time stop and 16:44 flat, as the v4 switches say.
+    - `FinishTouch` writes a trades-CSV row with level `T`.
+    - `IsTracked` includes it, so `Reconcile` does not adopt it.
+  - **Slot rules.**
+    - `SlotOwner()` returns that setup when its touch position (hedging) and / or its healthy pending limits
+      (anticipate) are all that hold the slot.
+    - `SlotFreeForDecision(id)` lets that setup's batch through.
+    - An open touch position's planned risk counts in a batch's daily-loss check.
+    - On netting accounts, the touch position blocks the slot.
 - **Entry switches (v5, owner request 2026-10-11, MQL5 only).**
   - **What they change.** `InpAnticipateEntries` (`anticipate`) and `InpLegBreakOnClose` (`legBreakOnClose`) change
     the **detector** (§4.2, §4.3, §5 notes). The Python reference does not have them; both off = v4.

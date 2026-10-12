@@ -168,7 +168,7 @@ def _run_both(exe, tmp_path, bars, params, sp, trade_from=0, hold_bars=120):
 
 
 def _crafted():
-    from bk_scenarios import boundary_cases, mirror, scenarios, v5_sequences
+    from bk_scenarios import boundary_cases, mirror, scenarios, v5_sequences, v6_sequences
 
     out = []
     seqs = dict(scenarios())
@@ -176,6 +176,10 @@ def _crafted():
     for name, bars in v5_sequences().items():
         seqs[f"v5_{name}"] = bars
         seqs[f"v5_short_{name}"] = mirror(bars)
+    # v6 setup sequences at the defaults (CONTINUATION, no touch entry): equal to the v4 reference as well
+    for name, bars in v6_sequences().items():
+        seqs[f"v6_{name}"] = bars
+        seqs[f"v6_short_{name}"] = mirror(bars)
     for name, bars in seqs.items():
         for rule in ("ANY_GAP", "LUXALGO", "NONE"):
             out.append((f"{name}-{rule}", bars, {"fvg_rule": rule}))

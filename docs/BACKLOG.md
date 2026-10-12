@@ -135,3 +135,8 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   transliteration by `tests/test_bpr_breakout_v5_switches.py`.
 - [?] U-16 User: compile v5 and send every compiler message. Then try `InpAnticipateEntries = true` in the tester
   and send the `[BFEA]` lines of a setup that used to end in `LEG_BROKEN`.
+- [x] EA-13 v6 (2026-10-12, journal day09): `InpSetupType` CONTINUATION / REVERSAL / BOTH (H-15) and `InpTouchEntry`
+  (market entry after T1, H-16), MQL5 only; checked on the C++ transliteration
+  (`tests/test_bpr_breakout_v6_setups.py`), defaults = v5 (parity set).
+- [?] U-17 User: compile v6 and send every compiler message. Then confirm the choices the rule left open (reversal
+  level = the touch candle's low / high; reversal leg origin; touch entry stop beyond the BPR, target 1.5 R, T1 only).

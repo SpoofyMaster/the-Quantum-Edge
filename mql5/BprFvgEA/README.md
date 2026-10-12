@@ -1,4 +1,67 @@
-# BprFvgEA v5: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+# BprFvgEA v6: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+
+> **v6 (2026-10-12)** = v5 plus a **reversal setup** and a **market entry on T1**, at the owner's request. Defaults =
+> v5.
+>
+> | Input | Default | Meaning |
+> |---|---|---|
+> | `InpSetupType` | CONTINUATION | `CONTINUATION` = v1–v5. `REVERSAL` = the breakout **through** the BPR, traded the other way. `BOTH` = whichever breakout confirms first. |
+> | `InpTouchEntry` | false | `true`: when the **T1** candle closes, a **market order in the BPR's direction** at the next candle's open, to catch the first reaction to the BPR. |
+> | `InpTouchTargetRR` | 1.5 | Take-profit of that market order, in R (risk = entry to the stop). |
+>
+> **The reversal setup** (bullish BPR → short; a bearish BPR is the mirror image):
+> 1. **Touches.** Exactly as before: T1, and optionally T2 after a rejection candle.
+> 2. **Breakout through the zone.** A candle **closes below the low of the candle that made the latest touch** (T1
+>    or T2). The next candle must close below it too (`InpConfirmCloses`, default 2).
+>    - These candles may be inside or below the zone; going through the BPR is the point.
+>    - A close exactly on that low is not enough.
+> 3. **Leg and entries.** As before, mirrored:
+>    - the leg runs from the **highest high since that touch began** (100 %) down to the lowest low (0 %), tracked
+>      while it extends;
+>    - on the pullback (with the FVG rule: a bearish FVG after the reference candle), **sell limits** at 50 / 61.8 /
+>      71 %;
+>    - **SL** above the leg's high + `InpStopBufferTicks`; **TP** at the leg's low.
+>
+>    `InpAnticipateEntries`, `InpLegBreakOnClose`, expiry and the session rules work the same way.
+> 4. **A broken BPR.** With `CONTINUATION`, a low below the BPR still ends the setup (`BROKEN`). With `REVERSAL` /
+>    `BOTH`, it only ends the continuation; the reversal stays possible.
+> 5. **`BOTH`.** The first breakout that **confirms** decides the direction. A failed reversal breakout (`BREAK_FAIL`)
+>    returns to the touch, and a continuation breakout can still follow, and vice versa.
+> 6. **`InpDirection`** applies to the **trade**. A bullish BPR's reversal is a short, so `LONG_ONLY` + `REVERSAL`
+>    ignores bullish BPRs.
+>
+> **The touch entry** (`InpTouchEntry = true`):
+> - **When.** Only on **T1** (never T2), only if the T1 candle did **not** break the BPR, and only in an allowed
+>   direction. The usual gates apply: entry window, daily risk, spread, the slot. It is sent once or never: nothing
+>   is retried on a later candle.
+> - **Price, stop and target.**
+>   - a **buy** at the ask (bullish BPR) or a sell at the bid;
+>   - **SL** beyond the BPR's far edge + `InpStopBufferTicks` (below the BPR bottom for a buy);
+>   - **TP** = `InpTouchTargetRR` × the actual risk from the fill price.
+> - **Filters.** The cost and RR filters apply (`SKIP` level 0 / "touch entry" in the log).
+> - **The setup goes on.** It still waits for its breakout and pullback and places its limits, **while the touch
+>   position is open** (hedging accounts). Every other setup waits for the slot. On a **netting** account the touch
+>   position blocks its own setup's limits too.
+> - **Risk.** The setup's **0.20 % is shared**: with 3 Fibonacci entries plus the touch entry, each gets 0.05 %
+>   (instead of 0.067 %). The daily-loss check also counts an open touch position.
+> - **Exits.** Server SL/TP, the time stop and the 16:44 flat, like the other positions. The trades CSV has it with
+>   level `T`.
+>
+> **Not specified by you, so chosen here:**
+> - the reversal level (the low/high of the **candle that made the touch**, your wording);
+> - the reversal leg origin (the touch's highest high / lowest low);
+> - the touch entry's stop (beyond the BPR) and target (1.5 R);
+> - "only T1 and only if the T1 candle did not break the BPR".
+>
+> All are inputs or documented rules; tell me if you meant something else.
+>
+> **Not a test of H-14.** Both are new rule sets, registered as **H-15** (reversal) and **H-16** (touch entry),
+> untested.
+>
+> **Implementation (MQL5 only, like v5).** Detector params `setupType` / `touchEntry` / `touchTargetRR`. Executor:
+> `ExecTouch`, `ManageTouch`, `FinishTouch`, and the touch case in `SlotOwner` / `SlotFreeForDecision`. Checked on the
+> C++ copy of the MQL5 detector by `tests/test_bpr_breakout_v6_setups.py`. The new sequences are also in the parity
+> set, where the defaults equal the v4 Python reference.
 
 > **v5 (2026-10-11)** = v4 plus two on/off switches for the **entries**, at the owner's request ("the EA didnt place
 > orders and the reason is LEG_BROKEN, but sometime this broken leg is the retracement so when price pulls back the EA
@@ -247,7 +310,10 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 
 | Input | Default | Meaning |
 |---|---|---|
-| `InpDirection` | BOTH | BOTH, LONG_ONLY or SHORT_ONLY |
+| `InpDirection` | BOTH | BOTH, LONG_ONLY or SHORT_ONLY (of the **trade**: a bullish BPR's reversal is a short) |
+| `InpSetupType` | CONTINUATION | **v6.** `CONTINUATION` (v1–v5), `REVERSAL` (breakout through the BPR, traded the other way), `BOTH` (whichever confirms first). See the top. |
+| `InpTouchEntry` | false | **v6.** A market order in the BPR's direction at the next open after the T1 candle (if it did not break the BPR). Stop beyond the BPR + `InpStopBufferTicks`. |
+| `InpTouchTargetRR` | 1.5 | **v6.** Take-profit of the touch entry in R (0.1–20) |
 | `InpMaxTouches` | 2 | Touches of the BPR allowed. Consecutive touching candles count as one touch. One more touch ends the setup. |
 | `InpConfirmCloses` | 2 | Candles that must **close** beyond the breakout level: the breakout candle plus the next one |
 | `InpRejectBeforeBreak` | false | Stricter reading. A rejection candle (one that does not touch the zone) must come **before** the breakout candle, so the first candle out of the zone can no longer be the breakout. |
@@ -357,6 +423,13 @@ Every step uses **closed bars only**.
 
 If a level is already reached when its order is sent (a gap at the next bar's open), it is sent as a **market order**
 at the better price, with the same SL / TP.
+
+**v6 reversal (`InpSetupType = REVERSAL / BOTH`).** Steps 1–2 are the same. In step 3, the breakout candle closes
+**below the low of the candle that made the latest touch**, and the next one closes below it too. That candle may
+touch or cross the zone. The trade is then a **short**: the leg runs from the touch's highest high down to the lowest
+low, and steps 5–8 are mirrored (sell limits, SL above, TP at the low). With `REVERSAL` / `BOTH`, a low below the BPR
+does not end the setup in step 2 (`BROKEN` is continuation-only). **v6 touch entry:** with `InpTouchEntry = true`, the
+close of T1 (step 2) also sends a market buy with its own stop and target (see the top).
 
 ## What you see on the chart
 
@@ -490,6 +563,15 @@ All of these are inputs or are stated in the spec (§0):
 - **Spread and decision time.** Decisions use the spread at the first tick of the next bar. The Python reference uses
   a constant or modelled spread.
 - **No news filter.**
+- **v6 setups (`InpSetupType`, `InpTouchEntry`).**
+  - They exist in the MQL5 detector only, like v5. They are tested on the C++ copy of the detector under bar-based
+    fills: the touch entry opens at the next bar's open, and exits are checked from the following bar.
+  - The touch entry is not restored after a restart. Its position is then managed as an unowned position: server
+    SL/TP, the time stop and the 16:44 flat.
+  - Hedging and netting:
+    - On a hedging account, a reversal short and the touch-entry buy of the same BPR can be open together. Their
+      combined planned risk stays within the setup's 0.20 %.
+    - On netting, the touch position blocks the slot until it closes.
 - **v5 switches (`InpAnticipateEntries`, `InpLegBreakOnClose`).**
   - They exist in the MQL5 detector only. The Python reference and the parity harness cover the default rules.
   - The switched-on rules are tested on the C++ copy of the MQL5 detector, under the harness's bar-based fills, not
@@ -504,6 +586,7 @@ All of these are inputs or are stated in the spec (§0):
 | Test | What it checks |
 |---|---|
 | `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 67 hand-built sequences (with the strict-rejection option too), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
+| `tests/test_bpr_breakout_v6_setups.py` | **v6 reversal setup and touch entry, on the C++ copy of the MQL5 detector only (52 tests).** Long and short: the reversal trade (breakout, confirmation, leg 100.2 → 98.4, sell-limit prices, target); the T2 candle as the reversal level; a failed reversal then a continuation (BOTH); a close exactly on the level; a broken BPR ending only the continuation; the leg restarting at a new high; the direction filter on the trade; the touch entry's price, stop, target and RR, T1 only, no entry when T1 breaks the BPR, the cost filter; the setup's limits while its own touch position is open. On 10 random series it checks invariants: one setup with orders or positions at a time (touch positions included), a touch entry only into an empty slot, BPR versus trade direction, leg geometry, order geometry, and every T1 candidate tried after a skipped one. It also checks coverage and causality. With the defaults these sequences equal the v4 Python reference (parity set). Mutation check: 25 of 25 deliberate bugs caught; the v5 set still catches 17 of 17. |
 | `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (44 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles and short legs on the extra decision candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 18 of 19 deliberate bugs caught; the 19th only differs in a state the slot rule makes unreachable. |
 | `tests/test_bpr_breakout_strategy.py` | 53 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
 | `tools/mql5_static_check.py mql5/BprFvgEA` | Mechanical check: names and brackets. It cannot find MQL5 type errors. |
