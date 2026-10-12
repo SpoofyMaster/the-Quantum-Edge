@@ -233,6 +233,44 @@ def test_reversal_leg_restarts_at_a_new_high(exe, tmp_path, d):
     assert conf["O"] == pytest.approx(100.3 if d > 0 else 99.7) and conf["X"] == pytest.approx(99.4 if d > 0 else 100.6)
 
 
+@pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
+def test_both_failed_continuation_candle_can_start_the_reversal(exe, tmp_path, d):
+    """BOTH, bull trap: the continuation breakout on 17 fails on 18, and 18 closes below the T2 candle's low: it is
+    the reversal breakout on the same candle (not a third touch), confirmed on 19 exactly as with REVERSAL."""
+    bo, _ = run(exe, tmp_path, seq("cont_fail_then_rev", d), setup_type=BOTH)
+    assert key(recs_of(bo, n=17)) == [(17, "BREAKOUT", d, 0, None)]
+    assert key(recs_of(bo, n=18)) == [(18, "BREAK_FAIL", d, 0, None), (18, "BREAKOUT", -d, 0, None)]
+    rv, _ = run(exe, tmp_path, seq("cont_fail_then_rev", d), setup_type=REV)
+    assert key(recs_of(rv, n=18)) == [(18, "BREAKOUT", -d, 0, None)]
+    cb, cr = recs_of(bo, n=19, ev="CONFIRM")[0], recs_of(rv, n=19, ev="CONFIRM")[0]
+    assert (cb["dir"], cb["O"], cb["X"]) == (cr["dir"], cr["O"], cr["X"]) and cb["dir"] == -d
+
+
+@pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
+def test_both_failed_reversal_candle_can_start_the_continuation(exe, tmp_path, d):
+    """BOTH: the reversal breakout on 15 fails on 16, which does not touch and closes above the touch level: it is the
+    continuation breakout on the same candle, confirmed on 17."""
+    bo, _ = run(exe, tmp_path, seq("rev_fail_then_cont_bar", d), setup_type=BOTH)
+    assert key(recs_of(bo, n=16)) == [(16, "BREAK_FAIL", -d, 0, None), (16, "BREAKOUT", d, 0, None)]
+    assert recs_of(bo, n=17, ev="CONFIRM")[0]["dir"] == d
+
+
+@pytest.mark.parametrize("d,direction", [(1, 1), (-1, 2)], ids=["bullish-LONG_ONLY", "bearish-SHORT_ONLY"])
+def test_broken_bpr_ends_when_its_reversal_is_filtered_out(exe, tmp_path, d, direction):
+    """BOTH but the reversal's direction is not allowed: a broken BPR cannot trade any more -> DONE(BROKEN) as in v5."""
+    bars = scenarios()["broken"] if d > 0 else mirror(scenarios()["broken"])
+    recs, _ = run(exe, tmp_path, bars, setup_type=BOTH, direction=direction)
+    assert key(recs_of(recs, n=15)) == [(15, "DONE", d, 0, "BROKEN")]
+
+
+def test_touch_entry_keeps_a_bpr_whose_reversal_is_filtered_out(exe, tmp_path):
+    """REVERSAL + LONG_ONLY + touch entry: the bullish BPR is tracked for its touch entry (a buy), which is taken on
+    T1; its reversal (a short) is not traded."""
+    recs, _ = run(exe, tmp_path, V6["reversal"], setup_type=REV, direction=1, touch_entry=1)
+    assert recs_of(recs, n=14, ev="TOUCH_ENTRY")[0]["dir"] == 1
+    assert not recs_of(recs, ev="BREAKOUT")
+
+
 @pytest.mark.parametrize("direction,armed,trade", [(1, False, None), (2, True, -1)], ids=["LONG_ONLY", "SHORT_ONLY"])
 def test_direction_filter_applies_to_the_trade(exe, tmp_path, direction, armed, trade):
     """A bullish BPR's reversal is a short: LONG_ONLY + REVERSAL does not even track it; SHORT_ONLY does."""

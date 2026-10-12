@@ -23,8 +23,8 @@
 
 #include "BfDefines.mqh"
 
-#define BF_SETUPS_HEADER "run,id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason"
-#define BF_TRADES_HEADER "run,id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk"
+#define BF_SETUPS_HEADER "run,id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason,bpr_dir,setup"
+#define BF_TRADES_HEADER "run,id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup"
 
 class CBfLogger
   {
@@ -93,8 +93,8 @@ public:
       m_fresh   = tester;
       m_quiet   = quiet;
       m_run     = run;
-      m_fSetups = "BFEA2_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
-      m_fTrades = "BFEA2_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fSetups = "BFEA6_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fTrades = "BFEA6_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
       m_rows    = 0;
       if(m_csv)
         {

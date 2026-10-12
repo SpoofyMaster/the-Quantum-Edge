@@ -121,6 +121,7 @@ private:
         }
       m_ev[m_nEv].zdir        = s.zdir;
       m_ev[m_nEv].rev         = s.rev;
+      m_ev[m_nEv].lvlBar      = s.rev ? s.lvlRBar : s.ref;
       m_nEv++;
      }
 
@@ -428,6 +429,7 @@ private:
       bool tn;
       bool touched;
       bool brokeNow;
+      bool wasRev = false;                                      // v6: the BREAK that failed on this bar was a reversal
       m_s[i].ready      = false;
       m_s[i].touchReady = false;
       if(ph == BF_PH_WAIT || ph == BF_PH_ZONE || ph == BF_PH_BREAK)
@@ -436,7 +438,8 @@ private:
          brokeNow = ((zd > 0 && l[u] < m_s[i].B) || (zd < 0 && h[u] > m_s[i].T));
          if(brokeNow)
            {
-            if(!HasRev())
+            // v5 rule unless a reversal is still possible (REVERSAL / BOTH and its direction allowed)
+            if(!HasRev() || !DirAllowed(-zd))
               {
                SetDone(i, u, BF_R_BROKEN);
                return;
@@ -471,19 +474,22 @@ private:
             Stat(BF_STAT_BRK_FAIL);
             m_s[i].phase  = BF_PH_ZONE;
             m_s[i].nClose = 0;
+            wasRev = m_s[i].rev;
             if(m_s[i].rev)
               {
                m_s[i].rev = false;
                m_s[i].dir = zd;
               }
            }
-         else
+         //--- steps 5 / 5b run in ZONE, and v6 also on the bar of a BREAK_FAIL, for the OTHER kind of breakout: a failed
+         //    continuation candle that closes beyond the reversal level starts the reversal, and vice versa (BOTH).
+         //    In v1-v5 (continuation only) a failed candle never closes beyond the level, so nothing changes there.
            {
             //--- step 5: ZONE + a candle that does NOT touch the zone closes beyond the level = breakout candle (a
             //    touching candle belongs to the touch: it becomes the reference candle in step 6). Stricter reading
             //    (rejectBeforeBreak): the previous candle must not have touched either (a rejection came first).
-            if(ph == BF_PH_ZONE && HasCont() && DirAllowed(zd) && !m_s[i].contOff && !tn &&
-               (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
+            if(m_s[i].phase == BF_PH_ZONE && (ph != BF_PH_BREAK || wasRev) && HasCont() && DirAllowed(zd) &&
+               !m_s[i].contOff && !tn && (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].brkBar = u;
@@ -500,7 +506,8 @@ private:
             //--- v6 step 5b: reversal breakout candle: ZONE + a close beyond the opposite extreme of the candle that
             //    made the latest touch (lvlR). It may touch the zone (it goes through it). The trade direction becomes
             //    -zdir from here.
-            if(ph == BF_PH_ZONE && HasRev() && DirAllowed(-zd) && BeyondRev(i, c[u]))
+            if(m_s[i].phase == BF_PH_ZONE && (ph != BF_PH_BREAK || !wasRev) && HasRev() && DirAllowed(-zd) &&
+               BeyondRev(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].rev    = true;
@@ -541,6 +548,7 @@ private:
                   m_s[i].rO   = h[u];
                   m_s[i].rX   = l[u];
                   m_s[i].lvlR = l[u];
+                  m_s[i].lvlRBar = u;
                  }
                else
                  {
@@ -549,6 +557,7 @@ private:
                   m_s[i].rO   = l[u];
                   m_s[i].rX   = h[u];
                   m_s[i].lvlR = h[u];
+                  m_s[i].lvlRBar = u;
                  }
                m_s[i].oBar  = u;
                m_s[i].xBar  = u;
@@ -672,9 +681,9 @@ private:
      {
       int reason = BF_R_NONE;
       int dir    = z.pos;
-      //--- v6: a BPR is tracked if one of the directions it can be traded in is allowed (continuation: its own
-      //    direction; reversal: the opposite one)
-      if(!((HasCont() && DirAllowed(dir)) || (HasRev() && DirAllowed(-dir))))
+      //--- v6: a BPR is tracked if one of the directions it can be traded in is allowed (continuation and the touch
+      //    entry: its own direction; reversal: the opposite one)
+      if(!((HasCont() && DirAllowed(dir)) || (HasRev() && DirAllowed(-dir)) || (m_p.touchEntry && DirAllowed(dir))))
          return;
       BfClearSetup(m_c);
       m_c.id      = m_nextId;

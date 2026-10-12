@@ -219,6 +219,16 @@ def v6_sequences() -> dict[str, list]:
         "rev_new_origin": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.3, 99.6),
                                bar(99.75, 100.3, 99.7, 99.8), bar(99.8, 99.85, 99.4, 99.45),
                                bar(99.45, 99.5, 99.41, 99.42)],
+        # bull trap then breakdown: T1 14, rejection 15, T2 16 (low 99.6, high 100.12), 17 continuation breakout
+        # (no touch, close 100.25 > 100.12), 18 closes back below the T2 low (BREAK_FAIL of the continuation and,
+        # with BOTH, the reversal breakout on the same candle), 19 confirms the reversal
+        "cont_fail_then_rev": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.15, 99.95, 100.1),
+                                   bar(100.1, 100.12, 99.6, 99.8), bar(99.95, 100.3, 99.95, 100.25),
+                                   bar(100.25, 100.3, 99.3, 99.4), bar(99.4, 99.45, 99.1, 99.2)],
+        # the other way round: reversal breakout 15, then 16 does not touch and closes above the touch level 100.2
+        # (BREAK_FAIL of the reversal and, with BOTH, the continuation breakout on the same candle), 17 confirms
+        "rev_fail_then_cont_bar": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.2, 99.3),
+                                       bar(99.95, 100.6, 99.95, 100.5), bar(100.5, 100.9, 100.45, 100.8)],
         # the T1 candle 14 already breaks the BPR (low 97.9 < 98.0): no touch entry; CONTINUATION ends BROKEN
         "t1_breaks": p + [bar(100.1, 100.2, 97.9, 99.0), bar(99.0, 99.2, 98.6, 98.7)],
     }

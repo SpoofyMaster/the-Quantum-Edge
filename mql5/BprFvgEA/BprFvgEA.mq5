@@ -176,6 +176,7 @@ struct BfTradeCtx
    double            SL;
    double            TP;
    datetime          decisionTime;
+   bool              rev;                 // v6: a reversal setup (trades CSV 'setup' column)
    BfLevelCtx        lv[BF_NLEV];
   };
 
@@ -204,6 +205,10 @@ struct BfTouchPos
    double            SL;
    double            TP;
    double            planned;
+   double            budget;              // its share of the setup budget (fill check)
+   bool              fillCheck;           // the fill's actual risk has not been checked yet
+   bool              riskLogged;
+   string            closeReason;         // TIME / ROLLOVER / RISK when the EA closed it
    int               tries;
    int               closeFails;
    datetime          lastTry;
@@ -222,6 +227,10 @@ void ResetTouch(BfTouchPos &x)
    x.SL         = 0.0;
    x.TP         = 0.0;
    x.planned    = 0.0;
+   x.budget     = 0.0;
+   x.fillCheck  = false;
+   x.riskLogged = false;
+   x.closeReason = "";
    x.tries      = 0;
    x.closeFails = 0;
    x.lastTry    = 0;
@@ -260,6 +269,7 @@ void ResetCtx(BfTradeCtx &x)
    x.SL           = 0.0;
    x.TP           = 0.0;
    x.decisionTime = 0;
+   x.rev          = false;
    for(k = 0; k < BF_NLEV; k++)
       ResetLevel(x.lv[k]);
   }
@@ -614,7 +624,7 @@ string LevelCsv(const BfEvent &e, const int k)
    return(BfLevelStatusName(st) + "@" + Px(e.snLvP[k]));
   }
 
-// BFEA2_setups row (run added by the logger):
+// BFEA6_setups row (run added by the logger; + bpr_dir,setup since v6):
 // id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason
 string SetupCsv(const BfEvent &e)
   {
@@ -622,12 +632,14 @@ string SetupCsv(const BfEvent &e)
    bool dec  = (e.snSL != 0.0);
    string line = IntegerToString(e.id) + "," + IntegerToString(e.dir) + "," + CBfLogger::Ts(BarTime(e.created)) + "," +
                  Px(e.B) + "," + Px(e.T) + "," + IntegerToString(e.touches) + "," +
-                 ((e.ref >= 0) ? CBfLogger::Ts(BarTime(e.ref)) : "") + "," + ((e.ref >= 0) ? Px(e.lvl) : "") + "," +
+                 ((e.ref >= 0) ? CBfLogger::Ts(BarTime((e.lvlBar >= 0) ? e.lvlBar : e.ref)) : "") + "," +
+                 ((e.ref >= 0) ? Px(e.lvl) : "") + "," +
                  ((e.brkBar >= 0) ? CBfLogger::Ts(BarTime(e.brkBar)) : "") + "," +
                  (conf ? CBfLogger::Ts(BarTime(e.confirmBar)) : "") + "," + (conf ? Px(e.snO) : "") + "," +
                  (conf ? Px(e.snX) : "") + "," + ((e.decisionBar >= 0) ? CBfLogger::Ts(BarTime(e.decisionBar)) : "") +
                  "," + (dec ? Px(e.snSL) : "") + "," + (dec ? Px(e.snTP) : "") + "," + LevelCsv(e, 0) + "," +
-                 LevelCsv(e, 1) + "," + LevelCsv(e, 2) + "," + BfPhaseName(e.phase) + "," + BfReasonName(e.reason);
+                 LevelCsv(e, 1) + "," + LevelCsv(e, 2) + "," + BfPhaseName(e.phase) + "," + BfReasonName(e.reason) +
+                 "," + IntegerToString(e.zdir) + "," + (e.rev ? "REV" : "CONT");
    return(line);
   }
 
@@ -701,17 +713,13 @@ void DrawEvent(const BfEvent &e)
                          DirColor(e.dir), (e.dir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER, tip);
      }
    else
-      if(e.ev == BF_EV_TOUCH_ENTRY)
-         g_render.SetupText(e.id, "TE", t, (e.dir > 0) ? lo : hi, (e.dir > 0) ? "BUY MKT" : "SELL MKT", DirColor(e.dir),
-                            (e.dir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER, tip + " (T1) SL " + Px(e.SL) + " TP~" + Px(e.TP));
-   else
       if(e.ev == BF_EV_DROP && e.k >= 1 && e.k <= BF_NLEV)
          g_render.SetupLabel(e.id, "L" + IntegerToString(e.k), FibText(g_fib[e.k - 1]) + " L" + IntegerToString(e.k) +
                              " DROPPED " + BfReasonName(e.reason) + (g_trade.tradingAllowed ? "" : " (log-only)"));
    else
       if(e.ev == BF_EV_BREAKOUT)
         {
-         g_render.SetupHLine(e.id, "BRK", BarTime(e.ref), t, e.lvl, DirColor(e.dir), STYLE_DOT, "",
+         g_render.SetupHLine(e.id, "BRK", BarTime((e.lvlBar >= 0) ? e.lvlBar : e.ref), t, e.lvl, DirColor(e.dir), STYLE_DOT, "",
                              tip + " level " + Px(e.lvl));
          g_render.SetupText(e.id, "B1", t, (e.dir > 0) ? hi : lo, "B1", DirColor(e.dir),
                             (e.dir > 0) ? ANCHOR_LOWER : ANCHOR_UPPER, tip);
@@ -1137,7 +1145,8 @@ string LevelTag(const int k)
    return("#" + IntegerToString(g_ctx.id) + " L" + IntegerToString(k + 1) + " ");
   }
 
-// position identifier of a market deal (DEAL_POSITION_ID); the order ticket when the deal is not in the history yet
+// position identifier of a market deal (DEAL_POSITION_ID); 0 when the deal is not in the history yet (SyncTrade then
+// takes the EA's untracked position)
 ulong PosIdOfMarketFill(void)
   {
    ulong deal = g_trade.LastDeal();
@@ -1298,6 +1307,7 @@ void ExecBatch(const BfIntent &its[], const int n)
    string   tag      = "#" + IntegerToString(id) + " ";
    MqlTick  q;
    datetime expiry;
+   BfSetup  ss;
 
    ZeroMemory(q);
    //--- account not confirmed yet (terminal reconnecting, login unknown): transient -> decide again later
@@ -1387,6 +1397,7 @@ void ExecBatch(const BfIntent &its[], const int n)
    g_ctx.SL           = SL;
    g_ctx.TP           = TP;
    g_ctx.decisionTime = TimeCurrent();
+   g_ctx.rev          = (g_det.GetSetup(id, ss) && ss.rev);
    g_trade.BeginBatch();                         // at most one breaker strike for the whole decision
    for(j = 0; j < n; j++)
      {
@@ -1476,6 +1487,18 @@ void ExecBatch(const BfIntent &its[], const int n)
    g_risk.OnTradeEvent(g_ses);
   }
 
+// v6: the chart label of a touch entry: drawn once its fate is known (sent, or not sent and why)
+void TouchLabel(const BfIntent &it, const bool sent, const string why)
+  {
+   if(!g_renderOn || !InpShowSetups || it.bar < 0 || it.bar >= g_n)
+      return;
+   g_render.SetupText(it.id, "TE", g_t[it.bar], (it.dir > 0) ? g_l[it.bar] : g_h[it.bar],
+                      ((it.dir > 0) ? "BUY MKT" : "SELL MKT") + (sent ? "" : " not sent"),
+                      sent ? DirColor(it.dir) : C'128,128,128', (it.dir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER,
+                      "#" + IntegerToString(it.id) + " T1 touch entry " +
+                      (sent ? "SL " + Px(g_tp.SL) + " TP " + Px(g_tp.TP) : "not sent: " + why));
+  }
+
 // v6: the touch entry of setup it.id (decided on the close of its T1 candle): a market order now, in the BPR's
 // direction. The detector does not follow it: it is sent once or never (nothing is retried later).
 void ExecTouch(const BfIntent &it)
@@ -1493,6 +1516,7 @@ void ExecTouch(const BfIntent &it)
    string   why    = "";
    string   wait   = "";
    string   tag    = "#" + IntegerToString(it.id) + " T1 ";
+   ulong    ptk;
    MqlTick  q;
    ZeroMemory(q);
    if(!g_trade.tradingAllowed)
@@ -1500,8 +1524,12 @@ void ExecTouch(const BfIntent &it)
       g_nTouchNo++;
       g_log.Info(tag + "LOG-ONLY (" + g_trade.modeNote + "): touch entry " + ((dir > 0) ? "BUY" : "SELL") +
                  " MARKET SL=" + Px(SL) + " not sent");
+      TouchLabel(it, false, "log-only (" + g_trade.modeNote + ")");
       return;
      }
+   // a previous touch position that has closed but whose closing deals were not in the history yet
+   if(g_tp.active && !g_trade.SelectPositionById(g_tp.posId, ptk) && FinishTouch())
+      ResetTouch(g_tp);
    if(g_trade.AccountPending())
       wait = "account not confirmed (" + g_trade.modeNote + ")";
    else
@@ -1511,6 +1539,9 @@ void ExecTouch(const BfIntent &it)
          if(InpAnticipateEntries && !DeletedOrdersProven())
             wait = "an order deleted just now is not yet proven fill-free in the account history";
          else
+            if(g_tp.active)
+               wait = "the previous touch position is still open or not yet recorded";
+            else
             if(!SlotFree())
                wait = "slot busy (an order or position of this EA exists)";
             else
@@ -1562,6 +1593,7 @@ void ExecTouch(const BfIntent &it)
       g_nTouchNo++;
       g_lastWait = "touch entry: " + wait;
       g_log.Info(tag + "touch entry not sent: " + wait + " (it is only taken on the T1 candle)");
+      TouchLabel(it, false, wait);
       return;
      }
    g_trade.BeginBatch();
@@ -1571,6 +1603,7 @@ void ExecTouch(const BfIntent &it)
      {
       g_nTouchNo++;
       g_log.Error(tag + "touch entry failed: " + g_trade.lastError);
+      TouchLabel(it, false, "refused: " + g_trade.lastError);
       return;
      }
    ResetTouch(g_tp);
@@ -1578,13 +1611,18 @@ void ExecTouch(const BfIntent &it)
    g_tp.id       = it.id;
    g_tp.dir      = dir;
    g_tp.posId    = PosIdOfMarketFill();
+   if(g_tp.posId == 0)
+      g_tp.posId = g_trade.LastOrder();          // the touch entry always opens a new position: its id = this ticket
    g_tp.fillTime = TimeCurrent();
    g_tp.entry    = entry;
    g_tp.lots     = lots;
    g_tp.SL       = SL;
    g_tp.TP       = TP;
    g_tp.planned  = plan;
+   g_tp.budget   = budget;
+   g_tp.fillCheck = true;
    g_nTouchSent++;
+   TouchLabel(it, true, "");
    g_log.Info(tag + "MARKET " + DirText(dir) + " sent (touch entry): " + DoubleToString(lots, 2) + " lots P=" + Px(entry) +
               " SL=" + Px(SL) + " TP=" + Px(TP) + " (" + DoubleToString(g_touchRR, 2) + " R) planned risk " +
               DoubleToString(plan, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY));
@@ -1647,16 +1685,16 @@ bool FinishTouch(void)
      }
    if(!anyOut || vOut < vIn - 0.5 * step)
       return(false);
-   reason = DealReasonText(lastReason, "");
+   reason = DealReasonText(lastReason, g_tp.closeReason);
    if(g_tp.planned > 0.0)
       R = pnl / g_tp.planned;
-   // BFEA2_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk
+   // BFEA6_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_tp.id) + ",T," + IntegerToString(g_tp.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_tp.SL) + "," + Px(g_tp.TP) + "," + CBfLogger::Ts(tOut) + "," +
           ((vOut > 0.0) ? DoubleToString(pxOut / vOut, _Digits + 2) : "") + "," + reason + "," +
           DoubleToString(pnl, 2) + "," + ((g_tp.planned > 0.0) ? DoubleToString(R, 3) : "") + "," +
-          ((g_tp.planned > 0.0) ? DoubleToString(g_tp.planned, 2) : "");
+          ((g_tp.planned > 0.0) ? DoubleToString(g_tp.planned, 2) : "") + ",TOUCH";
    g_log.TradeRow(line);
    g_log.Info("#" + IntegerToString(g_tp.id) + " T1 " + DirText(g_tp.dir) + " touch position CLOSED " + reason + " pnl " +
               DoubleToString(pnl, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
@@ -1671,13 +1709,80 @@ bool FinishTouch(void)
    return(true);
   }
 
+// v6: the touch entry is a market order. If its actual risk at the fill (lots x the loss per lot to the stop incl.
+// slippage and commission) exceeds its share of the setup budget, the excess is closed (hedging), or the whole
+// position (netting, or the rest below the minimum volume). true = done.
+bool CheckTouchFillRisk(const ulong ptk)
+  {
+   double vol;
+   double fill;
+   double perLot;
+   double risk;
+   double cut;
+   double rest;
+   bool   whole;
+   if(g_tp.budget <= 0.0 || g_tp.SL <= 0.0)
+      return(true);
+   if(!PositionSelectByTicket(ptk))
+      return(false);
+   vol    = PositionGetDouble(POSITION_VOLUME);
+   fill   = PositionGetDouble(POSITION_PRICE_OPEN);
+   perLot = g_risk.PerLotRisk(MathAbs(fill - g_tp.SL) + (double)g_slipTicks * g_trade.TickSize());
+   if(perLot <= 0.0 || vol <= 0.0)
+      return(true);
+   risk = vol * perLot;
+   g_tp.lots = vol;
+   if(risk <= g_tp.budget + 1e-9)
+     {
+      g_tp.planned = risk;
+      return(true);
+     }
+   cut   = g_trade.CeilVolume(vol - g_tp.budget / perLot);
+   rest  = vol - cut;
+   whole = (!g_trade.IsHedging() || rest < g_trade.MinVolume() - 1e-12);
+   if(!g_tp.riskLogged)
+     {
+      g_tp.riskLogged = true;
+      g_log.Error("#" + IntegerToString(g_tp.id) + " T1 touch fill at " + Px(fill) + ": risk " + DoubleToString(risk, 2) +
+                  " > budget " + DoubleToString(g_tp.budget, 2) + ": " + (whole ? "closing the position" :
+                  "closing " + DoubleToString(cut, 2) + " of " + DoubleToString(vol, 2) + " lots"));
+     }
+   if(!MgmtAllowed() || !RetryDue(g_tp.lastTry))
+      return(false);
+   if(whole)
+     {
+      if(g_trade.ClosePosition(ptk))
+        {
+         g_tp.closeReason = "RISK";
+         return(true);
+        }
+      return(false);
+     }
+   if(g_trade.ClosePartial(ptk, cut))
+     {
+      g_tp.lots    = rest;
+      g_tp.planned = rest * perLot;
+      return(true);
+     }
+   return(false);
+  }
+
 // v6, every tick: the touch-entry position - closure, time stop, 16:44 flat (each while its v4 switch is ON)
 void ManageTouch(void)
   {
    ulong    tk;
    datetime now = TimeCurrent();
+   ulong    id;
    if(!g_tp.active)
       return;
+   // safety net: the position id was not known at the send (no deal, no order ticket): take the EA's own position
+   // that nothing else owns
+   if(g_tp.posId == 0 && g_trade.SelectPosition(tk) && PositionSelectByTicket(tk))
+     {
+      id = (ulong)PositionGetInteger(POSITION_IDENTIFIER);
+      if(!IsTracked(id) && FindOrphan(id) < 0)
+         g_tp.posId = id;
+     }
    if(!g_trade.SelectPositionById(g_tp.posId, tk))
      {
       if(FinishTouch())
@@ -1703,13 +1808,18 @@ void ManageTouch(void)
      }
    if(!g_trade.tradingAllowed)
       return;
+   if(g_tp.fillCheck && CheckTouchFillRisk(tk))
+      g_tp.fillCheck = false;
    if(TimeStopDue(g_tp.fillTime, now) || RolloverFlatDue(g_tp.fillTime, now))
      {
       if(!MgmtAllowed() || !RetryDue(g_tp.lastTry))
          return;
       if(g_trade.ClosePosition(tk))
+        {
+         g_tp.closeReason = TimeStopDue(g_tp.fillTime, now) ? "TIME" : "ROLLOVER";
          g_log.Info("#" + IntegerToString(g_tp.id) + " T1 touch position closed at market (" +
                     DueExitText(g_tp.fillTime, now) + ")");
+        }
       else
         {
          g_tp.closeFails++;
@@ -1851,13 +1961,13 @@ bool FinishPosition(const ulong posId)
    reason = DealReasonText(lastReason, cr);
    if(plan > 0.0)
       R = pnl / plan;
-   // BFEA2_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk
+   // BFEA6_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_ctx.id) + "," + levels + "," + IntegerToString(g_ctx.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_ctx.SL) + "," + Px(g_ctx.TP) + "," + CBfLogger::Ts(tOut) + "," +
           ((vOut > 0.0) ? DoubleToString(pxOut / vOut, _Digits + 2) : "") + "," + reason + "," +
           DoubleToString(pnl, 2) + "," + ((plan > 0.0) ? DoubleToString(R, 3) : "") + "," +
-          ((plan > 0.0) ? DoubleToString(plan, 2) : "");
+          ((plan > 0.0) ? DoubleToString(plan, 2) : "") + "," + (g_ctx.rev ? "REV" : "CONT");
    g_log.TradeRow(line);
    g_log.Info("#" + IntegerToString(g_ctx.id) + " L" + levels + " " + DirText(g_ctx.dir) + " CLOSED " + reason + " pnl " +
               DoubleToString(pnl, 2) + " " + AccountInfoString(ACCOUNT_CURRENCY) +
@@ -3005,8 +3115,11 @@ void OnDeinit(const int reason)
          e.B = s.B;
          e.T = s.T;
          e.touches = s.touches;
-         e.lvl = s.lvl;
+         e.lvl = s.rev ? s.lvlR : s.lvl;
          e.ref = s.ref;
+         e.zdir = s.zdir;
+         e.rev = s.rev;
+         e.lvlBar = s.rev ? s.lvlRBar : s.ref;
          e.brkBar = s.brkBar;
          e.confirmBar = s.confirmBar;
          e.decisionBar = s.decisionBar;
@@ -3093,10 +3206,10 @@ void OnTick()
      }
    //--- fills / closures, unowned positions / orders, position management: also while the warm-up is pending
    SyncTrade();
+   ManageTouch();                                // v6: before Reconcile, so the touch position is never adopted
    Reconcile();
    ManagePositions();
    ManageOrphans();
-   ManageTouch();
    if(!g_ready)
      {
       if(!DoWarmup())

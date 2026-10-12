@@ -118,7 +118,8 @@ guards as v1 apply: both newest FVGs exist, and the BPR box exists with `pos ∈
 
 1. **Direction and filter.** `d = pos`. A BPR removed by the direction filter is never logged and gets no id.
    v6: `zdir = d` (the BPR's direction; `dir` is the trade direction, `−zdir` after a reversal breakout). The BPR is
-   kept if `(continuation enabled && allowed(d)) || (reversal enabled && allowed(−d))`; with CONTINUATION this is v5.
+   kept if `(continuation enabled && allowed(d)) || (reversal enabled && allowed(−d)) || (touchEntry && allowed(d))`;
+   with CONTINUATION and no touch entry this is v5.
 2. **Zone.** `B = box.bottom`, `T = box.top`: the box the chart shows.
 3. **Checks at creation**, in this order. The first that fails ends the setup as `DONE(reason)` on bar `u`:
    1. `T ≤ B` → `BAD_GEOMETRY`;
@@ -228,8 +229,9 @@ The reversal adds four kinds of state:
   `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`. A bearish BPR is the
   mirror image (`lvlR = h[u]`, `rO` = the lowest low, `rX` = the highest high after it). The continuation's
   `Track(u)` keeps running as well, including on reversal breakout bars.
-- **Broken BPR (step 1).** With REVERSAL / BOTH, `broken(u)` does not end the setup. It sets `contOff`, so no
-  continuation breakout follows, and a continuation `BREAK` in progress fails.
+- **Broken BPR (step 1).** With REVERSAL / BOTH, and the reversal's direction allowed, `broken(u)` does not end the
+  setup. It sets `contOff`, so no continuation breakout follows, and a continuation `BREAK` in progress fails.
+  Otherwise it is `DONE(BROKEN)`, as in v5.
 - **Reversal breakout (step 5b, after the continuation test of step 5).**
   - **Condition.** Phase `ZONE`, the reversal enabled and `allowed(−zdir)`, and `BeyondRev(u)`: long BPR `c[u] < lvlR`,
     short BPR `c[u] > lvlR`. The candle may touch the zone.
@@ -237,7 +239,9 @@ The reversal adds four kinds of state:
     trade direction.
   - **In `BREAK`.** `rev` uses `BeyondRev` in place of `beyond`. Once `nClose ≥ confirm_closes`, `O = rO` and
     `X = rX`, then `CONFIRM` as in §4.1.
-  - **`BREAK_FAIL`.** Sets `rev = false` and `dir = zdir`, and continues at step 6, as for a continuation.
+  - **`BREAK_FAIL`.** Sets `rev = false` and `dir = zdir`. On that same bar, the step for the **other** kind of
+    breakout runs: step 5b after a failed continuation, step 5 after a failed reversal. Then step 6. In v1–v5 a failed
+    candle never closes beyond the level, so this changes nothing there.
 - **After the confirmation.** §4.2–§4.4 run unchanged with `dir = −zdir`:
   - leg tracking by `newExt`, the pullback, the FVG of the trade direction after `ref`;
   - the Fibonacci from `O` to `X`, `originBroken` against `O`;
@@ -440,6 +444,12 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
       share, so a setup's total stays ≤ 0.20 %. The daily-loss check runs.
     - **Not sent.** Logged; never retried.
   - **The touch position (`g_tp`).** One at a time, outside the setup context.
+    - **Position id.** `DEAL_POSITION_ID`, else the order ticket: it always opens a new position.
+    - **Order of management.** `ManageTouch` runs before `Reconcile`, so the position is never adopted as unowned.
+    - **Fill check.** The first time the position is seen, its actual risk is checked against its share. The excess is
+      closed (hedging), or the whole position (netting).
+    - **Exit reasons.** `TIME` / `ROLLOVER` / `RISK` go to the CSV.
+    - **No overlap.** A new touch entry waits while the previous one is open or not yet recorded.
     - `ManageTouch` handles its time stop and 16:44 flat, as the v4 switches say.
     - `FinishTouch` writes a trades-CSV row with level `T`.
     - `IsTracked` includes it, so `Reconcile` does not adopt it.

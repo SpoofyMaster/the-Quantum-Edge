@@ -46,6 +46,7 @@ private:
    bool              m_batchOk;         // a send of the open batch was accepted
    bool              m_batchStrike;     // a send of the open batch was refused for a counted reason
    ulong             m_lastDeal;
+   ulong             m_lastOrder;         // v6: ticket of the last market order (its position's identifier)
    uint              m_lastRc;
 
 public:
@@ -160,6 +161,7 @@ public:
       m_batchOk      = false;
       m_batchStrike  = false;
       m_lastDeal     = 0;
+      m_lastOrder    = 0;
       m_lastRc       = 0;
       lastFilling    = "";
       tradingAllowed = false;
@@ -304,6 +306,11 @@ public:
    ulong             LastDeal(void)
      {
       return(m_lastDeal);
+     }
+
+   ulong             LastOrder(void)
+     {
+      return(m_lastOrder);
      }
 
    double            TickSize(void)
@@ -508,7 +515,8 @@ public:
       bool    ok;
       uint    rc;
       double  price;
-      m_lastDeal = 0;
+      m_lastDeal  = 0;
+      m_lastOrder = 0;
       if(!Permitted())
         {
          lastError = Refusal();
@@ -531,7 +539,8 @@ public:
          lastFilling = EnumToString(m_trade.RequestTypeFilling());
          if(ok && (rc == TRADE_RETCODE_DONE || rc == TRADE_RETCODE_DONE_PARTIAL || rc == TRADE_RETCODE_PLACED))
            {
-            m_lastDeal = m_trade.ResultDeal();
+            m_lastDeal  = m_trade.ResultDeal();
+            m_lastOrder = m_trade.ResultOrder();
             OnResult(true, rc, "", "");
             return(true);
            }

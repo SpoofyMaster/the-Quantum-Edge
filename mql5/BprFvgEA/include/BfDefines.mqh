@@ -458,6 +458,7 @@ struct BfSetup
    bool              rev;                 // the breakout in progress / confirmed is a reversal
    double            lvlR;                // reversal level: low (bullish BPR) / high (bearish) of the candle that made
                                           // the latest touch (T1 or T2)
+   int               lvlRBar;             // the bar of that candle
    double            rO;                  // reversal leg origin: highest high (bullish BPR) / lowest low since the latest
    int               rOBar;               // touch began
    double            rX;                  // reversal leg extreme after rO
@@ -509,6 +510,7 @@ void BfClearSetup(BfSetup &s)
    s.zdir        = 0;
    s.rev         = false;
    s.lvlR        = 0.0;
+   s.lvlRBar     = -1;
    s.rO          = 0.0;
    s.rOBar       = -1;
    s.rX          = 0.0;
@@ -560,6 +562,7 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.zdir        = src.zdir;
    dst.rev         = src.rev;
    dst.lvlR        = src.lvlR;
+   dst.lvlRBar     = src.lvlRBar;
    dst.rO          = src.rO;
    dst.rOBar       = src.rOBar;
    dst.rX          = src.rX;
@@ -655,6 +658,7 @@ struct BfEvent
    int               snLvRsn[BF_NLEV];
    int               zdir;                // v6: the BPR's direction (dir is the trade direction)
    bool              rev;                 // v6: reversal breakout (lvl is then the reversal level)
+   int               lvlBar;              // v6: the bar lvl comes from (ref; the touch candle for a reversal)
   };
 
 void BfClearEvent(BfEvent &e)
@@ -695,6 +699,7 @@ void BfClearEvent(BfEvent &e)
      }
    e.zdir        = 0;
    e.rev         = false;
+   e.lvlBar      = -1;
   }
 
 void BfCopyEvent(BfEvent &dst, const BfEvent &src)
@@ -735,6 +740,7 @@ void BfCopyEvent(BfEvent &dst, const BfEvent &src)
      }
    dst.zdir        = src.zdir;
    dst.rev         = src.rev;
+   dst.lvlBar      = src.lvlBar;
   }
 
 #endif

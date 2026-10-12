@@ -27,8 +27,12 @@
 >    `BOTH`, it only ends the continuation; the reversal stays possible.
 > 5. **`BOTH`.** The first breakout that **confirms** decides the direction. A failed reversal breakout (`BREAK_FAIL`)
 >    returns to the touch, and a continuation breakout can still follow, and vice versa.
+>    - **Even on the failing candle itself.** In a bull trap, the continuation breakout fails on a candle that closes
+>      below the touch candle's low; that same candle starts the reversal (it does not count as a new touch).
+>    - **No reversal possible.** If the reversal's direction is not allowed (e.g. `BOTH` + `LONG_ONLY` on a bullish
+>      BPR), a broken BPR ends with `BROKEN` as in v5.
 > 6. **`InpDirection`** applies to the **trade**. A bullish BPR's reversal is a short, so `LONG_ONLY` + `REVERSAL`
->    ignores bullish BPRs.
+>    trades no bullish BPR's reversal. With `InpTouchEntry`, such a BPR is still tracked for its T1 buy.
 >
 > **The touch entry** (`InpTouchEntry = true`):
 > - **When.** Only on **T1** (never T2), only if the T1 candle did **not** break the BPR, and only in an allowed
@@ -39,6 +43,10 @@
 >   - **SL** beyond the BPR's far edge + `InpStopBufferTicks` (below the BPR bottom for a buy);
 >   - **TP** = `InpTouchTargetRR` × the actual risk from the fill price.
 > - **Filters.** The cost and RR filters apply (`SKIP` level 0 / "touch entry" in the log).
+> - **The fill is checked.** It is a market order, so the fill is checked like a market-filled level. If slippage
+>   puts its actual risk above its share, the excess is closed (hedging), or the whole position (netting).
+> - **Chart label.** The `BUY MKT` / `SELL MKT` label is drawn once the order is sent. It turns grey with
+>   "not sent" (and the reason in its tooltip) when it is not sent, for example on a real account.
 > - **The setup goes on.** It still waits for its breakout and pullback and places its limits, **while the touch
 >   position is open** (hedging accounts). Every other setup waits for the slot. On a **netting** account the touch
 >   position blocks its own setup's limits too.
@@ -497,7 +505,7 @@ After the warm-up the Experts log shows `SELF-CHECK` lines:
 **What to send back after a test:**
 1. the Journal / Experts lines starting with `[BFEA]`, at least the `SELF-CHECK` and `DIAG` lines;
 2. the tester report;
-3. `BFEA2_trades_*_TESTER.csv` and `BFEA2_setups_*_TESTER.csv` from the Common Files folder.
+3. `BFEA6_trades_*_TESTER.csv` and `BFEA6_setups_*_TESTER.csv` from the Common Files folder (`BFEA2_*` before v6).
 
 ## Logs
 
@@ -516,17 +524,23 @@ After the warm-up the Experts log shows `SELF-CHECK` lines:
   - `CLOSED TP pnl … R=…`;
   - `orders not sent now: <reason>`, and the order-failure lines with the broker's retcode.
 - **CSV** in the Common Files folder. `_TESTER` files are rewritten on each tester run; `_LIVE` files are appended to.
-  - **`BFEA2_setups_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`.** One row per setup when it ends, plus the open ones
-    when the EA stops. Columns:
+  - **`BFEA6_setups_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`** (named `BFEA2_*` up to v5, which had two columns
+    fewer). One row per setup when it ends, plus the open ones when the EA stops. Columns:
     - `run, id, dir, created_time, B, T, touches`;
     - `ref_time, level, breakout_time, confirm_time, O, X`;
-    - `decision_time, SL, TP, L1, L2, L3, phase, reason`.
+    - `decision_time, SL, TP, L1, L2, L3, phase, reason`;
+    - `bpr_dir, setup`.
+
+    `dir` is the trade direction and `bpr_dir` the BPR's direction; they differ for a reversal. `setup` is `CONT` or
+    `REV`. For a reversal, `level` / `ref_time` are the reversal level and the candle that made the touch.
 
     `L1`–`L3` hold a state and a price (`CLOSED@2351.23`), a state and a reason (`SKIPPED:COST`), or `off`.
-  - **`BFEA2_trades_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`.** One row per closed position. Columns:
+  - **`BFEA6_trades_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`.** One row per closed position. Columns:
     - `run, id, levels, dir`;
     - `entry_time, entry, lots, SL, TP`;
-    - `exit_time, exit, exit_reason, pnl, R, planned_risk`.
+    - `exit_time, exit, exit_reason, pnl, R, planned_risk, setup`.
+
+    `setup` is `CONT`, `REV` or `TOUCH`; a touch entry's `levels` is `T`.
 
     `exit_reason` is `SL`, `TP`, `TIME`, `ROLLOVER`, `RISK` or `MANUAL`. R is net P&L divided by the planned risk of
     that entry.
@@ -586,7 +600,7 @@ All of these are inputs or are stated in the spec (§0):
 | Test | What it checks |
 |---|---|
 | `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 67 hand-built sequences (with the strict-rejection option too), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
-| `tests/test_bpr_breakout_v6_setups.py` | **v6 reversal setup and touch entry, on the C++ copy of the MQL5 detector only (52 tests).** Long and short: the reversal trade (breakout, confirmation, leg 100.2 → 98.4, sell-limit prices, target); the T2 candle as the reversal level; a failed reversal then a continuation (BOTH); a close exactly on the level; a broken BPR ending only the continuation; the leg restarting at a new high; the direction filter on the trade; the touch entry's price, stop, target and RR, T1 only, no entry when T1 breaks the BPR, the cost filter; the setup's limits while its own touch position is open. On 10 random series it checks invariants: one setup with orders or positions at a time (touch positions included), a touch entry only into an empty slot, BPR versus trade direction, leg geometry, order geometry, and every T1 candidate tried after a skipped one. It also checks coverage and causality. With the defaults these sequences equal the v4 Python reference (parity set). Mutation check: 25 of 25 deliberate bugs caught; the v5 set still catches 17 of 17. |
+| `tests/test_bpr_breakout_v6_setups.py` | **v6 reversal setup and touch entry, on the C++ copy of the MQL5 detector only (59 tests).** Long and short: the reversal trade (breakout, confirmation, leg 100.2 → 98.4, sell-limit prices, target); the T2 candle as the reversal level; a failed reversal then a continuation (BOTH); a close exactly on the level; a broken BPR ending only the continuation; the leg restarting at a new high; the direction filter on the trade; the touch entry's price, stop, target and RR, T1 only, no entry when T1 breaks the BPR, the cost filter; the setup's limits while its own touch position is open. On 10 random series it checks invariants: one setup with orders or positions at a time (touch positions included), a touch entry only into an empty slot, BPR versus trade direction, leg geometry, order geometry, and every T1 candidate tried after a skipped one. It also checks coverage and causality. With the defaults these sequences equal the v4 Python reference (parity set). Mutation check: 29 of 29 deliberate bugs caught; the v5 set still catches 17 of 17. |
 | `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (44 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles and short legs on the extra decision candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 18 of 19 deliberate bugs caught; the 19th only differs in a state the slot rule makes unreachable. |
 | `tests/test_bpr_breakout_strategy.py` | 53 scenario tests of the rules: exact Fibonacci prices, touches, breakout and failure, FVG rule, re-anchor, fills and target, cost / RR / missed entries, environment gates, executor feedback, warm-up, **causality (no look-ahead)** |
 | `tools/mql5_static_check.py mql5/BprFvgEA` | Mechanical check: names and brackets. It cannot find MQL5 type errors. |
