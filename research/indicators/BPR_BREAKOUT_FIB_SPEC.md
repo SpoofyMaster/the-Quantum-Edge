@@ -447,7 +447,8 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
     - **Position id.** `DEAL_POSITION_ID`, else the order ticket: it always opens a new position.
     - **Order of management.** `ManageTouch` runs before `Reconcile`, so the position is never adopted as unowned.
     - **Fill check.** The first time the position is seen, its actual risk is checked against its share. The excess is
-      closed (hedging), or the whole position (netting).
+      closed (hedging; at least the minimum volume, as for a level), or the whole position (netting). The time stop and
+      16:44 flat are checked first, so a refused close cannot hold them back.
     - **Exit reasons.** `TIME` / `ROLLOVER` / `RISK` go to the CSV.
     - **No overlap.** A new touch entry waits while the previous one is open or not yet recorded.
     - `ManageTouch` handles its time stop and 16:44 flat, as the v4 switches say.

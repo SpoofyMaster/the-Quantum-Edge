@@ -1379,7 +1379,8 @@ void ExecBatch(const BfIntent &its[], const int n)
         }
       // v6: an open touch-entry position's planned risk counts as well
       if(!g_risk.CheckNewTrade(sumPlan + (g_tp.active ? g_tp.planned : 0.0)))
-         wait = "daily-loss budget (realised loss today + planned risk " + DoubleToString(sumPlan, 2) + " > limit)";
+         wait = "daily-loss budget (realised loss today + planned risk " + DoubleToString(sumPlan, 2) +
+                (g_tp.active ? " + open touch entry " + DoubleToString(g_tp.planned, 2) : "") + " > limit)";
      }
    if(wait != "")
      {
@@ -1737,7 +1738,7 @@ bool CheckTouchFillRisk(const ulong ptk)
       g_tp.planned = risk;
       return(true);
      }
-   cut   = g_trade.CeilVolume(vol - g_tp.budget / perLot);
+   cut   = g_trade.CeilVolume(MathMax(vol - g_tp.budget / perLot, g_trade.MinVolume()));
    rest  = vol - cut;
    whole = (!g_trade.IsHedging() || rest < g_trade.MinVolume() - 1e-12);
    if(!g_tp.riskLogged)
@@ -1808,8 +1809,8 @@ void ManageTouch(void)
      }
    if(!g_trade.tradingAllowed)
       return;
-   if(g_tp.fillCheck && CheckTouchFillRisk(tk))
-      g_tp.fillCheck = false;
+   //--- the time stop and the 16:44 flat come first (as in ManagePositions), so a refused fill-check close can never
+   //    hold them back (they share the retry timer)
    if(TimeStopDue(g_tp.fillTime, now) || RolloverFlatDue(g_tp.fillTime, now))
      {
       if(!MgmtAllowed() || !RetryDue(g_tp.lastTry))
@@ -1827,7 +1828,10 @@ void ManageTouch(void)
             g_log.Error("#" + IntegerToString(g_tp.id) + " T1 touch position could not be closed: " + g_trade.lastError +
                         " (retried)");
         }
+      return;
      }
+   if(g_tp.fillCheck && CheckTouchFillRisk(tk))
+      g_tp.fillCheck = false;
   }
 
 void ExecuteIntents(void)
@@ -2263,7 +2267,7 @@ bool CheckFillRisk(const int k, const ulong ptk)
      }
    if(risk <= g_ctx.lv[k].budget + 1e-9)
       return(true);
-   cut   = g_trade.CeilVolume(vol - g_ctx.lv[k].budget / perLot);
+   cut   = g_trade.CeilVolume(MathMax(vol - g_ctx.lv[k].budget / perLot, g_trade.MinVolume()));
    rest  = vol - cut;
    whole = (rest < g_trade.MinVolume() - 1e-12);
    if(!g_ctx.lv[k].riskLogged)
