@@ -770,19 +770,6 @@ private:
    //+---------------------------------------------------------------+
    //| spec s.3: one new BPR                                         |
    //+---------------------------------------------------------------+
-   void              NewSetup(const int u, const ZoneS &z)
-     {
-      int dir = z.pos;
-      //--- v7: CONTINUATION -> one continuation setup, REVERSAL -> one reversal setup, BOTH -> both (continuation
-      //    first), each on its own. A setup is tracked if its trade direction is allowed (the reversal trades -dir);
-      //    with REVERSAL also for its touch entry, which is in the BPR's direction.
-      if(m_p.setupType != BF_SETUP_REVERSAL && DirAllowed(dir))
-         AddSetup(u, z, BF_SETUP_CONTINUATION);
-      if(m_p.setupType != BF_SETUP_CONTINUATION &&
-         (DirAllowed(-dir) || (m_p.setupType == BF_SETUP_REVERSAL && m_p.touchEntry && DirAllowed(dir))))
-         AddSetup(u, z, BF_SETUP_REVERSAL);
-     }
-
    void              AddSetup(const int u, const ZoneS &z, const int kind)
      {
       int reason = BF_R_NONE;
@@ -817,6 +804,19 @@ private:
       m_n++;
       AddEvent(u, BF_EV_ARMED, m_c, 0, BF_R_NONE);
       Stat(BF_STAT_ARMED);
+     }
+
+   void              NewSetup(const int u, const ZoneS &z)
+     {
+      int dir = z.pos;
+      //--- v7: CONTINUATION -> one continuation setup, REVERSAL -> one reversal setup, BOTH -> both (continuation
+      //    first), each on its own. A setup is tracked if its trade direction is allowed (the reversal trades -dir);
+      //    with REVERSAL also for its touch entry, which is in the BPR's direction.
+      if(m_p.setupType != BF_SETUP_REVERSAL && DirAllowed(dir))
+         AddSetup(u, z, BF_SETUP_CONTINUATION);
+      if(m_p.setupType != BF_SETUP_CONTINUATION &&
+         (DirAllowed(-dir) || (m_p.setupType == BF_SETUP_REVERSAL && m_p.touchEntry && DirAllowed(dir))))
+         AddSetup(u, z, BF_SETUP_REVERSAL);
      }
 
    void              NewSetups(const int u, const StateS &eng, const BfEngineEvents &ev)

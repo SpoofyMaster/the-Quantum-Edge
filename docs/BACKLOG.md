@@ -140,3 +140,10 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   (`tests/test_bpr_breakout_v6_setups.py`), defaults = v5 (parity set).
 - [?] U-17 User: compile v6 and send every compiler message. Then confirm the choices the rule left open (reversal
   level = the touch candle's low / high; reversal leg origin; touch entry stop beyond the BPR, target 1.5 R, T1 only).
+- [x] EA-14 v7 (2026-10-15, journal day10): the reversal setup redone from the owner's screenshot (level = the deeper
+  T1 / T2 wick, rejection first, the pullback is no third touch, 100 % = top of the last bounce, BOTH = two setups per
+  BPR); inputs `InpRevLevel`, `InpRevNeedRejection`; MQL5 only, checked on the C++ transliteration
+  (`tests/test_bpr_breakout_v7_reversal.py`), defaults = v6 = v5 (parity set).
+- [?] U-18 User: compile v7 and send every compiler message. Run the tester with `InpSetupType = REVERSAL` (and
+  `BOTH`) and send the `[BFEA]` lines and the `BFEA7_*` CSV files; check the reversal trades against your example
+  (`research/indicators/preview/bpr_reversal_example.svg`).
