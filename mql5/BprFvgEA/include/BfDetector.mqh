@@ -101,7 +101,7 @@ private:
       m_ev[m_nEv].B           = s.B;
       m_ev[m_nEv].T           = s.T;
       m_ev[m_nEv].touches     = s.touches;
-      m_ev[m_nEv].lvl         = s.rev ? s.lvlR : s.lvl;
+      m_ev[m_nEv].lvl         = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlR : s.lvl;
       m_ev[m_nEv].ref         = s.ref;
       m_ev[m_nEv].brkBar      = s.brkBar;
       m_ev[m_nEv].confirmBar  = s.confirmBar;
@@ -121,7 +121,8 @@ private:
         }
       m_ev[m_nEv].zdir        = s.zdir;
       m_ev[m_nEv].rev         = s.rev;
-      m_ev[m_nEv].lvlBar      = s.rev ? s.lvlRBar : s.ref;
+      m_ev[m_nEv].lvlBar      = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlRBar : s.ref;
+      m_ev[m_nEv].kind        = s.kind;
       m_nEv++;
      }
 
@@ -257,15 +258,42 @@ private:
       return(true);
      }
 
-   //--- v6 setup types
-   bool              HasCont(void)
+   //--- v6 setup types; v7: per setup. BOTH follows each BPR as two setups, a continuation and a reversal one.
+   bool              HasCont(const int i)
      {
-      return(m_p.setupType != BF_SETUP_REVERSAL);
+      return(m_s[i].kind == BF_SETUP_CONTINUATION);
      }
 
-   bool              HasRev(void)
+   bool              HasRev(const int i)
      {
-      return(m_p.setupType != BF_SETUP_CONTINUATION);
+      return(m_s[i].kind == BF_SETUP_REVERSAL);
+     }
+
+   //--- v7: the setup that sends the touch entry: the continuation one (CONTINUATION / BOTH), or the reversal one
+   //    (REVERSAL, which has no continuation setup)
+   bool              TouchOwner(const int i)
+     {
+      return(m_s[i].kind == BF_SETUP_CONTINUATION || m_p.setupType == BF_SETUP_REVERSAL);
+     }
+
+   //--- v7 reversal level at a touch (T1 / T2): DEEPEST = the deepest wick of the touch candles (the lowest low for a
+   //    bullish BPR), T1 = the T1 candle's, LAST = the latest touch candle's (v6)
+   void              SetRevLevel(const int i, const int u, const double hu, const double lu)
+     {
+      double w = (m_s[i].zdir > 0) ? lu : hu;
+      bool   take;
+      if(m_s[i].touches <= 1 || m_p.revLevel == BF_REVLVL_LAST)
+         take = true;
+      else
+         if(m_p.revLevel == BF_REVLVL_T1)
+            take = false;
+         else
+            take = (m_s[i].zdir > 0) ? (w < m_s[i].lvlR) : (w > m_s[i].lvlR);
+      if(take)
+        {
+         m_s[i].lvlR    = w;
+         m_s[i].lvlRBar = u;
+        }
      }
 
    //--- spec s.2 helpers. Before the confirmation they use the BPR's direction (zdir); v1-v5 had dir == zdir there.
@@ -285,9 +313,61 @@ private:
       return(cu > m_s[i].lvlR);
      }
 
-   //--- v6 reversal leg: origin = highest high (bullish BPR) since the latest touch began, extreme = lowest low after it
+   //--- v7 candidate origin of a later visit of the zone (T2, or a pullback into the zone after the last touch): the
+   //    highest high (bullish BPR) since that visit began and the lowest low after it. It becomes the reversal leg
+   //    (rO / rX) when the visit is rejected; a visit that turns into the breakout keeps the earlier origin.
+   void              TrackCand(const int i, const int u, const double hu, const double lu)
+     {
+      if(m_s[i].zdir > 0)
+        {
+         if(hu > m_s[i].cO)
+           {
+            m_s[i].cO    = hu;
+            m_s[i].cOBar = u;
+            m_s[i].cX    = lu;
+            m_s[i].cXBar = u;
+           }
+         else
+            if(lu < m_s[i].cX)
+              {
+               m_s[i].cX    = lu;
+               m_s[i].cXBar = u;
+              }
+        }
+      else
+        {
+         if(lu < m_s[i].cO)
+           {
+            m_s[i].cO    = lu;
+            m_s[i].cOBar = u;
+            m_s[i].cX    = hu;
+            m_s[i].cXBar = u;
+           }
+         else
+            if(hu > m_s[i].cX)
+              {
+               m_s[i].cX    = hu;
+               m_s[i].cXBar = u;
+              }
+        }
+     }
+
+   //--- v7: a later visit of the zone begins on bar u (its first candle): a new candidate origin
+   void              StartCand(const int i, const int u, const double hu, const double lu)
+     {
+      m_s[i].cAct  = true;
+      m_s[i].cO    = (m_s[i].zdir > 0) ? hu : lu;
+      m_s[i].cX    = (m_s[i].zdir > 0) ? lu : hu;
+      m_s[i].cOBar = u;
+      m_s[i].cXBar = u;
+     }
+
+   //--- v6 reversal leg: origin = highest high (bullish BPR) since T1 began, extreme = lowest low after it. v7: a later
+   //    visit of the zone that is rejected moves the origin to its own candidate (the top of the last bounce).
    void              TrackRev(const int i, const int u, const double hu, const double lu)
      {
+      if(m_s[i].cAct)
+         TrackCand(i, u, hu, lu);
       if(m_s[i].zdir > 0)
         {
          if(hu > m_s[i].rO)
@@ -429,22 +509,18 @@ private:
       bool tn;
       bool touched;
       bool brokeNow;
-      bool wasRev = false;                                      // v6: the BREAK that failed on this bar was a reversal
+      bool rj;
       m_s[i].ready      = false;
       m_s[i].touchReady = false;
       if(ph == BF_PH_WAIT || ph == BF_PH_ZONE || ph == BF_PH_BREAK)
         {
-         //--- 4.1 steps 1-2. v6: with REVERSAL / BOTH a broken BPR only ends the continuation; the reversal goes on.
+         //--- 4.1 steps 1-2. v6: a broken BPR ends a continuation setup only; a reversal setup goes on (it trades the
+         //    break), unless its direction is not allowed (a REVERSAL setup kept for its touch entry only).
          brokeNow = ((zd > 0 && l[u] < m_s[i].B) || (zd < 0 && h[u] > m_s[i].T));
-         if(brokeNow)
+         if(brokeNow && (!HasRev(i) || !DirAllowed(-zd)))
            {
-            // v5 rule unless a reversal is still possible (REVERSAL / BOTH and its direction allowed)
-            if(!HasRev() || !DirAllowed(-zd))
-              {
-               SetDone(i, u, BF_R_BROKEN);
-               return;
-              }
-            m_s[i].contOff = true;
+            SetDone(i, u, BF_R_BROKEN);
+            return;
            }
          if(u - m_s[i].created > m_p.setupExpiryBars)
            {
@@ -455,7 +531,7 @@ private:
          //--- step 4: BREAK (continuation, or v6 reversal)
          if(ph == BF_PH_BREAK)
            {
-            if(m_s[i].rev ? BeyondRev(i, c[u]) : (!m_s[i].contOff && Beyond(i, c[u])))
+            if(m_s[i].rev ? BeyondRev(i, c[u]) : Beyond(i, c[u]))
               {
                m_s[i].nClose++;
                Track(i, u, h[u], l[u]);
@@ -474,22 +550,19 @@ private:
             Stat(BF_STAT_BRK_FAIL);
             m_s[i].phase  = BF_PH_ZONE;
             m_s[i].nClose = 0;
-            wasRev = m_s[i].rev;
             if(m_s[i].rev)
               {
                m_s[i].rev = false;
                m_s[i].dir = zd;
               }
            }
-         //--- steps 5 / 5b run in ZONE, and v6 also on the bar of a BREAK_FAIL, for the OTHER kind of breakout: a failed
-         //    continuation candle that closes beyond the reversal level starts the reversal, and vice versa (BOTH).
-         //    In v1-v5 (continuation only) a failed candle never closes beyond the level, so nothing changes there.
+         //--- steps 5 / 5b: ZONE, not on the bar of a BREAK_FAIL (that candle closed back on the other side of the level)
            {
             //--- step 5: ZONE + a candle that does NOT touch the zone closes beyond the level = breakout candle (a
             //    touching candle belongs to the touch: it becomes the reference candle in step 6). Stricter reading
             //    (rejectBeforeBreak): the previous candle must not have touched either (a rejection came first).
-            if(m_s[i].phase == BF_PH_ZONE && (ph != BF_PH_BREAK || wasRev) && HasCont() && DirAllowed(zd) &&
-               !m_s[i].contOff && !tn && (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
+            if(m_s[i].phase == BF_PH_ZONE && ph != BF_PH_BREAK && HasCont(i) && DirAllowed(zd) && !tn &&
+               (!m_p.rejectBeforeBreak || !m_s[i].inEp) && Beyond(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].brkBar = u;
@@ -503,11 +576,12 @@ private:
                m_s[i].inEp = tn;
                return;
               }
-            //--- v6 step 5b: reversal breakout candle: ZONE + a close beyond the opposite extreme of the candle that
-            //    made the latest touch (lvlR). It may touch the zone (it goes through it). The trade direction becomes
+            //--- v6 step 5b: reversal breakout candle: ZONE + a close beyond the reversal level lvlR (v7: the deepest
+            //    wick of the T1 / T2 candles by default). It may touch the zone (it goes through it). v7: by default a
+            //    rejection must have come after T1 ("T1, rejection, pullback, breakout"). The trade direction becomes
             //    -zdir from here.
-            if(m_s[i].phase == BF_PH_ZONE && (ph != BF_PH_BREAK || !wasRev) && HasRev() && DirAllowed(-zd) &&
-               BeyondRev(i, c[u]))
+            if(m_s[i].phase == BF_PH_ZONE && ph != BF_PH_BREAK && HasRev(i) && DirAllowed(-zd) &&
+               (!m_p.revNeedReject || m_s[i].rej) && BeyondRev(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].rev    = true;
@@ -527,51 +601,56 @@ private:
          //--- step 6: touch logic
          if(tn)
            {
-            if(!m_s[i].inEp)
+            if(!m_s[i].inEp && HasRev(i) && m_s[i].touches >= m_p.maxTouches)
               {
-               m_s[i].touches++;
-               if(m_s[i].touches > m_p.maxTouches)
-                 {
-                  SetDone(i, u, BF_R_TOUCH_LIMIT);
-                  return;
-                 }
-               AddEvent(u, BF_EV_TOUCH, m_s[i], m_s[i].touches, BF_R_NONE);
-               Stat(BF_STAT_TOUCH);
-               if(m_s[i].touches == 1)
-                  m_s[i].touchBar1 = u;
-               else
-                  m_s[i].touchBar2 = u;
-               if(zd > 0)
-                 {
-                  m_s[i].O    = l[u];
-                  m_s[i].X    = h[u];
-                  m_s[i].rO   = h[u];
-                  m_s[i].rX   = l[u];
-                  m_s[i].lvlR = l[u];
-                  m_s[i].lvlRBar = u;
-                 }
-               else
-                 {
-                  m_s[i].O    = h[u];
-                  m_s[i].X    = l[u];
-                  m_s[i].rO   = l[u];
-                  m_s[i].rX   = h[u];
-                  m_s[i].lvlR = h[u];
-                  m_s[i].lvlRBar = u;
-                 }
-               m_s[i].oBar  = u;
-               m_s[i].xBar  = u;
-               m_s[i].rOBar = u;
-               m_s[i].rXBar = u;
-               //--- v6 touch entry: on the close of the T1 candle, if that candle did not break the BPR
-               if(m_p.touchEntry && m_s[i].touches == 1 && !brokeNow && DirAllowed(zd))
-                  m_s[i].touchReady = true;
+               //--- v7 reversal setup: a visit of the zone after the last touch is the pullback, not a touch. It does
+               //    not end the setup and does not move the level; if it is rejected, its bounce is the new origin.
+               TrackRev(i, u, h[u], l[u]);
+               StartCand(i, u, h[u], l[u]);
               }
             else
-              {
-               Track(i, u, h[u], l[u]);
-               TrackRev(i, u, h[u], l[u]);
-              }
+               if(!m_s[i].inEp)
+                 {
+                  m_s[i].touches++;
+                  if(m_s[i].touches > m_p.maxTouches)
+                    {
+                     SetDone(i, u, BF_R_TOUCH_LIMIT);
+                     return;
+                    }
+                  AddEvent(u, BF_EV_TOUCH, m_s[i], m_s[i].touches, BF_R_NONE);
+                  Stat(BF_STAT_TOUCH);
+                  if(m_s[i].touches == 1)
+                     m_s[i].touchBar1 = u;
+                  else
+                     m_s[i].touchBar2 = u;
+                  m_s[i].O    = (zd > 0) ? l[u] : h[u];
+                  m_s[i].X    = (zd > 0) ? h[u] : l[u];
+                  m_s[i].oBar = u;
+                  m_s[i].xBar = u;
+                  SetRevLevel(i, u, h[u], l[u]);
+                  //--- v7 reversal origin: T1 starts it; a later touch is a candidate until it is rejected
+                  if(m_s[i].touches == 1)
+                    {
+                     m_s[i].rO    = (zd > 0) ? h[u] : l[u];
+                     m_s[i].rX    = (zd > 0) ? l[u] : h[u];
+                     m_s[i].rOBar = u;
+                     m_s[i].rXBar = u;
+                     m_s[i].cAct  = false;
+                    }
+                  else
+                    {
+                     TrackRev(i, u, h[u], l[u]);
+                     StartCand(i, u, h[u], l[u]);
+                    }
+                  //--- v6 touch entry: on the close of the T1 candle, if that candle did not break the BPR
+                  if(m_p.touchEntry && m_s[i].touches == 1 && !brokeNow && DirAllowed(zd) && TouchOwner(i))
+                     m_s[i].touchReady = true;
+                 }
+               else
+                 {
+                  Track(i, u, h[u], l[u]);
+                  TrackRev(i, u, h[u], l[u]);
+                 }
             m_s[i].ref   = u;
             m_s[i].lvl   = (zd > 0) ? h[u] : l[u];
             m_s[i].phase = BF_PH_ZONE;
@@ -579,7 +658,8 @@ private:
            }
          else
            {
-            if(m_s[i].inEp)
+            rj = m_s[i].inEp;
+            if(rj)
               {
                AddEvent(u, BF_EV_REJECT, m_s[i], 0, BF_R_NONE);
                m_s[i].inEp = false;
@@ -588,6 +668,19 @@ private:
               {
                Track(i, u, h[u], l[u]);
                TrackRev(i, u, h[u], l[u]);
+              }
+            //--- v7: the rejection; a rejected later visit gives the reversal leg its origin
+            if(rj)
+              {
+               m_s[i].rej = true;
+               if(m_s[i].cAct)
+                 {
+                  m_s[i].rO    = m_s[i].cO;
+                  m_s[i].rOBar = m_s[i].cOBar;
+                  m_s[i].rX    = m_s[i].cX;
+                  m_s[i].rXBar = m_s[i].cXBar;
+                  m_s[i].cAct  = false;
+                 }
               }
            }
          return;
@@ -679,15 +772,25 @@ private:
    //+---------------------------------------------------------------+
    void              NewSetup(const int u, const ZoneS &z)
      {
+      int dir = z.pos;
+      //--- v7: CONTINUATION -> one continuation setup, REVERSAL -> one reversal setup, BOTH -> both (continuation
+      //    first), each on its own. A setup is tracked if its trade direction is allowed (the reversal trades -dir);
+      //    with REVERSAL also for its touch entry, which is in the BPR's direction.
+      if(m_p.setupType != BF_SETUP_REVERSAL && DirAllowed(dir))
+         AddSetup(u, z, BF_SETUP_CONTINUATION);
+      if(m_p.setupType != BF_SETUP_CONTINUATION &&
+         (DirAllowed(-dir) || (m_p.setupType == BF_SETUP_REVERSAL && m_p.touchEntry && DirAllowed(dir))))
+         AddSetup(u, z, BF_SETUP_REVERSAL);
+     }
+
+   void              AddSetup(const int u, const ZoneS &z, const int kind)
+     {
       int reason = BF_R_NONE;
       int dir    = z.pos;
-      //--- v6: a BPR is tracked if one of the directions it can be traded in is allowed (continuation and the touch
-      //    entry: its own direction; reversal: the opposite one)
-      if(!((HasCont() && DirAllowed(dir)) || (HasRev() && DirAllowed(-dir)) || (m_p.touchEntry && DirAllowed(dir))))
-         return;
       BfClearSetup(m_c);
       m_c.id      = m_nextId;
       m_nextId++;
+      m_c.kind    = kind;
       m_c.dir     = dir;
       m_c.zdir    = dir;
       m_c.created = u;

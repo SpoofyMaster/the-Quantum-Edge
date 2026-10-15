@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 6)                                        |
+//| BprFvgEA.mq5  (version 7)                                        |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -41,6 +41,13 @@
 // InpTouchEntry: a market order in the BPR's direction at the next open after the T1 candle (stop beyond the BPR,
 // target InpTouchTargetRR x the risk), sharing the setup's 0.20 % with its limit entries. Defaults = v5. Detector
 // params setupType / touchEntry / touchTargetRR (MQL5 only, like v5); tests/test_bpr_breakout_v6_setups.py.
+// Version 7 = version 6 + the owner's reversal example (2026-10-15: "t1 + rejection from it and pullback with breakout
+// of T1 or T2 wick with closing below or above it"): the reversal level is the DEEPEST wick of the T1 / T2 candles
+// (InpRevLevel; v6 used the latest touch candle), a rejection must come after T1 first (InpRevNeedRejection), a
+// pullback into the zone after the last touch neither ends the reversal setup nor moves its level or its 100 %
+// (origin = the top of the last rejected bounce), and BOTH follows each BPR as two setups, a continuation one and a
+// reversal one, so a reversal can still trade after the continuation did. Detector params revLevel / revNeedReject
+// (MQL5 only); tests/test_bpr_breakout_v7_reversal.py.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -53,7 +60,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "6.00"
+#property version     "7.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -93,7 +100,9 @@ input bool                InpShowPanel            = true;               // Statu
 
 input group "==== SETUP: BPR rejection -> breakout -> Fibonacci (hypothesis H-14, untested) ===="
 input ENUM_BF_DIRECTION   InpDirection            = BF_DIR_BOTH;        // Direction
-input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Setup: CONTINUATION / REVERSAL (breakout through the BPR) / BOTH
+input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Setup: CONTINUATION / REVERSAL (breakout through the BPR) / BOTH (both setups per BPR)
+input ENUM_BF_REVLEVEL    InpRevLevel             = BF_REVLVL_DEEPEST;  // Reversal level: DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick
+input bool                InpRevNeedRejection     = true;               // Reversal: a rejection after T1 must come before the breakout
 input bool                InpTouchEntry           = false;              // Market order at the next open after the T1 candle (BPR direction)
 input double              InpTouchTargetRR        = 1.5;                // Touch entry: take-profit in R (stop beyond the BPR + InpStopBufferTicks)
 input int                 InpMaxTouches           = 2;                  // Touches of the BPR allowed (a further touch ends it)
@@ -543,6 +552,9 @@ void BuildParams(void)
    g_bp.setupType            = (int)InpSetupType;
    g_bp.touchEntry           = InpTouchEntry;
    g_bp.touchTargetRR        = g_touchRR;
+   // v7 (EA only): the reversal setup
+   g_bp.revLevel             = (int)InpRevLevel;
+   g_bp.revNeedReject        = InpRevNeedRejection;
    g_bp.fvgRule              = (int)InpFvgRule;
    g_bp.setupExpiryBars      = g_setupExp;
    g_bp.legExpiryBars        = g_legExp;
@@ -624,7 +636,7 @@ string LevelCsv(const BfEvent &e, const int k)
    return(BfLevelStatusName(st) + "@" + Px(e.snLvP[k]));
   }
 
-// BFEA6_setups row (run added by the logger; + bpr_dir,setup since v6):
+// BFEA7_setups row (run added by the logger; + bpr_dir,setup since v6; setup = the setup's kind since v7):
 // id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason
 string SetupCsv(const BfEvent &e)
   {
@@ -639,23 +651,24 @@ string SetupCsv(const BfEvent &e)
                  (conf ? Px(e.snX) : "") + "," + ((e.decisionBar >= 0) ? CBfLogger::Ts(BarTime(e.decisionBar)) : "") +
                  "," + (dec ? Px(e.snSL) : "") + "," + (dec ? Px(e.snTP) : "") + "," + LevelCsv(e, 0) + "," +
                  LevelCsv(e, 1) + "," + LevelCsv(e, 2) + "," + BfPhaseName(e.phase) + "," + BfReasonName(e.reason) +
-                 "," + IntegerToString(e.zdir) + "," + (e.rev ? "REV" : "CONT");
+                 "," + IntegerToString(e.zdir) + "," + ((e.kind == BF_SETUP_REVERSAL) ? "REV" : "CONT");
    return(line);
   }
 
 // One Experts-log line per detector record
 string EventText(const BfEvent &e)
   {
-   string s = "#" + IntegerToString(e.id) + " " + DirText(e.dir) + " " + BfEventName(e.ev);
+   string s = "#" + IntegerToString(e.id) + ((e.kind == BF_SETUP_REVERSAL) ? " REV" : "") + " " + DirText(e.dir) + " " +
+              BfEventName(e.ev);
    int    k = e.k;
    if(e.ev == BF_EV_TOUCH)
       s = s + " " + IntegerToString(k) + " of max " + IntegerToString(g_maxTouches) + " (zone " + Px(e.B) + " - " +
           Px(e.T) + ")";
    else
       if(e.ev == BF_EV_BREAKOUT || e.ev == BF_EV_BREAK_FAIL)
-         s = s + " level " + Px(e.lvl) + (e.rev ? " (REVERSAL: " + ((e.dir < 0) ? "low" : "high") +
-             " of the candle that made the touch)" : " (" + ((e.dir > 0) ? "high" : "low") + " of the candle at " +
-             CBfLogger::Ts(BarTime(e.ref)) + ")");
+         s = s + " level " + Px(e.lvl) + (e.rev ? " (REVERSAL: " + RevLevelText() + ", the " + ((e.dir < 0) ? "low" :
+             "high") + " of the touch candle at " + CBfLogger::Ts(BarTime(e.lvlBar)) + ")" : " (" +
+             ((e.dir > 0) ? "high" : "low") + " of the candle at " + CBfLogger::Ts(BarTime(e.ref)) + ")");
       else
          if(e.ev == BF_EV_CONFIRM)
             s = s + (e.rev ? " (REVERSAL)" : "") + ": leg " + Px(e.O) + " -> " + Px(e.X) + ", tracking the " +
@@ -1689,7 +1702,7 @@ bool FinishTouch(void)
    reason = DealReasonText(lastReason, g_tp.closeReason);
    if(g_tp.planned > 0.0)
       R = pnl / g_tp.planned;
-   // BFEA6_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA7_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_tp.id) + ",T," + IntegerToString(g_tp.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_tp.SL) + "," + Px(g_tp.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -1965,7 +1978,7 @@ bool FinishPosition(const ulong posId)
    reason = DealReasonText(lastReason, cr);
    if(plan > 0.0)
       R = pnl / plan;
-   // BFEA6_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA7_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_ctx.id) + "," + levels + "," + IntegerToString(g_ctx.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_ctx.SL) + "," + Px(g_ctx.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -2612,11 +2625,22 @@ string EntryModeText(void)
 
 string SetupTypeText(void)
   {
+   string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "");
    if(InpSetupType == BF_SETUP_REVERSAL)
-      return("REVERSAL (breakout through the BPR)");
+      return("REVERSAL (breakout through the BPR; " + rv + ")");
    if(InpSetupType == BF_SETUP_BOTH)
-      return("BOTH (continuation or reversal)");
+      return("BOTH (a continuation and a reversal setup per BPR; reversal " + rv + ")");
    return("CONTINUATION");
+  }
+
+// v7: the reversal level input as text
+string RevLevelText(void)
+  {
+   if(InpRevLevel == BF_REVLVL_T1)
+      return("T1 wick");
+   if(InpRevLevel == BF_REVLVL_LAST)
+      return("latest touch wick");
+   return("deepest T1 / T2 wick");
   }
 
 // v3 switches as one line (panel, start log, self-check)
@@ -2649,7 +2673,7 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v6 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v7 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
@@ -2746,8 +2770,12 @@ void SelfCheck(void)
                  " entries; while it is open no other setup trades" +
                  (g_trade.IsHedging() ? "" : " and (netting account) its own setup cannot place its limits either"));
    if(InpSetupType != BF_SETUP_CONTINUATION)
-      g_log.Info("SELF-CHECK note: setup " + SetupTypeText() + " - after T1 / T2, " + IntegerToString(g_confirm) +
-                 " closes beyond the opposite extreme of the touch candles start a trade AGAINST the BPR's direction");
+      g_log.Info("SELF-CHECK note: setup " + SetupTypeText() + " - after T1 / T2" +
+                 (InpRevNeedRejection ? " and a rejection" : "") + ", " + IntegerToString(g_confirm) +
+                 " closes beyond the " + RevLevelText() + " (below it for a bullish BPR) start a trade AGAINST the " +
+                 "BPR's direction; Fibonacci from the top of the last bounce (100 %, stop) to the new extreme (0 %)" +
+                 ((InpSetupType == BF_SETUP_BOTH) ? "; each BPR is followed twice (ids in the log: '#n' continuation, " +
+                  "'#n REV' reversal), one setup trades at a time" : ""));
    if(InpAnticipateEntries)
       g_log.Info("SELF-CHECK note: anticipated entries - the limits wait in the book from the confirmation (once the " +
                  "FVG condition holds) and are deleted and sent again at every new high / low of the leg (up to 3 " +
@@ -3037,14 +3065,14 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v6: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v7: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
-   g_log.Info("start v6: " + FiltersText());
-   g_log.Info("start v6: " + ExitsText());
-   g_log.Info("start v6: " + EntryModeText());
+   g_log.Info("start v7: " + FiltersText());
+   g_log.Info("start v7: " + ExitsText());
+   g_log.Info("start v7: " + EntryModeText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);
@@ -3119,11 +3147,12 @@ void OnDeinit(const int reason)
          e.B = s.B;
          e.T = s.T;
          e.touches = s.touches;
-         e.lvl = s.rev ? s.lvlR : s.lvl;
+         e.lvl = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlR : s.lvl;
          e.ref = s.ref;
          e.zdir = s.zdir;
          e.rev = s.rev;
-         e.lvlBar = s.rev ? s.lvlRBar : s.ref;
+         e.kind = s.kind;
+         e.lvlBar = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlRBar : s.ref;
          e.brkBar = s.brkBar;
          e.confirmBar = s.confirmBar;
          e.decisionBar = s.decisionBar;

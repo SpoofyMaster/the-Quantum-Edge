@@ -168,7 +168,7 @@ def _run_both(exe, tmp_path, bars, params, sp, trade_from=0, hold_bars=120):
 
 
 def _crafted():
-    from bk_scenarios import boundary_cases, mirror, scenarios, v5_sequences, v6_sequences
+    from bk_scenarios import boundary_cases, mirror, scenarios, v5_sequences, v6_sequences, v7_sequences
 
     out = []
     seqs = dict(scenarios())
@@ -180,6 +180,10 @@ def _crafted():
     for name, bars in v6_sequences().items():
         seqs[f"v6_{name}"] = bars
         seqs[f"v6_short_{name}"] = mirror(bars)
+    # v7 reversal sequences (the owner's example and one per rule) at the defaults: equal to the v4 reference too
+    for name, bars in v7_sequences().items():
+        seqs[f"v7_{name}"] = bars
+        seqs[f"v7_short_{name}"] = mirror(bars)
     for name, bars in seqs.items():
         for rule in ("ANY_GAP", "LUXALGO", "NONE"):
             out.append((f"{name}-{rule}", bars, {"fvg_rule": rule}))

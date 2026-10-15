@@ -11,6 +11,11 @@ v6 (owner request 2026-10-12) adds three detector parameters that the Python ref
   buffer, target touch_rr x the risk. The setup goes on; its own touch position does not stop it from placing its
   limits (env.slotOwner), but it keeps every other setup out.
 
+v7 (owner's example, 2026-10-15) changed three reversal rules and BOTH; tests/test_bpr_breakout_v7_reversal.py checks
+them. Here the v6 reversal sequences break down right after T1, so they run with V6R (no rejection needed, level = the
+latest touch candle's wick, as in v6). BOTH now follows each BPR as two setups, a continuation one (kind 0) and a
+reversal one (kind 1); the tests pick a setup by its kind (the harness prints it with ext=1).
+
 The harness (tools/mql5_cpp_harness/bk_main.cpp) opens a touch entry at the next bar's open and prints it as
 H_TOUCH_OPEN / H_TOUCH_CLOSE / H_TOUCH_SKIP lines. With the defaults the parity harness still compares every record with
 the v4 Python reference, on these sequences too. This checks decision logic, not MetaEditor compilation and not MT5
@@ -36,6 +41,7 @@ pytestmark = pytest.mark.skipif(GXX is None, reason="g++ not installed")
 SP = 0.1
 TICK = 0.01
 CONT, REV, BOTH = 0, 1, 2
+V6R = dict(rev_reject=0, rev_level=2)   # the v6 reversal rules (v7 inputs InpRevNeedRejection = false, InpRevLevel = LAST)
 FVG = {"LUXALGO": 0, "ANY_GAP": 1, "NONE": 2}
 STAT_TAIL = ["BLOCKED_SLOT", "BLOCKED_SESSION", "BLOCKED_RISK", "BLOCKED_SPREAD", "WAIT_NO_FVG", "REANCHOR", "RETRY",
              "BREAK_FAIL", "CONFIRM", "PLACE_LIMIT", "ARMED", "CLOSED", "TOUCH", "BREAKOUT"]
@@ -68,6 +74,7 @@ def exe(tmp_path_factory):
 def run(exe, tmp_path, bars, hold=50, **kv):
     """-> (records incl. H_TOUCH_* lines, stats). Default here: ANY_GAP FVG rule, positions held 50 bars."""
     kv.setdefault("fvg_rule", FVG["ANY_GAP"])
+    kv.setdefault("ext", 1)
     bf = tmp_path / "bars.txt"
     bf.write_text("".join(" ".join(repr(float(x)) for x in b) + "\n" for b in bars))
     args = [f"sp={SP}", f"hold_bars={hold}"] + [f"{k}={v}" for k, v in kv.items()]
@@ -79,14 +86,15 @@ def run(exe, tmp_path, bars, hold=50, **kv):
     return [json.loads(ln) for ln in lines[:-1]], [int(x) for x in lines[-1].split()[1:]]
 
 
-def main_id(recs):
+def main_id(recs, kind=None):
     """the setup of a hand-built sequence: the first one touched (id 1 on the bullish side; the mirrored bars also arm
-    a second BPR first, so there it is id 2)"""
-    return next((r["id"] for r in recs if r["ev"] == "TOUCH"), 1)
+    a second BPR first, so there it is id 2). v7: with kind, the first touched setup of that kind (0 continuation, 1
+    reversal: BOTH has one of each per BPR)."""
+    return next((r["id"] for r in recs if r["ev"] == "TOUCH" and (kind is None or r["kind"] == kind)), 1)
 
 
-def recs_of(recs, n=None, ev=None):
-    sid = main_id(recs)
+def recs_of(recs, n=None, ev=None, kind=None):
+    sid = main_id(recs, kind)
     return [r for r in recs if r["id"] == sid and (n is None or r["n"] == n) and (ev is None or r["ev"] == ev)]
 
 
@@ -140,7 +148,8 @@ def test_reversal_trade(exe, tmp_path, d, st):
     """T1 on 14 (low 99.5 / leg origin 100.2); 15 and 16 close below 99.5 -> BREAKOUT and CONFIRM against the BPR;
     17 new extreme 98.4; 18 pullback -> three limits at 50 / 61.8 / 71 % of 100.2 -> 98.4; 19 fills the 50 %; 20
     touches the target: the other two are cancelled and the setup closes."""
-    recs, _ = run(exe, tmp_path, seq("reversal", d), setup_type=st)
+    recs, _ = run(exe, tmp_path, seq("reversal", d), setup_type=st, **V6R)
+    recs = recs_of(recs, kind=1)                           # BOTH: the reversal setup of the BPR
     t = -d                                                 # trade direction: against the BPR
     assert recs_of(recs, ev="ARMED")[0]["dir"] == d
     assert key(recs_of(recs, n=15)) == [(15, "BREAKOUT", t, 0, None)]
@@ -166,13 +175,17 @@ def test_continuation_does_not_trade_the_reversal(exe, tmp_path, d):
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_reversal_after_t2_uses_the_t2_candle(exe, tmp_path, d):
-    """T1 14 (low 99.5), rejection 15, T2 16 (low 99.6): 17 closes at 99.55 - below the T2 candle's low only - and
-    starts the reversal; the leg origin is the highest high since T2 began (16: 100.12)."""
-    recs, _ = run(exe, tmp_path, seq("rev_t2", d), setup_type=REV)
+    """LAST level (v6): T1 14 (low 99.5), rejection 15, T2 16 (low 99.6): 17 closes at 99.55 - below the T2 candle's
+    low only - and starts the reversal. v7: T2 was not rejected before that breakout, so the leg origin stays the
+    highest high since T1 (14: 100.2; v6 restarted it at T2: 100.12). With the v7 default level (the deepest wick,
+    99.5) 17 is no breakout; 18 is."""
+    recs, _ = run(exe, tmp_path, seq("rev_t2", d), setup_type=REV, **V6R)
     assert key(recs_of(recs, n=16)) == [(16, "TOUCH", d, 2, None)]
     assert key(recs_of(recs, n=17)) == [(17, "BREAKOUT", -d, 0, None)]
     conf = recs_of(recs, n=18, ev="CONFIRM")[0]
-    assert conf["O"] == pytest.approx(100.12 if d > 0 else 99.88)
+    assert conf["O"] == pytest.approx(100.2 if d > 0 else 99.8)
+    dp, _ = run(exe, tmp_path, seq("rev_t2", d), setup_type=REV)
+    assert not recs_of(dp, n=17, ev="BREAKOUT") and key(recs_of(dp, n=18)) == [(18, "BREAKOUT", -d, 0, None)]
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
@@ -180,45 +193,50 @@ def test_failed_reversal_then_continuation(exe, tmp_path, d):
     """15 starts a reversal, 16 closes back above 99.5 (BREAK_FAIL; the direction goes back to the BPR's). REVERSAL:
     nothing more (17 is a rejection). BOTH: 17 does not touch and closes above the touch level -> continuation
     breakout, 18 confirms; its leg origin includes the failed reversal candle's low (99.2)."""
-    rv, _ = run(exe, tmp_path, seq("rev_fail_then_cont", d), setup_type=REV)
+    rv, _ = run(exe, tmp_path, seq("rev_fail_then_cont", d), setup_type=REV, **V6R)
     assert key(recs_of(rv, n=16)) == [(16, "BREAK_FAIL", -d, 0, None)]
     assert key(recs_of(rv, n=17)) == [(17, "REJECT", d, 0, None)]
-    bo, _ = run(exe, tmp_path, seq("rev_fail_then_cont", d), setup_type=BOTH)
-    assert key(recs_of(bo, n=17)) == [(17, "BREAKOUT", d, 0, None)]
-    conf = recs_of(bo, n=18, ev="CONFIRM")[0]
+    bo, _ = run(exe, tmp_path, seq("rev_fail_then_cont", d), setup_type=BOTH, **V6R)
+    assert key(recs_of(bo, n=16, kind=1)) == [(16, "BREAK_FAIL", -d, 0, None)]
+    assert key(recs_of(bo, n=17, kind=0)) == [(17, "BREAKOUT", d, 0, None)]
+    conf = recs_of(bo, n=18, ev="CONFIRM", kind=0)[0]
     assert conf["dir"] == d and conf["O"] == pytest.approx(99.2 if d > 0 else 100.8)
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_broken_bpr_only_ends_the_continuation(exe, tmp_path, d):
-    """'broken': 15 goes below the BPR. CONTINUATION: DONE(BROKEN). BOTH: the reversal goes on (15 closes below the
-    T1 candle's low -> reversal breakout); a later close above the touch level is no continuation any more."""
+    """'broken': 15 goes below the BPR. CONTINUATION: DONE(BROKEN). BOTH: the continuation setup ends the same way;
+    the reversal setup goes on (15 closes below the T1 candle's low -> reversal breakout, V6R: no rejection needed)."""
     bars = scenarios()["broken"] if d > 0 else mirror(scenarios()["broken"])
     ct, _ = run(exe, tmp_path, bars)
     assert key(recs_of(ct, n=15)) == [(15, "DONE", d, 0, "BROKEN")]
-    bo, _ = run(exe, tmp_path, bars, setup_type=BOTH)
-    assert key(recs_of(bo, n=15)) == [(15, "BREAKOUT", -d, 0, None)]
+    bo, _ = run(exe, tmp_path, bars, setup_type=BOTH, **V6R)
+    assert key(recs_of(bo, n=15, kind=0)) == [(15, "DONE", d, 0, "BROKEN")]
+    assert key(recs_of(bo, n=15, kind=1)) == [(15, "BREAKOUT", -d, 0, None)]
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_no_continuation_once_the_bpr_is_broken(exe, tmp_path, d):
-    """BOTH. broken_then_up: 15 breaks the BPR without a reversal close; 16 would be a continuation breakout -> not
-    any more (a rejection). broken_in_break: the continuation breakout on 15 is not confirmed by 16, whose low breaks
-    the BPR (BREAK_FAIL)."""
+    """BOTH (v7: two setups). broken_then_up: 15 breaks the BPR without a reversal close: the continuation setup
+    ends BROKEN as with CONTINUATION, so 16 is no continuation breakout; the reversal setup sees a rejection.
+    broken_in_break: the continuation breakout on 15 is not confirmed by 16, whose low breaks the BPR (v7:
+    DONE(BROKEN) of the continuation setup)."""
     up, _ = run(exe, tmp_path, seq("broken_then_up", d), setup_type=BOTH)
-    assert not recs_of(up, ev="BREAKOUT") and key(recs_of(up, n=16)) == [(16, "REJECT", d, 0, None)]
+    assert not [r for r in up if r["ev"] == "BREAKOUT" and r["id"] <= 2]
+    assert key(recs_of(up, n=15, kind=0)) == [(15, "DONE", d, 0, "BROKEN")]
+    assert key(recs_of(up, n=16, kind=1)) == [(16, "REJECT", d, 0, None)]
     ct, _ = run(exe, tmp_path, seq("broken_then_up", d), setup_type=CONT)
     assert key(recs_of(ct, n=15)) == [(15, "DONE", d, 0, "BROKEN")]
     br, _ = run(exe, tmp_path, seq("broken_in_break", d), setup_type=BOTH)
-    assert key(recs_of(br, n=15)) == [(15, "BREAKOUT", d, 0, None)]
-    assert key(recs_of(br, n=16))[0] == (16, "BREAK_FAIL", d, 0, None)
-    assert not recs_of(br, ev="CONFIRM")
+    assert key(recs_of(br, n=15, kind=0)) == [(15, "BREAKOUT", d, 0, None)]
+    assert key(recs_of(br, n=16, kind=0)) == [(16, "DONE", d, 0, "BROKEN")]
+    assert not recs_of(br, ev="CONFIRM", kind=0)
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_reversal_close_on_the_level_is_not_a_breakout(exe, tmp_path, d):
     """A close exactly on the T1 candle's low (15) is no reversal breakout; one beyond it (16) is."""
-    recs, _ = run(exe, tmp_path, seq("rev_close_on_level", d), setup_type=REV)
+    recs, _ = run(exe, tmp_path, seq("rev_close_on_level", d), setup_type=REV, **V6R)
     assert not recs_of(recs, n=15, ev="BREAKOUT")
     assert key(recs_of(recs, n=16)) == [(16, "BREAKOUT", -d, 0, None)]
 
@@ -227,7 +245,7 @@ def test_reversal_close_on_the_level_is_not_a_breakout(exe, tmp_path, d):
 def test_reversal_leg_restarts_at_a_new_high(exe, tmp_path, d):
     """The reversal leg runs from the touch's highest high to the lowest low AFTER it: 16's new high (100.3) restarts
     it, so 15's low (99.3) is not its extreme; the confirmation on 18 has O = 100.3, X = 99.4."""
-    recs, _ = run(exe, tmp_path, seq("rev_new_origin", d), setup_type=REV)
+    recs, _ = run(exe, tmp_path, seq("rev_new_origin", d), setup_type=REV, **V6R)
     conf = recs_of(recs, n=18, ev="CONFIRM")[0]
     assert conf["dir"] == -d
     assert conf["O"] == pytest.approx(100.3 if d > 0 else 99.7) and conf["X"] == pytest.approx(99.4 if d > 0 else 100.6)
@@ -235,24 +253,30 @@ def test_reversal_leg_restarts_at_a_new_high(exe, tmp_path, d):
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_both_failed_continuation_candle_can_start_the_reversal(exe, tmp_path, d):
-    """BOTH, bull trap: the continuation breakout on 17 fails on 18, and 18 closes below the T2 candle's low: it is
-    the reversal breakout on the same candle (not a third touch), confirmed on 19 exactly as with REVERSAL."""
+    """BOTH, bull trap: the continuation breakout on 17 fails on 18, and 18 closes below the T1 / T2 wicks: the
+    reversal setup's breakout on the same candle (v7 defaults: rejections on 15 and 17), confirmed on 19 exactly as
+    with REVERSAL."""
     bo, _ = run(exe, tmp_path, seq("cont_fail_then_rev", d), setup_type=BOTH)
-    assert key(recs_of(bo, n=17)) == [(17, "BREAKOUT", d, 0, None)]
-    assert key(recs_of(bo, n=18)) == [(18, "BREAK_FAIL", d, 0, None), (18, "BREAKOUT", -d, 0, None)]
+    assert key(recs_of(bo, n=17, kind=0)) == [(17, "BREAKOUT", d, 0, None)]
+    # the continuation setup: the failing candle touches the zone, a third touch (as with CONTINUATION)
+    assert key(recs_of(bo, n=18, kind=0)) == [(18, "BREAK_FAIL", d, 0, None), (18, "DONE", d, 0, "TOUCH_LIMIT")]
+    ct, _ = run(exe, tmp_path, seq("cont_fail_then_rev", d), setup_type=CONT)
+    assert key(recs_of(ct, n=18)) == key(recs_of(bo, n=18, kind=0))
+    assert key(recs_of(bo, n=18, kind=1)) == [(18, "BREAKOUT", -d, 0, None)]
     rv, _ = run(exe, tmp_path, seq("cont_fail_then_rev", d), setup_type=REV)
     assert key(recs_of(rv, n=18)) == [(18, "BREAKOUT", -d, 0, None)]
-    cb, cr = recs_of(bo, n=19, ev="CONFIRM")[0], recs_of(rv, n=19, ev="CONFIRM")[0]
+    cb, cr = recs_of(bo, n=19, ev="CONFIRM", kind=1)[0], recs_of(rv, n=19, ev="CONFIRM")[0]
     assert (cb["dir"], cb["O"], cb["X"]) == (cr["dir"], cr["O"], cr["X"]) and cb["dir"] == -d
 
 
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_both_failed_reversal_candle_can_start_the_continuation(exe, tmp_path, d):
-    """BOTH: the reversal breakout on 15 fails on 16, which does not touch and closes above the touch level: it is the
-    continuation breakout on the same candle, confirmed on 17."""
-    bo, _ = run(exe, tmp_path, seq("rev_fail_then_cont_bar", d), setup_type=BOTH)
-    assert key(recs_of(bo, n=16)) == [(16, "BREAK_FAIL", -d, 0, None), (16, "BREAKOUT", d, 0, None)]
-    assert recs_of(bo, n=17, ev="CONFIRM")[0]["dir"] == d
+    """BOTH (V6R): the reversal breakout on 15 fails on 16, which does not touch and closes above the touch level: the
+    continuation setup's breakout on the same candle, confirmed on 17."""
+    bo, _ = run(exe, tmp_path, seq("rev_fail_then_cont_bar", d), setup_type=BOTH, **V6R)
+    assert key(recs_of(bo, n=16, kind=1)) == [(16, "BREAK_FAIL", -d, 0, None), (16, "REJECT", d, 0, None)]
+    assert key(recs_of(bo, n=16, kind=0)) == [(16, "BREAKOUT", d, 0, None)]
+    assert recs_of(bo, n=17, ev="CONFIRM", kind=0)[0]["dir"] == d
 
 
 @pytest.mark.parametrize("d,direction", [(1, 1), (-1, 2)], ids=["bullish-LONG_ONLY", "bearish-SHORT_ONLY"])
@@ -274,7 +298,7 @@ def test_touch_entry_keeps_a_bpr_whose_reversal_is_filtered_out(exe, tmp_path):
 @pytest.mark.parametrize("direction,armed,trade", [(1, False, None), (2, True, -1)], ids=["LONG_ONLY", "SHORT_ONLY"])
 def test_direction_filter_applies_to_the_trade(exe, tmp_path, direction, armed, trade):
     """A bullish BPR's reversal is a short: LONG_ONLY + REVERSAL does not even track it; SHORT_ONLY does."""
-    recs, _ = run(exe, tmp_path, V6["reversal"], setup_type=REV, direction=direction)
+    recs, _ = run(exe, tmp_path, V6["reversal"], setup_type=REV, direction=direction, **V6R)
     assert bool(recs_of(recs, ev="ARMED")) == armed
     if trade:
         assert recs_of(recs, n=16, ev="CONFIRM")[0]["dir"] == trade
@@ -324,8 +348,10 @@ def test_touch_entry_only_on_t1(exe, tmp_path):
     assert [r["n"] for r in recs_of(recs, ev="TOUCH")] == [14, 17]
 
 
-@pytest.mark.parametrize("st", [CONT, BOTH])
+@pytest.mark.parametrize("st", [CONT, BOTH, REV])
 def test_no_touch_entry_when_the_t1_candle_breaks_the_bpr(exe, tmp_path, st):
+    """CONTINUATION / BOTH: the continuation setup ends BROKEN on that candle; REVERSAL: the reversal setup goes on
+    (it owns the touch entry), but a T1 candle that broke the BPR sends none."""
     recs, _ = run(exe, tmp_path, V6["t1_breaks"], touch_entry=1, setup_type=st)
     assert not recs_of(recs, ev="TOUCH_ENTRY")
 
@@ -340,7 +366,7 @@ def test_touch_entry_cost_filter(exe, tmp_path):
 
 def test_touch_entry_respects_the_direction_filter(exe, tmp_path):
     """SHORT_ONLY + REVERSAL on a bullish BPR: the touch entry would be a buy -> not taken; the reversal short is."""
-    recs, _ = run(exe, tmp_path, V6["reversal"], setup_type=REV, direction=2, touch_entry=1)
+    recs, _ = run(exe, tmp_path, V6["reversal"], setup_type=REV, direction=2, touch_entry=1, **V6R)
     assert not recs_of(recs, ev="TOUCH_ENTRY") and recs_of(recs, ev="PLACE_LIMIT")
 
 
@@ -348,7 +374,7 @@ def test_touch_entry_respects_the_direction_filter(exe, tmp_path):
 def test_touch_entry_then_reversal(exe, tmp_path, d):
     """REVERSAL + touch entry: the touch entry follows the BPR (a buy on a bullish BPR); the reversal trade goes the
     other way and places its limits on 18 while the touch position is open (hedging; one setup)."""
-    recs, _ = run(exe, tmp_path, seq("reversal", d), setup_type=REV, touch_entry=1)
+    recs, _ = run(exe, tmp_path, seq("reversal", d), setup_type=REV, touch_entry=1, **V6R)
     assert recs_of(recs, n=14, ev="TOUCH_ENTRY")[0]["dir"] == d
     pl = recs_of(recs, n=18, ev="PLACE_LIMIT")
     assert len(pl) == 3 and all(r["dir"] == -d for r in pl)

@@ -8,6 +8,7 @@
 #include <cstring>
 
 static int sessCancelBar = -1, sessOffBar = -1;   // v5 tests: one bar with env.sessionCancel / !env.sessionEntryOk
+static bool extOut = false;                        // v7 tests: extra fields (never in the parity runs)
 
 static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom, int &holdBars, const char *kv)
   {
@@ -41,6 +42,9 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "setup_type") p.setupType = (int)v;                  // v6, EA only: 0 CONT, 1 REVERSAL, 2 BOTH
    else if(k == "touch_entry") p.touchEntry = v != 0;                // v6, EA only
    else if(k == "touch_rr") p.touchTargetRR = v;                     // v6, EA only
+   else if(k == "rev_level") p.revLevel = (int)v;                    // v7, EA only: 0 DEEPEST, 1 T1, 2 LAST
+   else if(k == "rev_reject") p.revNeedReject = v != 0;              // v7, EA only
+   else if(k == "ext") extOut = v != 0;                              // v7 tests: + kind / zdir / lvl / lvlBar per record
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
    else if(k == "sp") sp = v;
@@ -92,11 +96,14 @@ int main(int argc, char **argv)
          det.GetEvent(k, e);
          bool px = (e.ev == BF_EV_PLACE_LIMIT || e.ev == BF_EV_TOUCH_ENTRY);
          bool ox = (e.ev == BF_EV_PLACE_LIMIT || e.ev == BF_EV_CONFIRM);
-         printf("{\"n\":%d,\"id\":%d,\"ev\":\"%s\",\"dir\":%d,\"k\":%d,\"reason\":%s,\"P\":%s,\"SL\":%s,\"TP\":%s,\"O\":%s,\"X\":%s}\n",
+         printf("{\"n\":%d,\"id\":%d,\"ev\":\"%s\",\"dir\":%d,\"k\":%d,\"reason\":%s,\"P\":%s,\"SL\":%s,\"TP\":%s,\"O\":%s,\"X\":%s",
                 e.n, e.id, BfEventName(e.ev).c_str(), e.dir, e.k,
                 e.reason == BF_R_NONE ? "null" : ("\"" + BfReasonName(e.reason) + "\"").c_str(),
                 px ? Num(e.P).c_str() : "null", px ? Num(e.SL).c_str() : "null", px ? Num(e.TP).c_str() : "null",
                 ox ? Num(e.O).c_str() : "null", ox ? Num(e.X).c_str() : "null");
+         if(extOut)
+            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d", e.kind, e.zdir, Num(e.lvl).c_str(), e.lvlBar);
+         printf("}\n");
         }
       det.ClearEvents();
      };

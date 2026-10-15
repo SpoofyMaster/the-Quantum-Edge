@@ -237,6 +237,75 @@ def v6_sequences() -> dict[str, list]:
     return sq
 
 
+
+def v7_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v7 reversal rules (tests/test_bpr_breakout_v7_reversal.py), from the owner's example of
+    2026-10-15 ("t1 + rejection from it and pullback with breakout of T1 or T2 wick with closing below or above it").
+    Also in the parity set at the default settings. Bullish BPR [98.0, 99.9] armed on 13 (prefix); mirror() gives the
+    bearish side."""
+    p = prefix()
+    sq = {
+        # the owner's screenshot: 'two_touches' (T1 14 wick 99.5, T2 17 wick 99.7, continuation trade 19-25 up to
+        # 101.6), then the drop: 28 is the first close below the T1 wick, 29 the second (and breaks the BPR), 30 the
+        # low 96.4 (0 %), 31-32 pull back to the 50 % (99.0), 34 reaches the target. Fibonacci 101.6 (100 %) -> 96.4.
+        "owner_example": scenarios()["two_touches"] + [
+            bar(101.55, 101.6, 100.85, 100.9), bar(100.9, 101.0, 98.95, 99.05), bar(99.05, 99.4, 97.1, 97.2),
+            bar(97.2, 97.4, 96.4, 96.5), bar(96.5, 98.1, 96.45, 98.0), bar(98.0, 99.3, 97.9, 99.1),
+            bar(99.1, 99.2, 97.0, 97.1), bar(97.1, 97.2, 96.2, 96.3)],
+        # T1 14 (wick 99.5), rejection 15, T2 16 (wick 99.7, shallower), rejection 17; 18 visits the zone and closes at
+        # 99.6 - below the T2 wick, above the T1 wick; 19 closes below both (99.3), 20 again (99.1)
+        "rev_level_between": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.3, 99.95, 100.2),
+                                  bar(100.2, 100.25, 99.7, 99.95), bar(99.95, 100.3, 99.92, 100.2),
+                                  bar(100.2, 100.22, 99.55, 99.6), bar(99.6, 99.65, 99.2, 99.3),
+                                  bar(99.3, 99.35, 98.9, 99.1), bar(99.1, 99.4, 99.05, 99.35)],
+        # T1 14 (wick 99.6), rejection 15, T2 16 (wick 99.4, deeper), rejection 17; 18 closes at 99.5 - below the T1
+        # wick, above the T2 wick; 19 closes below both (99.2), 20 again (99.0)
+        "rev_level_deeper_t2": p + [bar(100.1, 100.2, 99.6, 100.0), bar(100.0, 100.3, 99.95, 100.2),
+                                    bar(100.2, 100.25, 99.4, 99.95), bar(99.95, 100.3, 99.92, 100.2),
+                                    bar(100.2, 100.22, 99.45, 99.5), bar(99.5, 99.55, 99.1, 99.2),
+                                    bar(99.2, 99.25, 98.8, 99.0), bar(99.0, 99.3, 98.95, 99.25)],
+        # T1 14, rejection 15, T2 16, rejection 17 (wick to 100.9; closes below the continuation level 100.15), 18 a
+        # third visit of the zone that closes inside it (99.7, above the T1 wick): the pullback; 19 closes below the
+        # T1 wick, 20 confirms (low 98.9), 21 pulls back -> sell limits on 100.9 -> 98.9
+        "pullback_in_zone": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                 bar(100.1, 100.15, 99.7, 99.85), bar(99.95, 100.9, 99.93, 100.1),
+                                 bar(100.1, 100.12, 99.6, 99.7), bar(99.7, 99.75, 99.2, 99.3),
+                                 bar(99.3, 99.35, 98.9, 99.0), bar(99.0, 99.6, 98.95, 99.5)],
+        # T1 14, rejection 15 with a wick to 101.6, T2 16, rejection 17 (the last bounce: top 100.6), 18 closes below
+        # the T1 wick from inside the zone, 19 confirms: the 100 % is the last bounce's top 100.6, not 101.6
+        "bounce_origin": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 101.6, 99.95, 100.1),
+                              bar(100.1, 100.15, 99.7, 99.85), bar(99.95, 100.6, 99.93, 100.1),
+                              bar(100.1, 100.12, 99.3, 99.4), bar(99.4, 99.45, 99.0, 99.1),
+                              bar(99.1, 99.5, 99.05, 99.45)],
+        # T1 14 and T2 16 have the same wick 99.5: DEEPEST keeps the T1 candle (strictly deeper only); 18 closes below
+        "rev_level_equal": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.3, 99.95, 100.2),
+                                bar(100.2, 100.25, 99.5, 99.95), bar(99.95, 100.3, 99.92, 100.2),
+                                bar(100.2, 100.22, 99.3, 99.4), bar(99.4, 99.45, 99.0, 99.1),
+                                bar(99.1, 99.5, 99.05, 99.45)],
+        # T1 14, R 15, T2 16, R 17 (top 101.4), 18 a third visit (the pullback, closes inside), 19 rejects it (bounce
+        # top 100.7), 20 closes below the T1 wick, 21 confirms: the 100 % is the last bounce's top 100.7
+        "pullback_bounce": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                bar(100.1, 100.15, 99.7, 99.85), bar(99.95, 101.4, 99.93, 100.1),
+                                bar(100.1, 100.12, 99.6, 99.7), bar(99.95, 100.7, 99.92, 100.0),
+                                bar(100.0, 100.05, 99.3, 99.4), bar(99.4, 99.45, 99.0, 99.1),
+                                bar(99.1, 99.6, 99.05, 99.55)],
+        # T1 14, R 15, T2 16 spikes to 101.2 and falls into the zone; 17 closes below the T1 wick from that visit
+        # (not rejected): the 100 % is the highest high since T1, the T2 candle's 101.2; 18 confirms
+        "t2_spike": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                         bar(100.1, 101.2, 99.7, 99.8), bar(99.8, 99.85, 99.3, 99.4),
+                         bar(99.4, 99.45, 99.0, 99.1), bar(99.1, 99.6, 99.05, 99.55)],
+        # T1 14, R 15, T2 16 (top 100.9), 17 still in the visit with a wick to 99.25 (below the T1 wick, close above
+        # it), 18 rejects it, 19 closes below the T1 wick (low 99.3), 20 confirms (low 99.28): 100 % = 100.9, 0 % =
+        # the lowest low after it, 17's 99.25
+        "visit_deep_wick": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                bar(100.1, 100.9, 99.7, 99.8), bar(99.8, 99.85, 99.25, 99.6),
+                                bar(99.95, 100.3, 99.92, 100.0), bar(100.0, 100.05, 99.3, 99.4),
+                                bar(99.4, 99.45, 99.28, 99.35), bar(99.35, 99.6, 99.3, 99.55)],
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""
