@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 7)                                        |
+//| BprFvgEA.mq5  (version 8)                                        |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -54,6 +54,14 @@
 // the trade direction of a reversal setup in the log / setups CSV from the start; with BOTH a reversal setup's entries
 // share the 0.20 % without the touch entry's share; DIAG counts setups with BOTH; a finished setup's copy of its BPR's
 // zone / T labels is deleted while the other setup of that BPR is still tracked.
+// Version 8 = 7.01 + the owner's example of 2026-10-16 (the BPR forms, price goes away, comes back later and taps it:
+// T1, a bullish reaction, then the break of the T1 wick; "the EA must be quick ... place limits orders and continue
+// tracking price with fibonacci"): InpMaxBarsToT1 (default 0 = no limit) tracks every BPR until its first touch,
+// however late, then counts InpSetupExpiryBars from T1; at capacity the oldest untouched setup makes room; warm-up
+// setups that have not confirmed go on after the start. InpAnticipateEntries is now true by default (limits at the
+// confirming close, moved at every new extreme), and InpRevNeedFvg (default false) lets the reversal place them there
+// without waiting for an FVG. -1 / false / true restore v7. Detector params t1WaitBars / revNeedFvg (MQL5 only);
+// tests/test_bpr_breakout_v8_tracking.py.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -66,7 +74,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "7.01"
+#property version     "8.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -109,15 +117,17 @@ input ENUM_BF_DIRECTION   InpDirection            = BF_DIR_BOTH;        // Direc
 input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Setup: CONTINUATION / REVERSAL (breakout through the BPR) / BOTH (both setups per BPR)
 input ENUM_BF_REVLEVEL    InpRevLevel             = BF_REVLVL_DEEPEST;  // Reversal level: DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick
 input bool                InpRevNeedRejection     = true;               // Reversal: a rejection after T1 must come before the breakout
+input bool                InpRevNeedFvg           = false;              // Reversal: wait for an FVG of the drop before the limits (false = at the 2nd close)
+input int                 InpMaxBarsToT1          = 0;                  // Bars from a BPR's creation to its T1 (0 = no limit; -1 = v7 rules)
 input bool                InpTouchEntry           = false;              // Market order at the next open after the T1 candle (BPR direction)
 input double              InpTouchTargetRR        = 1.5;                // Touch entry: take-profit in R (stop beyond the BPR + InpStopBufferTicks)
 input int                 InpMaxTouches           = 2;                  // Touches of the BPR allowed (a further touch ends it)
 input int                 InpConfirmCloses        = 2;                  // Closes beyond the breakout level (breakout candle included)
 input bool                InpRejectBeforeBreak    = false;              // Strict: a rejection candle must come before the breakout candle
 input ENUM_BF_FVGRULE     InpFvgRule              = BF_FVGRULE_LUXALGO; // FVG needed in the breakout leg
-input int                 InpSetupExpiryBars      = 240;                // Bars after the BPR's creation to confirm a breakout
+input int                 InpSetupExpiryBars      = 240;                // Bars to confirm a breakout, from T1 (from the BPR's creation with InpMaxBarsToT1 = -1)
 input int                 InpLegExpiryBars        = 60;                 // Bars after the confirmation to place / fill entries
-input bool                InpAnticipateEntries    = false;              // Place the limits as soon as the breakout is confirmed (no pullback candle needed); moved at every new high/low
+input bool                InpAnticipateEntries    = true;               // Place the limits as soon as the breakout is confirmed (no pullback candle needed); moved at every new high/low
 input bool                InpLegBreakOnClose      = false;              // LEG_BROKEN only when a candle CLOSES beyond the leg origin (false = a wick is enough)
 input double              InpFib1                 = 50.0;               // Entry 1: retracement % of the leg (0 = off)
 input double              InpFib2                 = 61.8;               // Entry 2: retracement % (0 = off)
@@ -576,6 +586,9 @@ void BuildParams(void)
    // v7 (EA only): the reversal setup
    g_bp.revLevel             = (int)InpRevLevel;
    g_bp.revNeedReject        = InpRevNeedRejection;
+   // v8 (EA only; -1 / true = v7)
+   g_bp.t1WaitBars           = ClampWarn("InpMaxBarsToT1", InpMaxBarsToT1, -1, 1000000);
+   g_bp.revNeedFvg           = InpRevNeedFvg;
    g_bp.fvgRule              = (int)InpFvgRule;
    g_bp.setupExpiryBars      = g_setupExp;
    g_bp.legExpiryBars        = g_legExp;
@@ -657,7 +670,7 @@ string LevelCsv(const BfEvent &e, const int k)
    return(BfLevelStatusName(st) + "@" + Px(e.snLvP[k]));
   }
 
-// BFEA7_setups row (run added by the logger; + bpr_dir,setup since v6; setup = the setup's kind since v7):
+// BFEA8_setups row (run added by the logger; + bpr_dir,setup since v6; setup = the setup's kind since v7):
 // id,dir,created_time,B,T,touches,ref_time,level,breakout_time,confirm_time,O,X,decision_time,SL,TP,L1,L2,L3,phase,reason
 string SetupCsv(const BfEvent &e)
   {
@@ -1751,7 +1764,7 @@ bool FinishTouch(void)
    reason = DealReasonText(lastReason, g_tp.closeReason);
    if(g_tp.planned > 0.0)
       R = pnl / g_tp.planned;
-   // BFEA7_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA8_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_tp.id) + ",T," + IntegerToString(g_tp.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_tp.SL) + "," + Px(g_tp.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -2027,7 +2040,7 @@ bool FinishPosition(const ulong posId)
    reason = DealReasonText(lastReason, cr);
    if(plan > 0.0)
       R = pnl / plan;
-   // BFEA7_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA8_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_ctx.id) + "," + levels + "," + IntegerToString(g_ctx.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_ctx.SL) + "," + Px(g_ctx.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -2667,7 +2680,10 @@ void LogDiagnostics(const string when)
 // v5 switches as one short text (panel rules row, start log, self-check)
 string EntryModeText(void)
   {
-   return("setup " + SetupTypeText() + " | entries " +
+   return("setup " + SetupTypeText() + " | BPRs tracked until T1 " +
+          ((InpMaxBarsToT1 < 0) ? "(v7: " + IntegerToString(g_setupExp) + " bars from creation incl. the breakout)" :
+           (InpMaxBarsToT1 == 0) ? "without limit" : "for " + IntegerToString(InpMaxBarsToT1) + " bars") +
+          " | entries " +
           (InpAnticipateEntries ? "ANTICIPATED (at confirmation, moved at each new extreme)" : "after a pullback candle") +
           ", leg broken by a " + (InpLegBreakOnClose ? "CLOSE" : "wick") + " beyond the origin | touch entry " +
           (InpTouchEntry ? "ON (T1 market, TP " + DoubleToString(g_touchRR, 2) + " R; sent " +
@@ -2676,7 +2692,8 @@ string EntryModeText(void)
 
 string SetupTypeText(void)
   {
-   string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "");
+   string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "") +
+               (InpRevNeedFvg ? ", FVG needed" : ", limits at the confirming close");
    if(InpSetupType == BF_SETUP_REVERSAL)
       return("REVERSAL (breakout through the BPR; " + rv + ")");
    if(InpSetupType == BF_SETUP_BOTH)
@@ -2724,7 +2741,7 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v7 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v8 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
@@ -2950,7 +2967,9 @@ bool DoWarmup(void)
    DayCheck();
    g_log.Info("warm-up: " + IntegerToString(g_n) + " closed bars " + CBfLogger::Ts(g_t[0]) + " .. " +
               CBfLogger::Ts(g_t[g_n - 1]) + "; setups armed during warm-up " + IntegerToString(g_warmArmed) +
-              ", ended (incl. WARMUP) " + IntegerToString(g_warmDone) + " - none of them is traded");
+              ", ended (incl. WARMUP) " + IntegerToString(g_warmDone) +
+              ((InpMaxBarsToT1 >= 0) ? " - the ones not confirmed yet go on (their T1 / breakout can still come)" :
+               " - none of them is traded"));
    if(g_n < g_warmBars)
       g_log.Info("warm-up: only " + IntegerToString(g_n) + " of " + IntegerToString(g_warmBars) +
                  " requested bars were available (this does not block trading)");
@@ -3119,14 +3138,14 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v7: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v8: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
-   g_log.Info("start v7: " + FiltersText());
-   g_log.Info("start v7: " + ExitsText());
-   g_log.Info("start v7: " + EntryModeText());
+   g_log.Info("start v8: " + FiltersText());
+   g_log.Info("start v8: " + ExitsText());
+   g_log.Info("start v8: " + EntryModeText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);

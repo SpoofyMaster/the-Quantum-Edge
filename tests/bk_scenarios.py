@@ -370,6 +370,38 @@ def v7_sequences() -> dict[str, list]:
         check(v)
     return sq
 
+
+def v8_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v8 rules (tests/test_bpr_breakout_v8_tracking.py), from the owner's example of
+    2026-10-16: the T1 is not right after the BPR's creation. Also in the parity set at the default settings. Bullish
+    BPR [98.0, 99.9] armed on 13 (prefix); mirror() gives the bearish side."""
+    p = prefix()
+    away = [bar(101.0 + 0.1 * (i % 2), 101.25, 100.95, 101.1 - 0.1 * (i % 2)) for i in range(300)]
+    sq = {
+        # the owner's drawing: the BPR forms (13), price goes on up (14-15) without touching it, comes back (16) and
+        # taps it from above on 17 (T1, wick 99.0), reacts up (18 in the zone, 19 the rejection, 20-21 up to 101.6),
+        # then drops: 22, 23 closes below the T1 wick (BREAKOUT), 24 again (CONFIRM: limits at once with v8), 25 a new
+        # low (the limits move), 26-27 pull back and fill the 50 % (99.6), 28 reaches the target
+        "tap_from_above": p + [bar(100.2, 100.95, 100.15, 100.9), bar(100.9, 101.6, 100.85, 101.5),
+                               bar(101.5, 101.55, 100.0, 100.1), bar(100.1, 100.15, 99.0, 99.6),
+                               bar(99.6, 100.3, 99.55, 100.2), bar(100.2, 100.8, 100.15, 100.7),
+                               bar(100.7, 101.5, 100.6, 101.4), bar(101.4, 101.6, 101.2, 101.3),
+                               bar(101.3, 101.35, 100.2, 100.3), bar(100.3, 100.35, 98.8, 98.9),
+                               bar(98.9, 99.0, 98.2, 98.3), bar(98.3, 98.5, 97.6, 97.7),
+                               bar(97.7, 98.9, 97.65, 98.8), bar(98.8, 99.7, 98.7, 99.3),
+                               bar(99.3, 99.35, 97.3, 97.4)],
+        # the BPR forms (13), price goes up (14) and stays away above it for 300 bars (15-314), then taps it (T1 on
+        # 315, wick 99.5), rejects (316), and later closes twice below the T1 wick (319-320: the reversal)
+        "late_t1": p + [bar(100.2, 101.05, 100.15, 101.0)] + away + [
+            bar(101.0, 101.05, 99.5, 100.0), bar(100.0, 100.3, 99.95, 100.2), bar(100.2, 100.25, 100.0, 100.1),
+            bar(100.1, 100.15, 99.95, 100.05), bar(100.05, 100.1, 99.4, 99.45), bar(99.45, 99.5, 98.9, 99.0),
+            bar(99.0, 99.05, 98.5, 98.6), bar(98.6, 99.3, 98.55, 99.2), bar(99.2, 99.6, 99.1, 99.55),
+            bar(99.55, 99.6, 98.3, 98.4)],
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""

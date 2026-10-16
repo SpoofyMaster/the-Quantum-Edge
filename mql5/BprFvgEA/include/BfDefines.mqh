@@ -310,6 +310,12 @@ struct BfParams
    // v7 (EA only): the reversal setup
    int               revLevel;            // ENUM_BF_REVLEVEL
    bool              revNeedReject;       // a rejection after T1 before the reversal breakout ("price comes back")
+   // v8 (EA only; -1 / true = v7)
+   int               t1WaitBars;          // bars from the BPR's creation to T1 (0 = no limit). >= 0 also: the
+                                          // breakout window counts from T1, the oldest untouched setup makes room at
+                                          // capacity, and warm-up setups not yet confirmed go on. -1 = v4-v7 rules
+   bool              revNeedFvg;          // the reversal waits for an FVG of its trade direction (false = its limits
+                                          // can go in at the confirmation)
    // session / execution
    bool              useSession;
    double            commissionPerLotSide; // account currency per lot per side (UNVERIFIED); informative
@@ -350,6 +356,8 @@ void BfDefaultParams(BfParams &p)
    p.touchTargetRR        = 1.5;
    p.revLevel             = BF_REVLVL_DEEPEST;
    p.revNeedReject        = true;
+   p.t1WaitBars           = -1;
+   p.revNeedFvg           = true;
    p.useSession           = true;
    p.commissionPerLotSide = 3.50;
    p.slippageTicks        = 1.0;
@@ -386,6 +394,8 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.touchTargetRR        = src.touchTargetRR;
    dst.revLevel             = src.revLevel;
    dst.revNeedReject        = src.revNeedReject;
+   dst.t1WaitBars           = src.t1WaitBars;
+   dst.revNeedFvg           = src.revNeedFvg;
    dst.useSession           = src.useSession;
    dst.commissionPerLotSide = src.commissionPerLotSide;
    dst.slippageTicks        = src.slippageTicks;

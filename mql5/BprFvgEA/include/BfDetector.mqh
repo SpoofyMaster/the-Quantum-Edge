@@ -498,6 +498,9 @@ private:
       int after = m_s[i].ref;
       if(m_p.fvgRule == BF_FVGRULE_NONE)
          return(true);
+      //--- v8: a reversal without the FVG condition (revNeedFvg false): its limits can go in at the confirmation
+      if(m_s[i].rev && !m_p.revNeedFvg)
+         return(true);
       //--- v7.01 reversal: the FVG must belong to the reversal leg, after its 100 % bar too (not a gap of the move up)
       if(m_s[i].rev && m_s[i].oBar > after)
          after = m_s[i].oBar;
@@ -534,6 +537,24 @@ private:
       Confirm(i, u);
      }
 
+   //--- the expiry before the confirmation. v4-v7 (t1WaitBars < 0): setupExpiryBars from the BPR's creation (v7.01:
+   //    a reversal setup from its last rejection when that is later). v8 (t1WaitBars >= 0): before T1 only t1WaitBars
+   //    counts (0 = no limit: a BPR may get its first touch long after its creation); from T1 on, setupExpiryBars
+   //    counts from T1 (a reversal setup: from its last rejection when that is later).
+   bool              Expired(const int i, const int u)
+     {
+      int from = m_s[i].created;
+      if(m_p.t1WaitBars >= 0)
+        {
+         if(m_s[i].touches == 0)
+            return(m_p.t1WaitBars > 0 && u - m_s[i].created > m_p.t1WaitBars);
+         from = m_s[i].touchBar1;
+        }
+      if(HasRev(i) && m_s[i].lastRej > from)
+         from = m_s[i].lastRej;
+      return(u - from > m_p.setupExpiryBars);
+     }
+
    //+---------------------------------------------------------------+
    //| spec s.4.1-s.4.4: one existing setup on closed bar u          |
    //+---------------------------------------------------------------+
@@ -559,9 +580,7 @@ private:
             SetDone(i, u, BF_R_BROKEN);
             return;
            }
-         //--- v7.01: a reversal setup counts its expiry from its last rejection (the last bounce from the zone) when
-         //    that is later than the BPR's creation
-         if(u - ((HasRev(i) && m_s[i].lastRej > m_s[i].created) ? m_s[i].lastRej : m_s[i].created) > m_p.setupExpiryBars)
+         if(Expired(i, u))
            {
             SetDone(i, u, BF_R_EXPIRED);
             return;
@@ -810,6 +829,20 @@ private:
         }
      }
 
+   //--- v8: drop the oldest setup still in WAIT (never touched), created before bar u
+   void              EvictOldestUntouched(const int u)
+     {
+      int i;
+      for(i = 0; i < m_n; i++)
+        {
+         if(m_s[i].phase != BF_PH_WAIT || m_s[i].created >= u)
+            continue;
+         SetDone(i, u, BF_R_CAPACITY);
+         Compact();
+         return;
+        }
+     }
+
    //+---------------------------------------------------------------+
    //| spec s.3: one new BPR                                         |
    //+---------------------------------------------------------------+
@@ -826,6 +859,10 @@ private:
       m_c.created = u;
       m_c.B       = z.box.bottom;
       m_c.T       = z.box.top;
+      //--- v8 (t1WaitBars >= 0, setups may wait long for T1): at capacity the oldest setup that was never touched makes
+      //    room (DONE(CAPACITY)), so the newest BPRs are always tracked
+      if(m_p.t1WaitBars >= 0 && m_n >= BF_MAX_SETUPS && m_c.T > m_c.B && z.active)
+         EvictOldestUntouched(u);
       if(m_c.T <= m_c.B)
          reason = BF_R_BAD_GEOMETRY;
       else
@@ -1148,6 +1185,11 @@ public:
       for(i = 0; i < m_n; i++)
         {
          if(m_s[i].created >= m_tradeFrom)
+            continue;
+         //--- v8 (t1WaitBars >= 0): a warm-up setup that has not confirmed a breakout yet goes on (every BPR is
+         //    tracked from its creation, also before the EA started); only confirmed ones end here
+         if(m_p.t1WaitBars >= 0 &&
+            (m_s[i].phase == BF_PH_WAIT || m_s[i].phase == BF_PH_ZONE || m_s[i].phase == BF_PH_BREAK))
             continue;
          if(m_s[i].phase == BF_PH_ORDERED || m_s[i].phase == BF_PH_FILLED)
             CancelPending(i, m_lastBar, BF_R_WARMUP);            // cannot happen: no decisions during warm-up
