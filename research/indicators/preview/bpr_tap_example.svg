@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" font-family="Arial" font-size="12">
 <rect width="1280" height="720" fill="#131722"/>
 <text x="70.0" y="24.0" fill="#d1d4dc" text-anchor="start" font-size="15">BprFvgEA v8 - your example: the BPR is tapped later, from above (synthetic bars; MQL5 detector records, REVERSAL, v8 defaults)</text>
-<text x="70.0" y="44.0" fill="#9598a1" text-anchor="start" font-size="12">The BPR forms on 13 and price goes up without touching it. It comes back and taps it from above on 17 (T1), then reacts up (R).</text>
+<text x="70.0" y="44.0" fill="#9598a1" text-anchor="start" font-size="12">The BPR forms on 13 and price goes up without touching it. It comes back and taps it from above on 17 (T1); 18 closes back above the BPR: the reaction (R).</text>
 <text x="70.0" y="62.0" fill="#9598a1" text-anchor="start" font-size="12">The second close below the T1 wick (24) places the sell limits at once. Every new low moves them (25). The 50 % fills on 27; the target is hit on 28.</text>
 <line x1="70.0" x2="950.0" y1="627.7" y2="627.7" stroke="#2a2e39" stroke-width="1.0"/>
 <text x="64.0" y="631.7" fill="#787b86" text-anchor="end" font-size="12">97.00</text>
@@ -98,7 +98,7 @@
 <text x="930.9" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">28</text>
 <text x="414.3" y="121.9" fill="#787b86" text-anchor="middle" font-size="11">no touch: price goes away</text>
 <text x="510.0" y="428.1" fill="#ffeb3b" text-anchor="middle" font-size="12" font-weight="bold">T1</text>
-<text x="586.5" y="304.2" fill="#ffeb3b" text-anchor="middle" font-size="12" font-weight="bold">R</text>
+<text x="548.3" y="368.8" fill="#ffeb3b" text-anchor="middle" font-size="12" font-weight="bold">R</text>
 <line x1="510.0" x2="816.1" y1="412.1" y2="412.1" stroke="#ff9800" stroke-width="1.4" stroke-dasharray="4,3"/>
 <text x="520.0" y="406.1" fill="#ff9800" text-anchor="start" font-size="12">T1 wick 99.00</text>
 <text x="722.3" y="426.9" fill="#ff9800" text-anchor="end" font-size="11" font-weight="bold">1st close below</text>

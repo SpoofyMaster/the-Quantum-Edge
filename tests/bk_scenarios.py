@@ -377,9 +377,18 @@ def v8_sequences() -> dict[str, list]:
     BPR [98.0, 99.9] armed on 13 (prefix); mirror() gives the bearish side."""
     p = prefix()
     away = [bar(101.0 + 0.1 * (i % 2), 101.25, 100.95, 101.1 - 0.1 * (i % 2)) for i in range(300)]
+    tap = [bar(100.2, 100.95, 100.15, 100.9), bar(100.9, 101.6, 100.85, 101.5),
+           bar(101.5, 101.55, 100.0, 100.1), bar(100.1, 100.15, 99.0, 99.6),
+           bar(99.6, 100.3, 99.55, 100.2), bar(100.2, 100.8, 100.15, 100.7),
+           bar(100.7, 101.5, 100.6, 101.4), bar(101.4, 101.6, 101.2, 101.3),
+           bar(101.3, 101.35, 100.2, 100.3), bar(100.3, 100.35, 98.8, 98.9),
+           bar(98.9, 99.0, 98.2, 98.3), bar(98.3, 98.5, 97.6, 97.7),
+           bar(97.7, 98.9, 97.65, 98.8), bar(98.8, 99.7, 98.7, 99.3),
+           bar(99.3, 99.35, 97.3, 97.4)]
     sq = {
         # the owner's drawing: the BPR forms (13), price goes on up (14-15) without touching it, comes back (16) and
-        # taps it from above on 17 (T1, wick 99.0), reacts up (18 in the zone, 19 the rejection, 20-21 up to 101.6),
+        # taps it from above on 17 (T1, wick 99.0), reacts up (18 opens in the zone and closes above it: the v8
+        # reversal's rejection; 19 the continuation's rejection, the v7 one; 20-21 up to 101.6),
         # then drops: 22, 23 closes below the T1 wick (BREAKOUT), 24 again (CONFIRM: limits at once with v8), 25 a new
         # low (the limits move), 26-27 pull back and fill the 50 % (99.6), 28 reaches the target
         "tap_from_above": p + [bar(100.2, 100.95, 100.15, 100.9), bar(100.9, 101.6, 100.85, 101.5),
@@ -397,6 +406,27 @@ def v8_sequences() -> dict[str, list]:
             bar(100.1, 100.15, 99.95, 100.05), bar(100.05, 100.1, 99.4, 99.45), bar(99.45, 99.5, 98.9, 99.0),
             bar(99.0, 99.05, 98.5, 98.6), bar(98.6, 99.3, 98.55, 99.2), bar(99.2, 99.6, 99.1, 99.55),
             bar(99.55, 99.6, 98.3, 98.4)],
+        # the owner's T1 and reaction (17-21 as in tap_from_above), then price stays away for 300 bars (22-321) and
+        # only then comes back: 323 closes below the T1 wick 99.0, 324 again (limits), 325 a new low, 327 fills
+        "late_break": p + tap[:8] + away + tap[8:],
+        # T1 and reaction (17-21), 300 bars away, then a late T2 (322, wick 99.3) rejected by 323, and the break of the
+        # T1 wick on 324 / 325
+        "late_t2": p + tap[:8] + away + [
+            bar(101.0, 101.05, 99.3, 99.7), bar(99.95, 100.5, 99.95, 100.4), bar(100.4, 100.45, 98.8, 98.9),
+            bar(98.9, 99.0, 98.2, 98.3), bar(98.3, 98.5, 97.6, 97.7), bar(97.7, 98.9, 97.65, 98.8),
+            bar(98.8, 99.7, 98.7, 99.3), bar(99.3, 99.35, 97.3, 97.4)],
+        # T1 on 14 (its high 100.2 = the continuation level), rejection 15, then 300 bars just above the zone and
+        # below the level (15-315), then the continuation breakout on 316 and its confirmation on 317
+        "late_cont_breakout": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.15, 99.95, 100.1)] + [
+            bar(100.05, 100.15, 99.95, 100.1 - 0.05 * (i % 2)) for i in range(300)] + [
+            bar(100.1, 100.7, 100.05, 100.6), bar(100.8, 101.3, 100.8, 101.2), bar(101.2, 101.6, 101.0, 101.5),
+            bar(101.5, 101.5, 101.1, 101.2)],
+        # T1 on 17 (wick 99.0) closing inside the zone; 18 is a one-candle bullish reaction (closes 101.5, its wick
+        # still in the zone: the rejection); 19 comes back into the zone (T2), 20 and 21 close below the T1 wick
+        "one_candle_reaction": p + tap[:3] + [
+            bar(100.1, 100.15, 99.0, 99.6), bar(99.6, 101.6, 99.55, 101.5), bar(101.5, 101.55, 99.3, 99.4),
+            bar(99.4, 99.45, 98.5, 98.6), bar(98.6, 98.7, 98.0, 98.1), bar(98.1, 98.2, 97.5, 97.6),
+            bar(97.6, 99.6, 97.55, 99.5), bar(99.5, 99.55, 97.0, 97.1)],
     }
     for v in sq.values():
         check(v)

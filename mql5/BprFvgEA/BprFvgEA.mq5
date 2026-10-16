@@ -57,8 +57,11 @@
 // Version 8 = 7.01 + the owner's example of 2026-10-16 (the BPR forms, price goes away, comes back later and taps it:
 // T1, a bullish reaction, then the break of the T1 wick; "the EA must be quick ... place limits orders and continue
 // tracking price with fibonacci"): InpMaxBarsToT1 (default 0 = no limit) tracks every BPR until its first touch,
-// however late, then counts InpSetupExpiryBars from T1; at capacity the oldest untouched setup makes room; warm-up
-// setups that have not confirmed go on after the start. InpAnticipateEntries is now true by default (limits at the
+// however late. InpSetupExpiryBars then counts only while price is at the zone (a visit, a breakout): a setup whose
+// T1 was rejected waits, however long, for price to come back (a late T2, a late break of the T1 wick). In a visit, a
+// candle that closes beyond the zone is the rejection (reversal setups: the one-candle reaction). At capacity the setup
+// idle the longest (untouched, or away since its last rejection) makes room; warm-up setups that have not confirmed go
+// on after the start and are listed in the log. InpAnticipateEntries is now true by default (limits at the
 // confirming close, moved at every new extreme), and InpRevNeedFvg (default false) lets the reversal place them there
 // without waiting for an FVG. -1 / false / true restore v7. Detector params t1WaitBars / revNeedFvg (MQL5 only);
 // tests/test_bpr_breakout_v8_tracking.py.
@@ -117,7 +120,7 @@ input ENUM_BF_DIRECTION   InpDirection            = BF_DIR_BOTH;        // Direc
 input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Setup: CONTINUATION / REVERSAL (breakout through the BPR) / BOTH (both setups per BPR)
 input ENUM_BF_REVLEVEL    InpRevLevel             = BF_REVLVL_DEEPEST;  // Reversal level: DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick
 input bool                InpRevNeedRejection     = true;               // Reversal: a rejection after T1 must come before the breakout
-input bool                InpRevNeedFvg           = false;              // Reversal: wait for an FVG of the drop before the limits (false = at the 2nd close)
+input bool                InpRevNeedFvg           = false;              // Reversal: wait for an FVG of the drop (false = no wait; with InpAnticipateEntries the limits go in at the 2nd close)
 input int                 InpMaxBarsToT1          = 0;                  // Bars from a BPR's creation to its T1 (0 = no limit; -1 = v7 rules)
 input bool                InpTouchEntry           = false;              // Market order at the next open after the T1 candle (BPR direction)
 input double              InpTouchTargetRR        = 1.5;                // Touch entry: take-profit in R (stop beyond the BPR + InpStopBufferTicks)
@@ -125,7 +128,7 @@ input int                 InpMaxTouches           = 2;                  // Touch
 input int                 InpConfirmCloses        = 2;                  // Closes beyond the breakout level (breakout candle included)
 input bool                InpRejectBeforeBreak    = false;              // Strict: a rejection candle must come before the breakout candle
 input ENUM_BF_FVGRULE     InpFvgRule              = BF_FVGRULE_LUXALGO; // FVG needed in the breakout leg
-input int                 InpSetupExpiryBars      = 240;                // Bars to confirm a breakout, from T1 (from the BPR's creation with InpMaxBarsToT1 = -1)
+input int                 InpSetupExpiryBars      = 240;                // Bars at the BPR to confirm a breakout (not counted while price is away; -1 in InpMaxBarsToT1: from creation)
 input int                 InpLegExpiryBars        = 60;                 // Bars after the confirmation to place / fill entries
 input bool                InpAnticipateEntries    = true;               // Place the limits as soon as the breakout is confirmed (no pullback candle needed); moved at every new high/low
 input bool                InpLegBreakOnClose      = false;              // LEG_BROKEN only when a candle CLOSES beyond the leg origin (false = a wick is enough)
@@ -796,6 +799,58 @@ void DrawEvent(const BfEvent &e)
                  }
   }
 
+// v8: the setups carried over from the warm-up (InpMaxBarsToT1 >= 0). Their touches and breakout candle came before
+// the start, so their records were counted, not logged or drawn: one log line each, and their T labels, breakout line
+// and zone on the chart.
+void ShowKeptSetups(void)
+  {
+   int     i;
+   int     k;
+   int     bk;
+   int     lb;
+   int     n = g_det.TrackedCount();
+   bool    rv;
+   double  lvl;
+   string  tag;
+   BfSetup s;
+   for(i = 0; i < n; i++)
+     {
+      if(!g_det.GetTracked(i, s))
+         continue;
+      rv  = (s.kind == BF_SETUP_REVERSAL);
+      lvl = (s.rev || rv) ? s.lvlR : s.lvl;
+      lb  = (s.rev || rv) ? s.lvlRBar : s.ref;
+      tag = "#" + IntegerToString(s.id) + (rv ? " REV" : "") + " " + DirText(rv ? -s.zdir : s.dir);
+      g_log.Info(tag + " kept from the warm-up: " + BfPhaseName(s.phase) + ", touches " + IntegerToString(s.touches) +
+                 ((s.touchBar1 >= 0 && s.touchBar1 < g_n) ? ", T1 " + CBfLogger::Ts(BarTime(s.touchBar1)) :
+                  ", not touched yet (zone " + Px(s.B) + " - " + Px(s.T) + ")") +
+                 ((s.touchBar2 >= 0 && s.touchBar2 < g_n) ? ", T2 " + CBfLogger::Ts(BarTime(s.touchBar2)) : "") +
+                 ((s.touches > 0 && lb >= 0 && lb < g_n) ? ", level " + Px(lvl) + " (candle " +
+                  CBfLogger::Ts(BarTime(lb)) + ")" : "") +
+                 ((s.phase == BF_PH_BREAK && s.brkBar >= 0 && s.brkBar < g_n) ? ", breakout candle " +
+                  CBfLogger::Ts(BarTime(s.brkBar)) : ""));
+      if(!g_renderOn || !InpShowSetups)
+         continue;
+      for(k = 1; k <= 2; k++)
+        {
+         bk = (k == 1) ? s.touchBar1 : s.touchBar2;
+         if(bk < 0 || bk >= g_n)
+            continue;
+         g_render.SetupText(s.id, "T" + IntegerToString(k), g_t[bk], (s.zdir > 0) ? g_l[bk] : g_h[bk],
+                            "T" + IntegerToString(k), DirColor(s.zdir), (s.zdir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER,
+                            tag + " T" + IntegerToString(k) + " (before the start)");
+        }
+      if(s.phase == BF_PH_BREAK && s.brkBar >= 0 && s.brkBar < g_n && lb >= 0 && lb < g_n)
+        {
+         g_render.SetupHLine(s.id, "BRK", BarTime(lb), g_t[s.brkBar], lvl, DirColor(s.dir), STYLE_DOT, "",
+                             tag + " BREAKOUT level " + Px(lvl));
+         g_render.SetupText(s.id, "B1", g_t[s.brkBar], (s.dir > 0) ? g_h[s.brkBar] : g_l[s.brkBar], "B1",
+                            DirColor(s.dir), (s.dir > 0) ? ANCHOR_LOWER : ANCHOR_UPPER, tag + " BREAKOUT");
+        }
+     }
+   DrawSetups();
+  }
+
 // v7.01: another tracked setup of the same BPR (BOTH: the continuation and the reversal setup of one BPR)
 bool SiblingTracked(const BfEvent &e)
   {
@@ -926,7 +981,8 @@ void HandleEvents(void)
    g_det.ClearEvents();
   }
 
-// warm-up: records are counted, not logged (no warm-up setup is ever traded)
+// warm-up: records are counted, not logged (v7 rules: no warm-up setup is ever traded; v8: the setups that go on are
+// listed and drawn by ShowKeptSetups)
 void CountWarmEvents(void)
   {
    int     i;
@@ -2682,7 +2738,8 @@ string EntryModeText(void)
   {
    return("setup " + SetupTypeText() + " | BPRs tracked until T1 " +
           ((InpMaxBarsToT1 < 0) ? "(v7: " + IntegerToString(g_setupExp) + " bars from creation incl. the breakout)" :
-           (InpMaxBarsToT1 == 0) ? "without limit" : "for " + IntegerToString(InpMaxBarsToT1) + " bars") +
+           ((InpMaxBarsToT1 == 0) ? "without limit" : "for " + IntegerToString(InpMaxBarsToT1) + " bars") +
+           ", then " + IntegerToString(g_setupExp) + " bars at the BPR (not counted while price is away)") +
           " | entries " +
           (InpAnticipateEntries ? "ANTICIPATED (at confirmation, moved at each new extreme)" : "after a pullback candle") +
           ", leg broken by a " + (InpLegBreakOnClose ? "CLOSE" : "wick") + " beyond the origin | touch entry " +
@@ -2693,7 +2750,9 @@ string EntryModeText(void)
 string SetupTypeText(void)
   {
    string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "") +
-               (InpRevNeedFvg ? ", FVG needed" : ", limits at the confirming close");
+               ((InpRevNeedFvg && InpFvgRule != BF_FVGRULE_NONE) ? ", FVG of the drop needed" :
+                (InpAnticipateEntries ? ", no FVG wait: limits at the confirming close" :
+                 ", no FVG wait (limits after a pullback candle)"));
    if(InpSetupType == BF_SETUP_REVERSAL)
       return("REVERSAL (breakout through the BPR; " + rv + ")");
    if(InpSetupType == BF_SETUP_BOTH)
@@ -2958,7 +3017,7 @@ bool DoWarmup(void)
      }
    if(g_tradeLogic)
      {
-      g_det.EndWarmup();                         // warm-up setups -> DONE(WARMUP)
+      g_det.EndWarmup();                         // warm-up setups -> DONE(WARMUP); v8: unconfirmed ones go on
       CountWarmEvents();
       g_det.ClearIntents();
      }
@@ -2973,6 +3032,8 @@ bool DoWarmup(void)
    if(g_n < g_warmBars)
       g_log.Info("warm-up: only " + IntegerToString(g_n) + " of " + IntegerToString(g_warmBars) +
                  " requested bars were available (this does not block trading)");
+   if(g_tradeLogic && InpMaxBarsToT1 >= 0)
+      ShowKeptSetups();
    SelfCheck();
    if(g_renderOn && InpShowDisplacement)
      {

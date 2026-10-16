@@ -18,6 +18,8 @@ v7 rules (detector params; harness keys in brackets):
 ext=1 makes the harness print kind / zdir / lvl / lvlBar. This checks decision logic, not MetaEditor compilation and
 not MT5 order execution. Skipped without g++.
 """
+import shutil
+
 import pytest
 
 from bk_scenarios import base, mirror, scenarios, v6_sequences, v7_sequences
@@ -26,6 +28,7 @@ from test_bpr_breakout_v6_setups import exe as _exe_fixture  # noqa: F401 (modul
 from test_bpr_breakout_v6_setups import run as _run6
 
 exe = _exe_fixture
+pytestmark = pytest.mark.skipif(shutil.which("g++") is None, reason="g++ not installed")
 V7 = v7_sequences()
 V6 = v6_sequences()
 

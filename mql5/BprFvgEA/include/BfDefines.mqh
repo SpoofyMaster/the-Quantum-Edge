@@ -312,8 +312,10 @@ struct BfParams
    bool              revNeedReject;       // a rejection after T1 before the reversal breakout ("price comes back")
    // v8 (EA only; -1 / true = v7)
    int               t1WaitBars;          // bars from the BPR's creation to T1 (0 = no limit). >= 0 also: the
-                                          // breakout window counts from T1, the oldest untouched setup makes room at
-                                          // capacity, and warm-up setups not yet confirmed go on. -1 = v4-v7 rules
+                                          // breakout window counts only while price is at the zone (a visit, a
+                                          // breakout), the setup idle the longest makes room at capacity, warm-up
+                                          // setups not yet confirmed go on, and a reversal setup takes a candle that
+                                          // closes beyond the zone inside a visit as the rejection. -1 = v4-v7 rules
    bool              revNeedFvg;          // the reversal waits for an FVG of its trade direction (false = its limits
                                           // can go in at the confirmation)
    // session / execution
@@ -506,6 +508,7 @@ struct BfSetup
    double            cLvl;
    int               cLvlBar;
    int               lastRej;             // v7.01: bar of the last REJECT (a reversal setup's expiry counts from it)
+   int               lastVisit;           // v8: first bar of the latest visit of the zone (T1, T2, a pullback visit)
   };
 
 void BfClearSetup(BfSetup &s)
@@ -569,6 +572,7 @@ void BfClearSetup(BfSetup &s)
    s.cLvl        = 0.0;
    s.cLvlBar     = -1;
    s.lastRej     = -1;
+   s.lastVisit   = -1;
   }
 
 void BfCopySetup(BfSetup &dst, const BfSetup &src)
@@ -632,6 +636,7 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.cLvl        = src.cLvl;
    dst.cLvlBar     = src.cLvlBar;
    dst.lastRej     = src.lastRej;
+   dst.lastVisit   = src.lastVisit;
   }
 
 //+------------------------------------------------------------------+

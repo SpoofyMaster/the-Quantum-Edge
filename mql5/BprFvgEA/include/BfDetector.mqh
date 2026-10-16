@@ -387,7 +387,8 @@ private:
    //    from the visit's low, so cO starts AT that low (the entering candle's high belongs to the descent)
    void              StartCand(const int i, const int u, const double hu, const double lu)
      {
-      m_s[i].cAct  = true;
+      m_s[i].cAct      = true;
+      m_s[i].lastVisit = u;
       m_s[i].cL    = (m_s[i].zdir > 0) ? lu : hu;
       m_s[i].cO    = m_s[i].cL;
       m_s[i].cX    = m_s[i].cL;
@@ -538,21 +539,46 @@ private:
      }
 
    //--- the expiry before the confirmation. v4-v7 (t1WaitBars < 0): setupExpiryBars from the BPR's creation (v7.01:
-   //    a reversal setup from its last rejection when that is later). v8 (t1WaitBars >= 0): before T1 only t1WaitBars
-   //    counts (0 = no limit: a BPR may get its first touch long after its creation); from T1 on, setupExpiryBars
-   //    counts from T1 (a reversal setup: from its last rejection when that is later).
+   //    a reversal setup from its last rejection when that is later). v8 (t1WaitBars >= 0): only while price is in
+   //    play. Before T1 only t1WaitBars counts (0 = no limit). After a rejection, while price is away from the zone
+   //    (ZONE, not in a visit), there is no limit either: the setup waits for price to come back (a late T2, a late
+   //    break of the T1 wick). In a visit, setupExpiryBars counts from the visit's first bar; in a breakout, from the
+   //    breakout candle (a rejection always comes before the next visit or breakout, so it is never later).
    bool              Expired(const int i, const int u)
      {
       int from = m_s[i].created;
-      if(m_p.t1WaitBars >= 0)
+      if(m_p.t1WaitBars < 0)
         {
-         if(m_s[i].touches == 0)
-            return(m_p.t1WaitBars > 0 && u - m_s[i].created > m_p.t1WaitBars);
-         from = m_s[i].touchBar1;
+         if(HasRev(i) && m_s[i].lastRej > from)
+            from = m_s[i].lastRej;
+         return(u - from > m_p.setupExpiryBars);
         }
-      if(HasRev(i) && m_s[i].lastRej > from)
-         from = m_s[i].lastRej;
+      if(m_s[i].touches == 0)
+         return(m_p.t1WaitBars > 0 && u - m_s[i].created > m_p.t1WaitBars);
+      if(m_s[i].phase == BF_PH_ZONE && !m_s[i].inEp)
+         return(false);
+      from = m_s[i].touchBar1;
+      if(m_s[i].lastVisit > from)
+         from = m_s[i].lastVisit;
+      if(m_s[i].phase == BF_PH_BREAK && m_s[i].brkBar > from)
+         from = m_s[i].brkBar;
       return(u - from > m_p.setupExpiryBars);
+     }
+
+   //--- v8: a setup waiting for price (never touched, or away from its zone after a rejection) and the bar of its last
+   //    zone event; -1 = busy (in a visit, a breakout, confirmed)
+   int               IdleSince(const int i)
+     {
+      int a = m_s[i].created;
+      if(m_s[i].phase == BF_PH_WAIT)
+         return(a);
+      if(m_s[i].phase != BF_PH_ZONE || m_s[i].inEp)
+         return(-1);
+      if(m_s[i].lastVisit > a)
+         a = m_s[i].lastVisit;
+      if(m_s[i].lastRej > a)
+         a = m_s[i].lastRej;
+      return(a);
      }
 
    //+---------------------------------------------------------------+
@@ -660,6 +686,11 @@ private:
                return;
               }
            }
+         //--- v8 reversal (t1WaitBars >= 0): inside a visit, a candle that closes beyond the zone's far edge (above
+         //    it for a bullish BPR) is the rejection (a bullish reaction off the BPR), even if its wick is in the zone
+         if(m_p.t1WaitBars >= 0 && tn && m_s[i].inEp && HasRev(i) &&
+            ((zd > 0) ? (c[u] > m_s[i].T) : (c[u] < m_s[i].B)))
+            tn = false;
          //--- step 6: touch logic
          if(tn)
            {
@@ -829,18 +860,31 @@ private:
         }
      }
 
-   //--- v8: drop the oldest setup still in WAIT (never touched), created before bar u
-   void              EvictOldestUntouched(const int u)
+   //--- v8: drop the setup idle for the longest time (never touched, or away from its zone since its last rejection),
+   //    created before bar u
+   void              EvictMostIdle(const int u)
      {
       int i;
+      int a;
+      int best  = -1;
+      int bestA = 0;
       for(i = 0; i < m_n; i++)
         {
-         if(m_s[i].phase != BF_PH_WAIT || m_s[i].created >= u)
+         if(m_s[i].created >= u)
             continue;
-         SetDone(i, u, BF_R_CAPACITY);
-         Compact();
-         return;
+         a = IdleSince(i);
+         if(a < 0)
+            continue;
+         if(best < 0 || a < bestA)
+           {
+            best  = i;
+            bestA = a;
+           }
         }
+      if(best < 0)
+         return;
+      SetDone(best, u, BF_R_CAPACITY);
+      Compact();
      }
 
    //+---------------------------------------------------------------+
@@ -862,7 +906,7 @@ private:
       //--- v8 (t1WaitBars >= 0, setups may wait long for T1): at capacity the oldest setup that was never touched makes
       //    room (DONE(CAPACITY)), so the newest BPRs are always tracked
       if(m_p.t1WaitBars >= 0 && m_n >= BF_MAX_SETUPS && m_c.T > m_c.B && z.active)
-         EvictOldestUntouched(u);
+         EvictMostIdle(u);
       if(m_c.T <= m_c.B)
          reason = BF_R_BAD_GEOMETRY;
       else

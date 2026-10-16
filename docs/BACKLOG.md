@@ -147,10 +147,16 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [?] U-18 User: compile v7 and send every compiler message. Run the tester with `InpSetupType = REVERSAL` (and
   `BOTH`) and send the `[BFEA]` lines and the `BFEA7_*` CSV files; check the reversal trades against your example
   (`research/indicators/preview/bpr_reversal_example.svg`).
-- [x] EA-15 v8 (2026-10-16, journal day11): every BPR tracked until its first touch (`InpMaxBarsToT1`, breakout window
-  from T1, oldest untouched setup makes room, warm-up BPRs go on), limits on the confirming close
-  (`InpAnticipateEntries` default true, `InpRevNeedFvg` default false); MQL5 only, checked on the C++ transliteration
-  (`tests/test_bpr_breakout_v8_tracking.py`); research defaults unchanged (parity set).
+- [x] EA-15 v8 (2026-10-16, journal day11): every BPR tracked until its first touch (`InpMaxBarsToT1`), limits on the
+  confirming close (`InpAnticipateEntries` default true, `InpRevNeedFvg` default false); after the v8 review: the
+  breakout window runs only while price is at the BPR, a candle closing back beyond the BPR inside a visit is the
+  reversal's rejection, the setup idle the longest makes room at capacity, warm-up BPRs go on and are listed / drawn
+  at the start; MQL5 only, checked on the C++ transliteration (`tests/test_bpr_breakout_v8_tracking.py`); research
+  defaults unchanged (parity set).
 - [?] U-19 User: compile v8 and send every compiler message. Run the tester with the defaults (`InpSetupType =
   REVERSAL`, then `BOTH`) and send the `[BFEA]` lines and the `BFEA8_*` CSV files; check a BPR first tapped long
   after it formed and the limits on the second close.
+- [?] U-20 Owner decision: with `BOTH`, the continuation's position on the same BPR can still be open when the
+  reversal confirms (its stop is beyond the touch low, below the T1 wick); the reversal then waits for the slot (one
+  setup at a time) and can miss its first pullback. Keep this, or close the continuation's position at the reversal's
+  confirmation? (v8 review, journal day11.)

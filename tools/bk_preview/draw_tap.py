@@ -70,7 +70,7 @@ s = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" font-fam
      text(L, 24, "BprFvgEA v8 - your example: the BPR is tapped later, from above (synthetic bars; MQL5 detector "
           "records, REVERSAL, v8 defaults)", "#d1d4dc", size=15),
      text(L, 44, "The BPR forms on 13 and price goes up without touching it. It comes back and taps it from above on "
-          "17 (T1), then reacts up (R).", "#9598a1"),
+          "17 (T1); 18 closes back above the BPR: the reaction (R).", "#9598a1"),
      text(L, 62, "The second close below the T1 wick (24) places the sell limits at once. Every new low moves them "
           "(25). The 50 % fills on 27; the target is hit on 28.", "#9598a1")]
 p = round(lo)

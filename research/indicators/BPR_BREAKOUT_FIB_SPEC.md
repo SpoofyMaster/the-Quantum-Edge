@@ -67,14 +67,14 @@ gives the rules.
 | `InpConfirmCloses` | `confirm_closes` | 2 | Consecutive closes beyond the level, breakout candle included (1..5) |
 | `InpRejectBeforeBreak` | `reject_before_break` | false | The breakout candle must come after a rejection candle (it cannot be the first candle out of the zone) |
 | `InpFvgRule` | `fvg_rule` | `LUXALGO` | `LUXALGO` / `ANY_GAP` / `NONE` (`NONE` drops the FVG condition) |
-| `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation (v8 EA default: after T1, §4.1) |
+| `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation (v8 EA default: counted only while price is at the BPR, §4.1) |
 | `InpLegExpiryBars` | `leg_expiry_bars` | 60 | Bars after confirmation during which orders may be placed or filled |
 | `InpAnticipateEntries` | (MQL5 only: `anticipate`) | false (EA: true since v8) | v5: decide without a pullback candle (§4.2–§5 notes) |
 | `InpLegBreakOnClose` | (MQL5 only: `legBreakOnClose`) | false | v5: `originBroken` uses the close (§4.2 note) |
 | `InpSetupType` | (MQL5 only: `setupType`) | CONTINUATION | v6: CONTINUATION / REVERSAL / BOTH (§4.5; v7: BOTH = two setups per BPR) |
 | `InpRevLevel` | (MQL5 only: `revLevel`) | DEEPEST | v7: reversal level = DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick (§4.5) |
 | `InpRevNeedRejection` | (MQL5 only: `revNeedReject`) | true | v7: a rejection after T1 before the reversal breakout (§4.5) |
-| `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §7) |
+| `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §4.5, §7) |
 | `InpRevNeedFvg` | (MQL5 only: `revNeedFvg`) | true (EA: false) | v8: the reversal waits for its FVG (§4.5) |
 
 The research defaults (this table's second-to-last column, the detector's `BfDefaultParams`, the parity set) keep the
@@ -139,9 +139,11 @@ guards as v1 apply: both newest FVGs exist, and the BPR box exists with `pos ∈
 3. **Checks at creation**, in this order. The first that fails ends the setup as `DONE(reason)` on bar `u`:
    1. `T ≤ B` → `BAD_GEOMETRY`;
    2. the box is not active after this bar's break loop → `BROKEN_AT_CREATION`;
-   3. 128 setups are already tracked → `CAPACITY`. v8 (`t1WaitBars ≥ 0`): first the oldest setup still in `WAIT`
-      (never touched, created before `u`) ends `DONE(CAPACITY)` and makes room; only if there is none is the new
-      setup refused.
+   3. 128 setups are already tracked → `CAPACITY`. v8 (`t1WaitBars ≥ 0`): first the setup **idle the longest**
+      (created before `u`) ends `DONE(CAPACITY)` and makes room; only if there is none is the new setup refused.
+      Idle: phase `WAIT` (since `created`), or phase `ZONE` with `inEp = false` (away from the zone after a
+      rejection; since the latest of `created`, the last visit's first bar and the last `REJECT`). A setup in a visit,
+      in `BREAK` or confirmed is never dropped. Ties: the earliest in creation order.
 4. **Otherwise** the setup is created with record `ARMED`, phase `WAIT`, `touches = 0`, `inEp = false`.
 
 A setup is never processed on its creation bar. Its first touch can come at `u + 1` at the earliest.
@@ -161,9 +163,14 @@ A setup stops being tracked when it reaches `DONE` or `CLOSED`.
 
 1. `broken(u)` → `DONE(BROKEN)`.
 2. `u − created > setup_expiry_bars` → `DONE(EXPIRED)`. v7.01: a reversal setup counts from its last `REJECT` when
-   that is later. v8 (`t1WaitBars ≥ 0`): before T1 (`touches = 0`) only `t1WaitBars` applies
-   (`u − created > t1WaitBars`, 0 = never); from T1 on, `setup_expiry_bars` counts from T1 (a reversal setup: from its
-   last `REJECT` when later).
+   that is later. v8 (`t1WaitBars ≥ 0`), the clock runs only while price is at the zone:
+   - before T1 (`touches = 0`) only `t1WaitBars` applies (`u − created > t1WaitBars`, 0 = never);
+   - phase `ZONE` with `inEp = false` (away after a rejection): never (the setup waits for a late T2, a pullback visit
+     or a late breakout);
+   - otherwise `u − from > setup_expiry_bars`, where `from` is the latest of T1, the first bar of the last visit
+     (`lastVisit`: T1, T2, a pullback visit, or a reversal breakout candle that opens a visit) and, in `BREAK`, the
+     breakout candle `brkBar`.
+   A rejection always comes before the next visit or breakout, so it is never later than `from`.
 3. `tn = touch(u)`.
 4. **Phase `BREAK`** (breakout candle seen, `nClose` closes so far):
    - **If `beyond(u)`:** `nClose += 1` and `Track(u)`. Once `nClose ≥ confirm_closes`:
@@ -264,6 +271,12 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   `lvlRBar` is the bar of the candle whose wick it is (records, CSV, the chart's breakout line).
 - **The rejection flag `rej`** (v7): set at the first `REJECT` record (a touch episode ending with a candle that does
   not touch the zone). It stays set.
+- **v8 one-candle rejection** (`t1WaitBars ≥ 0`; reversal setups only): inside a visit (`inEp`), a candle
+  that touches the zone but **closes beyond its far edge** (`c[u] > T` for a bullish BPR, `c[u] < B` for a bearish
+  one) is taken as not touching: it records `REJECT` with all its effects (`rej`, `lastRej`, the level candidate, the
+  leg candidate). A close exactly at the edge is not enough. This is the owner's "bullish reaction" off T1 in one
+  candle: before v8, a candle opening inside the zone belonged to the visit, and a re-entry on the next candle kept the
+  setup unrejected. A continuation setup keeps the §4.1 rule.
 - **The reversal leg `rO` / `rX`** (100 % / 0 %): `TrackRev(u)` runs on every pre-confirmation bar from T1 on: if
   `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`.
   - T1 starts it: `rO = h[u]`, `rX = l[u]`. This only matters while no visit has been rejected
