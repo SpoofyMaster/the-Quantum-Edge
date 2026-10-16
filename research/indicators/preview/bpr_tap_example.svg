@@ -1,0 +1,122 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" font-family="Arial" font-size="12">
+<rect width="1280" height="720" fill="#131722"/>
+<text x="70.0" y="24.0" fill="#d1d4dc" text-anchor="start" font-size="15">BprFvgEA v8 - your example: the BPR is tapped later, from above (synthetic bars; MQL5 detector records, REVERSAL, v8 defaults)</text>
+<text x="70.0" y="44.0" fill="#9598a1" text-anchor="start" font-size="12">The BPR forms on 13 and price goes up without touching it. It comes back and taps it from above on 17 (T1), then reacts up (R).</text>
+<text x="70.0" y="62.0" fill="#9598a1" text-anchor="start" font-size="12">The second close below the T1 wick (24) places the sell limits at once. Every new low moves them (25). The 50 % fills on 27; the target is hit on 28.</text>
+<line x1="70.0" x2="950.0" y1="627.7" y2="627.7" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="631.7" fill="#787b86" text-anchor="end" font-size="12">97.00</text>
+<line x1="70.0" x2="950.0" y1="573.8" y2="573.8" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="577.8" fill="#787b86" text-anchor="end" font-size="12">97.50</text>
+<line x1="70.0" x2="950.0" y1="519.9" y2="519.9" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="523.9" fill="#787b86" text-anchor="end" font-size="12">98.00</text>
+<line x1="70.0" x2="950.0" y1="466.0" y2="466.0" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="470.0" fill="#787b86" text-anchor="end" font-size="12">98.50</text>
+<line x1="70.0" x2="950.0" y1="412.1" y2="412.1" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="416.1" fill="#787b86" text-anchor="end" font-size="12">99.00</text>
+<line x1="70.0" x2="950.0" y1="358.2" y2="358.2" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="362.2" fill="#787b86" text-anchor="end" font-size="12">99.50</text>
+<line x1="70.0" x2="950.0" y1="304.3" y2="304.3" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="308.3" fill="#787b86" text-anchor="end" font-size="12">100.00</text>
+<line x1="70.0" x2="950.0" y1="250.4" y2="250.4" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="254.4" fill="#787b86" text-anchor="end" font-size="12">100.50</text>
+<line x1="70.0" x2="950.0" y1="196.6" y2="196.6" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="200.6" fill="#787b86" text-anchor="end" font-size="12">101.00</text>
+<line x1="70.0" x2="950.0" y1="142.7" y2="142.7" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="146.7" fill="#787b86" text-anchor="end" font-size="12">101.50</text>
+<line x1="70.0" x2="950.0" y1="88.8" y2="88.8" stroke="#2a2e39" stroke-width="1.0"/>
+<text x="64.0" y="92.8" fill="#787b86" text-anchor="end" font-size="12">102.00</text>
+<rect x="337.8" y="315.1" width="612.2" height="204.8" fill="#00e676" fill-opacity="0.10" stroke="#00e676" stroke-opacity="0.5"/>
+<text x="341.8" y="513.9" fill="#00e676" text-anchor="start" font-size="12">BPR (bullish)  98.00 - 99.90, formed on bar 13</text>
+<line x1="89.1" x2="89.1" y1="291.4" y2="306.5" stroke="#26a69a"/>
+<rect x="77.7" y="293.6" width="23.0" height="10.8" fill="#26a69a"/>
+<text x="89.1" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">6</text>
+<line x1="127.4" x2="127.4" y1="291.4" y2="306.5" stroke="#ef5350"/>
+<rect x="115.9" y="293.6" width="23.0" height="10.8" fill="#ef5350"/>
+<text x="127.4" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">7</text>
+<line x1="165.7" x2="165.7" y1="298.9" y2="315.1" stroke="#ef5350"/>
+<rect x="154.2" y="304.3" width="23.0" height="5.4" fill="#ef5350"/>
+<text x="165.7" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">8</text>
+<line x1="203.9" x2="203.9" y1="307.6" y2="522.0" stroke="#ef5350"/>
+<rect x="192.4" y="309.7" width="23.0" height="210.2" fill="#ef5350"/>
+<text x="203.9" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">9</text>
+<line x1="242.2" x2="242.2" y1="573.8" y2="627.7" stroke="#ef5350"/>
+<rect x="230.7" y="584.6" width="23.0" height="32.3" fill="#ef5350"/>
+<text x="242.2" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">10</text>
+<line x1="280.4" x2="280.4" y1="519.9" y2="622.3" stroke="#26a69a"/>
+<rect x="269.0" y="530.7" width="23.0" height="86.2" fill="#26a69a"/>
+<text x="280.4" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">11</text>
+<line x1="318.7" x2="318.7" y1="313.0" y2="532.8" stroke="#26a69a"/>
+<rect x="307.2" y="315.1" width="23.0" height="215.6" fill="#26a69a"/>
+<text x="318.7" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">12</text>
+<line x1="357.0" x2="357.0" y1="272.0" y2="309.7" stroke="#26a69a"/>
+<rect x="345.5" y="282.8" width="23.0" height="26.9" fill="#26a69a"/>
+<text x="357.0" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">13</text>
+<line x1="395.2" x2="395.2" y1="201.9" y2="288.2" stroke="#26a69a"/>
+<rect x="383.7" y="207.3" width="23.0" height="75.4" fill="#26a69a"/>
+<text x="395.2" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">14</text>
+<line x1="433.5" x2="433.5" y1="131.9" y2="212.7" stroke="#26a69a"/>
+<rect x="422.0" y="142.7" width="23.0" height="64.7" fill="#26a69a"/>
+<text x="433.5" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">15</text>
+<line x1="471.7" x2="471.7" y1="137.3" y2="304.3" stroke="#ef5350"/>
+<rect x="460.3" y="142.7" width="23.0" height="150.9" fill="#ef5350"/>
+<text x="471.7" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">16</text>
+<line x1="510.0" x2="510.0" y1="288.2" y2="412.1" stroke="#ef5350"/>
+<rect x="498.5" y="293.6" width="23.0" height="53.9" fill="#ef5350"/>
+<text x="510.0" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">17</text>
+<line x1="548.3" x2="548.3" y1="272.0" y2="352.8" stroke="#26a69a"/>
+<rect x="536.8" y="282.8" width="23.0" height="64.7" fill="#26a69a"/>
+<text x="548.3" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">18</text>
+<line x1="586.5" x2="586.5" y1="218.1" y2="288.2" stroke="#26a69a"/>
+<rect x="575.0" y="228.9" width="23.0" height="53.9" fill="#26a69a"/>
+<text x="586.5" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">19</text>
+<line x1="624.8" x2="624.8" y1="142.7" y2="239.7" stroke="#26a69a"/>
+<rect x="613.3" y="153.4" width="23.0" height="75.4" fill="#26a69a"/>
+<text x="624.8" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">20</text>
+<line x1="663.0" x2="663.0" y1="131.9" y2="175.0" stroke="#ef5350"/>
+<rect x="651.6" y="153.4" width="23.0" height="10.8" fill="#ef5350"/>
+<text x="663.0" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">21</text>
+<line x1="701.3" x2="701.3" y1="158.8" y2="282.8" stroke="#ef5350"/>
+<rect x="689.8" y="164.2" width="23.0" height="107.8" fill="#ef5350"/>
+<text x="701.3" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">22</text>
+<line x1="739.6" x2="739.6" y1="266.6" y2="433.7" stroke="#ef5350"/>
+<rect x="728.1" y="272.0" width="23.0" height="150.9" fill="#ef5350"/>
+<text x="739.6" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">23</text>
+<line x1="777.8" x2="777.8" y1="412.1" y2="498.3" stroke="#ef5350"/>
+<rect x="766.3" y="422.9" width="23.0" height="64.7" fill="#ef5350"/>
+<text x="777.8" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">24</text>
+<line x1="816.1" x2="816.1" y1="466.0" y2="563.0" stroke="#ef5350"/>
+<rect x="804.6" y="487.6" width="23.0" height="64.7" fill="#ef5350"/>
+<text x="816.1" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">25</text>
+<line x1="854.3" x2="854.3" y1="422.9" y2="557.6" stroke="#26a69a"/>
+<rect x="842.9" y="433.7" width="23.0" height="118.6" fill="#26a69a"/>
+<text x="854.3" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">26</text>
+<line x1="892.6" x2="892.6" y1="336.7" y2="444.4" stroke="#26a69a"/>
+<rect x="881.1" y="379.8" width="23.0" height="53.9" fill="#26a69a"/>
+<text x="892.6" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">27</text>
+<line x1="930.9" x2="930.9" y1="374.4" y2="595.3" stroke="#ef5350"/>
+<rect x="919.4" y="379.8" width="23.0" height="204.8" fill="#ef5350"/>
+<text x="930.9" y="676.0" fill="#787b86" text-anchor="middle" font-size="10">28</text>
+<text x="414.3" y="121.9" fill="#787b86" text-anchor="middle" font-size="11">no touch: price goes away</text>
+<text x="510.0" y="428.1" fill="#ffeb3b" text-anchor="middle" font-size="12" font-weight="bold">T1</text>
+<text x="586.5" y="304.2" fill="#ffeb3b" text-anchor="middle" font-size="12" font-weight="bold">R</text>
+<line x1="510.0" x2="816.1" y1="412.1" y2="412.1" stroke="#ff9800" stroke-width="1.4" stroke-dasharray="4,3"/>
+<text x="520.0" y="406.1" fill="#ff9800" text-anchor="start" font-size="12">T1 wick 99.00</text>
+<text x="722.3" y="426.9" fill="#ff9800" text-anchor="end" font-size="11" font-weight="bold">1st close below</text>
+<text x="760.6" y="491.6" fill="#ff9800" text-anchor="end" font-size="11" font-weight="bold">2nd close below: limits now</text>
+<line x1="758.7" x2="797.0" y1="315.1" y2="315.1" stroke="#5c7da6" stroke-width="1.0" stroke-dasharray="3,3"/>
+<line x1="758.7" x2="797.0" y1="272.0" y2="272.0" stroke="#5c7da6" stroke-width="1.0" stroke-dasharray="3,3"/>
+<line x1="758.7" x2="797.0" y1="238.6" y2="238.6" stroke="#5c7da6" stroke-width="1.0" stroke-dasharray="3,3"/>
+<line x1="797.0" x2="950.0" y1="347.4" y2="347.4" stroke="#2196f3" stroke-width="1.2"/>
+<text x="956.0" y="351.4" fill="#2196f3" text-anchor="start" font-size="11">50 % sell limit 99.60 (moved on 25)</text>
+<line x1="797.0" x2="950.0" y1="296.8" y2="296.8" stroke="#2196f3" stroke-width="1.2"/>
+<text x="956.0" y="300.8" fill="#2196f3" text-anchor="start" font-size="11">61.8 % sell limit 100.07 (moved on 25)</text>
+<line x1="797.0" x2="950.0" y1="256.9" y2="256.9" stroke="#2196f3" stroke-width="1.2"/>
+<text x="956.0" y="260.9" fill="#2196f3" text-anchor="start" font-size="11">71 % sell limit 100.44 (moved on 25)</text>
+<line x1="797.0" x2="950.0" y1="110.3" y2="110.3" stroke="#ff5252" stroke-width="1.0" stroke-dasharray="6,3"/>
+<text x="956.0" y="106.3" fill="#ff5252" text-anchor="start" font-size="11">SL 101.80 (100 % 101.60 + 10 ticks + spread)</text>
+<line x1="797.0" x2="950.0" y1="563.0" y2="563.0" stroke="#00c853" stroke-width="1.2"/>
+<text x="956.0" y="579.0" fill="#00c853" text-anchor="start" font-size="11">0 % = the new low 97.60</text>
+<line x1="797.0" x2="950.0" y1="552.2" y2="552.2" stroke="#00c853" stroke-width="1.0" stroke-dasharray="6,3"/>
+<text x="956.0" y="547.2" fill="#00c853" text-anchor="start" font-size="11">TP 97.70</text>
+<text x="777.8" y="643.8" fill="#5c7da6" text-anchor="middle" font-size="11">first limits on 24 (dashed), moved at each new low</text>
+</svg>

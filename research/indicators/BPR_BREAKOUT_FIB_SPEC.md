@@ -1,4 +1,4 @@
-# BprFvgEA v7: BPR rejection → breakout → Fibonacci pullback (+ reversal setup, touch entry)
+# BprFvgEA v8: BPR rejection → breakout → Fibonacci pullback (+ reversal setup, touch entry)
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 7.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 8.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -67,13 +67,18 @@ gives the rules.
 | `InpConfirmCloses` | `confirm_closes` | 2 | Consecutive closes beyond the level, breakout candle included (1..5) |
 | `InpRejectBeforeBreak` | `reject_before_break` | false | The breakout candle must come after a rejection candle (it cannot be the first candle out of the zone) |
 | `InpFvgRule` | `fvg_rule` | `LUXALGO` | `LUXALGO` / `ANY_GAP` / `NONE` (`NONE` drops the FVG condition) |
-| `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation |
+| `InpSetupExpiryBars` | `setup_expiry_bars` | 240 | Bars after the BPR's creation to reach confirmation (v8 EA default: after T1, §4.1) |
 | `InpLegExpiryBars` | `leg_expiry_bars` | 60 | Bars after confirmation during which orders may be placed or filled |
-| `InpAnticipateEntries` | (MQL5 only: `anticipate`) | false | v5: decide without a pullback candle (§4.2–§5 notes) |
+| `InpAnticipateEntries` | (MQL5 only: `anticipate`) | false (EA: true since v8) | v5: decide without a pullback candle (§4.2–§5 notes) |
 | `InpLegBreakOnClose` | (MQL5 only: `legBreakOnClose`) | false | v5: `originBroken` uses the close (§4.2 note) |
 | `InpSetupType` | (MQL5 only: `setupType`) | CONTINUATION | v6: CONTINUATION / REVERSAL / BOTH (§4.5; v7: BOTH = two setups per BPR) |
 | `InpRevLevel` | (MQL5 only: `revLevel`) | DEEPEST | v7: reversal level = DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick (§4.5) |
 | `InpRevNeedRejection` | (MQL5 only: `revNeedReject`) | true | v7: a rejection after T1 before the reversal breakout (§4.5) |
+| `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §7) |
+| `InpRevNeedFvg` | (MQL5 only: `revNeedFvg`) | true (EA: false) | v8: the reversal waits for its FVG (§4.5) |
+
+The research defaults (this table's second-to-last column, the detector's `BfDefaultParams`, the parity set) keep the
+v7 rules; the EA's inputs default to the v8 behaviour where marked "EA:".
 | `InpTouchEntry` / `InpTouchTargetRR` | (MQL5 only: `touchEntry` / `touchTargetRR`) | false / 1.5 | v6: market entry after T1 (§5 touch entry) |
 | `InpFib1` / `2` / `3` | `fib_levels` | 50.0 / 61.8 / 71.0 | Entry retracements, % of the leg (0 = off) |
 | `InpStopFib` | `stop_fib` | 100.0 | Stop at this retracement, % (100 = the leg origin) |
@@ -134,7 +139,9 @@ guards as v1 apply: both newest FVGs exist, and the BPR box exists with `pos ∈
 3. **Checks at creation**, in this order. The first that fails ends the setup as `DONE(reason)` on bar `u`:
    1. `T ≤ B` → `BAD_GEOMETRY`;
    2. the box is not active after this bar's break loop → `BROKEN_AT_CREATION`;
-   3. 128 setups are already tracked → `CAPACITY`.
+   3. 128 setups are already tracked → `CAPACITY`. v8 (`t1WaitBars ≥ 0`): first the oldest setup still in `WAIT`
+      (never touched, created before `u`) ends `DONE(CAPACITY)` and makes room; only if there is none is the new
+      setup refused.
 4. **Otherwise** the setup is created with record `ARMED`, phase `WAIT`, `touches = 0`, `inEp = false`.
 
 A setup is never processed on its creation bar. Its first touch can come at `u + 1` at the earliest.
@@ -153,7 +160,10 @@ A setup stops being tracked when it reaches `DONE` or `CLOSED`.
 ### 4.1 Phases `WAIT`, `ZONE`, `BREAK` (before confirmation)
 
 1. `broken(u)` → `DONE(BROKEN)`.
-2. `u − created > setup_expiry_bars` → `DONE(EXPIRED)`.
+2. `u − created > setup_expiry_bars` → `DONE(EXPIRED)`. v7.01: a reversal setup counts from its last `REJECT` when
+   that is later. v8 (`t1WaitBars ≥ 0`): before T1 (`touches = 0`) only `t1WaitBars` applies
+   (`u − created > t1WaitBars`, 0 = never); from T1 on, `setup_expiry_bars` counts from T1 (a reversal setup: from its
+   last `REJECT` when later).
 3. `tn = touch(u)`.
 4. **Phase `BREAK`** (breakout candle seen, `nClose` closes so far):
    - **If `beyond(u)`:** `nClose += 1` and `Track(u)`. Once `nClose ≥ confirm_closes`:
@@ -281,6 +291,9 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
     `c[u] > lvlR`. The candle may touch or cross the zone; it is not a touch.
   - **Then.** The phase becomes `BREAK` with `rev = true` and `dir = −zdir`, and record `BREAKOUT`, whose `dir` is the
     trade direction and whose `lvl` / `lvlBar` are `lvlR` / `lvlRBar`.
+  - **v8, `revNeedFvg = false`** (EA default): `FvgOk` is true for a reversal. With `anticipate` the confirmation bar
+    is then a decision bar with no FVG wait: the limits go in on the confirming close, and are moved at every new
+    extreme (§4.3 re-anchor).
   - **In `BREAK`.** `BeyondRev` is used in place of `beyond`. Once `nClose ≥ confirm_closes`, `O = rO` and
     `X = rX`, then `CONFIRM` as in §4.1.
   - **`BREAK_FAIL`.** Sets `rev = false` and `dir = zdir`, back to `ZONE`; then step 6 runs on that bar.
@@ -387,6 +400,8 @@ Records made by a `Notify*` call carry `n` = the last processed bar.
 
 **Warm-up.** Setups created on bars `< trade_from` become `DONE(WARMUP)` when the first bar `≥ trade_from` is
 processed, before anything else on that bar. `n` is the last warm-up bar. No decision happens on warm-up bars.
+v8 (`t1WaitBars ≥ 0`): a warm-up setup in `WAIT`, `ZONE` or `BREAK` (not confirmed) goes on; only the others end
+`DONE(WARMUP)`. Every BPR is followed from its creation, also when it formed before the EA started.
 
 ### Parity harness
 
