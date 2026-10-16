@@ -486,11 +486,16 @@ struct BfSetup
    // v7
    int               kind;                // BF_SETUP_CONTINUATION or BF_SETUP_REVERSAL: the breakout this setup trades
    bool              rej;                 // a rejection came after T1 (REJECT record)
-   bool              cAct;                // a later visit of the zone is open: candidate origin cO / cX, adopted as
-   double            cO;                  // rO / rX when that visit is rejected
+   bool              cAct;                // a visit of the zone is open: candidate origin cO / cX, adopted as rO / rX
+   double            cO;                  // when that visit is rejected (v7.01: the bounce after the visit's low cL)
    int               cOBar;
    double            cX;
    int               cXBar;
+   double            cL;                  // v7.01: the visit's lowest low (bullish BPR) / highest high (bearish)
+   bool              cLvlOn;              // v7.01 DEEPEST: a later touch's wick waits for its visit's rejection
+   double            cLvl;
+   int               cLvlBar;
+   int               lastRej;             // v7.01: bar of the last REJECT (a reversal setup's expiry counts from it)
   };
 
 void BfClearSetup(BfSetup &s)
@@ -549,6 +554,11 @@ void BfClearSetup(BfSetup &s)
    s.cOBar       = -1;
    s.cX          = 0.0;
    s.cXBar       = -1;
+   s.cL          = 0.0;
+   s.cLvlOn      = false;
+   s.cLvl        = 0.0;
+   s.cLvlBar     = -1;
+   s.lastRej     = -1;
   }
 
 void BfCopySetup(BfSetup &dst, const BfSetup &src)
@@ -607,6 +617,11 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.cOBar       = src.cOBar;
    dst.cX          = src.cX;
    dst.cXBar       = src.cXBar;
+   dst.cL          = src.cL;
+   dst.cLvlOn      = src.cLvlOn;
+   dst.cLvl        = src.cLvl;
+   dst.cLvlBar     = src.cLvlBar;
+   dst.lastRej     = src.lastRej;
   }
 
 //+------------------------------------------------------------------+

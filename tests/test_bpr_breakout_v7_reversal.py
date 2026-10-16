@@ -238,21 +238,105 @@ def test_unrejected_t2_spike_is_the_100(exe, tmp_path, d):
 
 
 @D
-def test_zero_is_the_lowest_low_after_the_100(exe, tmp_path, d):
-    """The T2 visit (top 100.9 on 16) has a wick to 99.25 on 17 before its rejection 18: after the breakout 19 and the
-    confirmation 20 (lows 99.3 / 99.28) the 0 % is 99.25, the lowest low after the 100 %."""
+def test_bounce_is_measured_from_the_visit_low(exe, tmp_path, d):
+    """v7.01. The T2 candle 16 spikes to 100.9 and falls into the zone; 17 wicks to 99.25 (the visit's low); 18 rejects
+    the visit with a bounce to 100.3. The 100 % is that bounce (100.3), not the entering candle's spike; the 0 % is
+    the lowest low after it, 20's 99.28."""
     recs, _ = run(exe, tmp_path, seq("visit_deep_wick", d), setup_type=REV)
     assert key(of(recs, 1, n=19)) == [(19, "BREAKOUT", -d, 0, None)]
     conf = of(recs, 1, n=20, ev="CONFIRM")[0]
-    assert conf["O"] == pytest.approx(px(d, 100.9)) and conf["X"] == pytest.approx(px(d, 99.25))
+    assert conf["O"] == pytest.approx(px(d, 100.3)) and conf["X"] == pytest.approx(px(d, 99.28))
 
 
 @D
-def test_reversal_setup_still_expires(exe, tmp_path, d):
-    """setup_expiry_bars 4 (armed on 13): the reversal setup ends EXPIRED on 18 like any setup before its
-    confirmation, pullback or not."""
-    recs, _ = run(exe, tmp_path, seq("pullback_in_zone", d), setup_type=REV, setup_expiry_bars=4)
-    assert key(of(recs, 1, n=18)) == [(18, "DONE", d, 0, "EXPIRED")]
+@pytest.mark.parametrize("name,brk,O", [("visit_wide_candle", 19, 100.4), ("visit_lower_high", 22, 100.6)])
+def test_bounce_starts_after_the_visit_low(exe, tmp_path, d, name, brk, O):  # noqa: E741
+    """v7.01. visit_wide_candle: 17 makes the visit's low with a high of 100.8 (inside the candle, order unknown): the
+    bounce counts only bars after it -> 100 % = 18's 100.4. visit_lower_high: the visit's low is 17 (99.25); a
+    breakout candle inside the same visit (19, low 99.35) does not restart it -> 100 % = 18's 100.6."""
+    recs, _ = run(exe, tmp_path, seq(name, d), setup_type=REV)
+    assert key(of(recs, 1, n=brk)) == [(brk, "BREAKOUT", -d, 0, None)]
+    conf = of(recs, 1, n=brk + 1, ev="CONFIRM")[0]
+    assert conf["O"] == pytest.approx(px(d, O))
+
+
+@D
+def test_zero_includes_a_low_inside_the_visit_after_the_top(exe, tmp_path, d):
+    """v7.01. The bounce top 100.6 (18) is followed by a lower low 99.3 inside the visit (19) before the rejection 20;
+    the breakdown candles 21 / 22 stay above it: CONFIRM 22 with 100 % = 100.6 and 0 % = 99.3."""
+    recs, _ = run(exe, tmp_path, seq("cand_x_after_top", d), setup_type=REV)
+    assert key(of(recs, 1, n=21)) == [(21, "BREAKOUT", -d, 0, None)]
+    conf = of(recs, 1, n=22, ev="CONFIRM")[0]
+    assert conf["O"] == pytest.approx(px(d, 100.6)) and conf["X"] == pytest.approx(px(d, 99.3))
+
+
+@D
+def test_same_path_split_differently_gives_the_same_100(exe, tmp_path, d):
+    """v7.01 (review). The same descent and bounce cut into candles two ways (split_a: 27 already falls to 100.0;
+    split_b: 28 falls the whole way into the zone): both give the 100 % at the bounce top 100.35 and the same orders."""
+    a, _ = run(exe, tmp_path, seq("split_a", d), setup_type=REV)
+    b, _ = run(exe, tmp_path, seq("split_b", d), setup_type=REV)
+    ca, cb = of(a, 1, ev="CONFIRM")[0], of(b, 1, ev="CONFIRM")[0]
+    assert ca["O"] == pytest.approx(px(d, 100.35)) and (ca["n"], ca["O"], ca["X"]) == (cb["n"], cb["O"], cb["X"])
+    pa = [(r["n"], r["P"], r["SL"], r["TP"]) for r in of(a, 1, ev="PLACE_LIMIT")]
+    assert pa and pa == [(r["n"], r["P"], r["SL"], r["TP"]) for r in of(b, 1, ev="PLACE_LIMIT")]
+
+
+@D
+def test_failed_breakout_visit_bounce_is_the_100(exe, tmp_path, d):
+    """v7.01 (review). 17 enters the zone and closes below the T1 wick (BREAKOUT; a visit, not a touch), 18 fails it,
+    19 rejects the visit (bounce top 100.5); 21 breaks out again, 22 confirms: 100 % = 100.5, not the older top
+    101.6."""
+    recs, _ = run(exe, tmp_path, seq("failed_break_visit", d), setup_type=REV)
+    assert [r["ev"] for r in of(recs, 1) if 17 <= r["n"] <= 19] == ["BREAKOUT", "BREAK_FAIL", "REJECT"]
+    assert [r["k"] for r in of(recs, 1, ev="TOUCH")] == [1]
+    conf = of(recs, 1, n=22, ev="CONFIRM")[0]
+    assert conf["O"] == pytest.approx(px(d, 100.5)) and conf["X"] == pytest.approx(px(d, 98.9))
+
+
+@D
+def test_t1_visit_crash_is_not_the_leg(exe, tmp_path, d):
+    """v7.01 (review). Within the T1 visit price crashes through the BPR (low 95.0) before any rejection; the REJECT on
+    21 (top 100.15) makes that bounce the leg: CONFIRM 23 with 100 % = 100.15 and 0 % = 99.0, limits on 24 (not the
+    T1 high -> crash-low leg, which ended NO_LEVEL)."""
+    recs, _ = run(exe, tmp_path, seq("t1_crash", d), setup_type=REV)
+    conf = of(recs, 1, n=23, ev="CONFIRM")[0]
+    assert conf["O"] == pytest.approx(px(d, 100.15)) and conf["X"] == pytest.approx(px(d, 99.0))
+    assert of(recs, 1, n=24, ev="PLACE_LIMIT") and not of(recs, 1, ev="DONE")
+
+
+@D
+def test_unrejected_t2_keeps_the_t1_level(exe, tmp_path, d):
+    """v7.01 (review). After T1 (wick 99.5) and the long trade, the drop's first candle 27 enters the zone with a wick
+    to 99.2 and closes inside (T2, never rejected); 28 and 29 close below the T1 wick: with DEEPEST that is the
+    breakout, exactly as with the T1 option (an unrejected visit does not move the level)."""
+    dp, _ = run(exe, tmp_path, seq("drop_after_t1", d), setup_type=REV)
+    t1, _ = run(exe, tmp_path, seq("drop_after_t1", d), setup_type=REV, rev_level=1)
+    br = of(dp, 1, ev="BREAKOUT")[0]
+    assert (br["n"], br["lvl"], br["lvlBar"]) == (28, pytest.approx(px(d, 99.5)), 14)
+    assert key(of(dp, 1)) == key(of(t1, 1)) and of(dp, 1, n=33, ev="CLOSED")
+
+
+@D
+@pytest.mark.parametrize("rule", ["LUXALGO", "ANY_GAP"])
+def test_reversal_fvg_must_follow_the_100(exe, tmp_path, d, rule):
+    """v7.01 (review). The only bearish gap after T2 (bar 24) lies inside the long move, before the reversal's 100 %
+    (26): no reversal orders. The owner's example has its own gap in the drop (28) and trades."""
+    recs, _ = run(exe, tmp_path, seq("fvg_before_top", d), setup_type=REV, fvg_rule=FVG[rule])
+    assert of(recs, 1, n=30, ev="CONFIRM") and not of(recs, 1, ev="PLACE_LIMIT")
+    ok, _ = run(exe, tmp_path, seq("owner_example", d), setup_type=REV, fvg_rule=FVG[rule])
+    assert of(ok, 1, ev="PLACE_LIMIT")
+
+
+@D
+def test_reversal_expiry_counts_from_the_last_rejection(exe, tmp_path, d):
+    """v7.01. setup_expiry_bars 2: a continuation setup (armed on 13) expires on 16; the reversal setup counts from its
+    last rejection (17): it breaks out on 19 and expires on 20, before its confirmation."""
+    rv, _ = run(exe, tmp_path, seq("pullback_in_zone", d), setup_type=REV, setup_expiry_bars=2)
+    assert key(of(rv, 1, n=19)) == [(19, "BREAKOUT", -d, 0, None)]
+    assert key(of(rv, 1, n=20)) == [(20, "DONE", -d, 0, "EXPIRED")]
+    ct, _ = run(exe, tmp_path, seq("pullback_in_zone", d), setup_type=CONT, setup_expiry_bars=2)
+    assert key(of(ct, 0, n=16)) == [(16, "DONE", d, 0, "EXPIRED")]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -302,25 +386,33 @@ def _check7(recs, bars, kv):
     """v7 per setup: its kind fits the setup type and the direction filter; a reversal setup counts at most
     max_touches touches and never ends with TOUCH_LIMIT; its breakout is against the BPR, after a rejection (default),
     at the level its option names (computed from the touch candles' wicks), on a close beyond it; confirmations follow
-    the kind; touch entries come from the owning kind only."""
+    the kind; touch entries come from the owning kind only. v7.01 DEEPEST: the T1 wick and the wicks of later touches
+    whose visit was rejected (a REJECT before the next touch)."""
     st = kv.get("setup_type", CONT)
     lv, rj, mt = kv.get("rev_level", 0), kv.get("rev_reject", 1), kv.get("max_touches", 2)
     allowed = {0: (1, -1), 1: (1,), 2: (-1,)}[kv.get("direction", 0)]
-    kind, zone, tch, rejected = {}, {}, {}, {}
+    kind, zone, tch, rejected, deep, pend = {}, {}, {}, {}, {}, {}
     for r in recs:
         i, ev = r["id"], r["ev"]
         if ev.startswith("H_"):
             continue
         if ev == "ARMED":
-            kind[i], zone[i], tch[i], rejected[i] = r["kind"], r["dir"], [], False
+            kind[i], zone[i], tch[i], rejected[i], deep[i], pend[i] = r["kind"], r["dir"], [], False, [], None
             assert r["kind"] in {CONT: (0,), REV: (1,), BOTH: (0, 1)}[st], r
             trade = r["dir"] if r["kind"] == 0 else -r["dir"]
             assert trade in allowed or (st == REV and kv.get("touch_entry") and r["dir"] in allowed), r
         elif ev == "TOUCH":
             tch[i].append(r["n"])
             assert r["k"] == len(tch[i]) <= mt, r
+            if r["k"] == 1:
+                deep[i].append(r["n"])
+            else:
+                pend[i] = r["n"]
         elif ev == "REJECT":
             rejected[i] = True
+            if pend[i] is not None:
+                deep[i].append(pend[i])
+                pend[i] = None
         elif ev == "DONE" and r["reason"] == "TOUCH_LIMIT":
             assert kind[i] == 0, r
         elif ev == "BREAKOUT":
@@ -330,7 +422,8 @@ def _check7(recs, bars, kv):
                 continue
             assert r["dir"] == -z and (rejected[i] or not rj), r
             wick = [bars[n][2] if z > 0 else bars[n][1] for n in tch[i]]
-            exp = {0: min(wick) if z > 0 else max(wick), 1: wick[0], 2: wick[-1]}[lv]
+            dw = [bars[n][2] if z > 0 else bars[n][1] for n in deep[i]]
+            exp = {0: min(dw) if z > 0 else max(dw), 1: wick[0], 2: wick[-1]}[lv]
             assert r["lvl"] == pytest.approx(exp), (r, wick)
             c = bars[r["n"]][3]
             assert (c < r["lvl"]) if z > 0 else (c > r["lvl"]), r

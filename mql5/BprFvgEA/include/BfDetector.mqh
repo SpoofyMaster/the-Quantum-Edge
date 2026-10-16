@@ -277,22 +277,34 @@ private:
      }
 
    //--- v7 reversal level at a touch (T1 / T2): DEEPEST = the deepest wick of the touch candles (the lowest low for a
-   //    bullish BPR), T1 = the T1 candle's, LAST = the latest touch candle's (v6)
+   //    bullish BPR), T1 = the T1 candle's, LAST = the latest touch candle's (v6). v7.01: with DEEPEST a later touch's
+   //    wick counts once its visit is rejected (ApplyLevelCand); a visit that turns into the breakout keeps the level.
    void              SetRevLevel(const int i, const int u, const double hu, const double lu)
      {
       double w = (m_s[i].zdir > 0) ? lu : hu;
-      bool   take;
       if(m_s[i].touches <= 1 || m_p.revLevel == BF_REVLVL_LAST)
-         take = true;
-      else
-         if(m_p.revLevel == BF_REVLVL_T1)
-            take = false;
-         else
-            take = (m_s[i].zdir > 0) ? (w < m_s[i].lvlR) : (w > m_s[i].lvlR);
-      if(take)
         {
          m_s[i].lvlR    = w;
          m_s[i].lvlRBar = u;
+         return;
+        }
+      if(m_p.revLevel == BF_REVLVL_T1)
+         return;
+      m_s[i].cLvlOn  = true;
+      m_s[i].cLvl    = w;
+      m_s[i].cLvlBar = u;
+     }
+
+   //--- v7.01 DEEPEST: the rejected visit's touch wick becomes the level if it is strictly deeper
+   void              ApplyLevelCand(const int i)
+     {
+      if(!m_s[i].cLvlOn)
+         return;
+      m_s[i].cLvlOn = false;
+      if((m_s[i].zdir > 0) ? (m_s[i].cLvl < m_s[i].lvlR) : (m_s[i].cLvl > m_s[i].lvlR))
+        {
+         m_s[i].lvlR    = m_s[i].cLvl;
+         m_s[i].lvlRBar = m_s[i].cLvlBar;
         }
      }
 
@@ -313,14 +325,24 @@ private:
       return(cu > m_s[i].lvlR);
      }
 
-   //--- v7 candidate origin of a later visit of the zone (T2, or a pullback into the zone after the last touch): the
-   //    highest high (bullish BPR) since that visit began and the lowest low after it. It becomes the reversal leg
-   //    (rO / rX) when the visit is rejected; a visit that turns into the breakout keeps the earlier origin.
+   //--- v7 candidate origin of a visit of the zone (T1, T2, a pullback visit after the last touch, or a visit opened by
+   //    a reversal breakout candle): v7.01 the bounce after the visit's lowest low cL (bullish BPR) - the highest high
+   //    of the bars after it and the lowest low after that high. It becomes the reversal leg (rO / rX) when the visit is
+   //    rejected; a visit that turns into the breakout keeps the earlier leg. A new visit low restarts the bounce.
    void              TrackCand(const int i, const int u, const double hu, const double lu)
      {
       if(m_s[i].zdir > 0)
         {
-         if(hu > m_s[i].cO)
+         if(lu < m_s[i].cL)
+           {
+            m_s[i].cL    = lu;
+            m_s[i].cO    = lu;
+            m_s[i].cOBar = u;
+            m_s[i].cX    = lu;
+            m_s[i].cXBar = u;
+           }
+         else
+            if(hu > m_s[i].cO)
            {
             m_s[i].cO    = hu;
             m_s[i].cOBar = u;
@@ -336,7 +358,16 @@ private:
         }
       else
         {
-         if(lu < m_s[i].cO)
+         if(hu > m_s[i].cL)
+           {
+            m_s[i].cL    = hu;
+            m_s[i].cO    = hu;
+            m_s[i].cOBar = u;
+            m_s[i].cX    = hu;
+            m_s[i].cXBar = u;
+           }
+         else
+            if(lu < m_s[i].cO)
            {
             m_s[i].cO    = lu;
             m_s[i].cOBar = u;
@@ -352,12 +383,14 @@ private:
         }
      }
 
-   //--- v7: a later visit of the zone begins on bar u (its first candle): a new candidate origin
+   //--- v7: a visit of the zone begins on bar u (its first candle): a new candidate. v7.01: the bounce is measured
+   //    from the visit's low, so cO starts AT that low (the entering candle's high belongs to the descent)
    void              StartCand(const int i, const int u, const double hu, const double lu)
      {
       m_s[i].cAct  = true;
-      m_s[i].cO    = (m_s[i].zdir > 0) ? hu : lu;
-      m_s[i].cX    = (m_s[i].zdir > 0) ? lu : hu;
+      m_s[i].cL    = (m_s[i].zdir > 0) ? lu : hu;
+      m_s[i].cO    = m_s[i].cL;
+      m_s[i].cX    = m_s[i].cL;
       m_s[i].cOBar = u;
       m_s[i].cXBar = u;
      }
@@ -462,9 +495,13 @@ private:
    //--- spec s.4.2 FVG condition: an FVG of the setup's direction after the reference candle (always met with NONE)
    bool              FvgOk(const int i)
      {
+      int after = m_s[i].ref;
       if(m_p.fvgRule == BF_FVGRULE_NONE)
          return(true);
-      return(((m_s[i].dir > 0) ? m_fvgUp : m_fvgDn) > m_s[i].ref);
+      //--- v7.01 reversal: the FVG must belong to the reversal leg, after its 100 % bar too (not a gap of the move up)
+      if(m_s[i].rev && m_s[i].oBar > after)
+         after = m_s[i].oBar;
+      return(((m_s[i].dir > 0) ? m_fvgUp : m_fvgDn) > after);
      }
 
    //--- a decision bar: ready with the FVG condition, otherwise counted as a bar without an FVG
@@ -522,7 +559,9 @@ private:
             SetDone(i, u, BF_R_BROKEN);
             return;
            }
-         if(u - m_s[i].created > m_p.setupExpiryBars)
+         //--- v7.01: a reversal setup counts its expiry from its last rejection (the last bounce from the zone) when
+         //    that is later than the BPR's creation
+         if(u - ((HasRev(i) && m_s[i].lastRej > m_s[i].created) ? m_s[i].lastRej : m_s[i].created) > m_p.setupExpiryBars)
            {
             SetDone(i, u, BF_R_EXPIRED);
             return;
@@ -590,6 +629,10 @@ private:
                m_s[i].nClose = 1;
                Track(i, u, h[u], l[u]);
                TrackRev(i, u, h[u], l[u]);
+               //--- v7.01: a breakout candle that enters the zone opens a visit (not a touch): if the breakout fails
+               //    and the visit is rejected, its bounce becomes the 100 % like any rejected visit
+               if(!m_s[i].inEp)
+                  StartCand(i, u, h[u], l[u]);
                AddEvent(u, BF_EV_BREAKOUT, m_s[i], 0, BF_R_NONE);
                Stat(BF_STAT_BREAKOUT);
                if(m_s[i].nClose >= m_p.confirmCloses)
@@ -628,20 +671,18 @@ private:
                   m_s[i].oBar = u;
                   m_s[i].xBar = u;
                   SetRevLevel(i, u, h[u], l[u]);
-                  //--- v7 reversal origin: T1 starts it; a later touch is a candidate until it is rejected
+                  //--- v7 reversal origin: T1 starts it (v6: from the T1 candle); every visit, T1 included (v7.01), is a
+                  //    candidate until it is rejected
                   if(m_s[i].touches == 1)
                     {
                      m_s[i].rO    = (zd > 0) ? h[u] : l[u];
                      m_s[i].rX    = (zd > 0) ? l[u] : h[u];
                      m_s[i].rOBar = u;
                      m_s[i].rXBar = u;
-                     m_s[i].cAct  = false;
                     }
                   else
-                    {
                      TrackRev(i, u, h[u], l[u]);
-                     StartCand(i, u, h[u], l[u]);
-                    }
+                  StartCand(i, u, h[u], l[u]);
                   //--- v6 touch entry: on the close of the T1 candle, if that candle did not break the BPR
                   if(m_p.touchEntry && m_s[i].touches == 1 && !brokeNow && DirAllowed(zd) && TouchOwner(i))
                      m_s[i].touchReady = true;
@@ -669,10 +710,12 @@ private:
                Track(i, u, h[u], l[u]);
                TrackRev(i, u, h[u], l[u]);
               }
-            //--- v7: the rejection; a rejected later visit gives the reversal leg its origin
+            //--- v7: the rejection; a rejected visit gives the reversal leg its origin (and, DEEPEST, its touch wick)
             if(rj)
               {
-               m_s[i].rej = true;
+               m_s[i].rej     = true;
+               m_s[i].lastRej = u;
+               ApplyLevelCand(i);
                if(m_s[i].cAct)
                  {
                   m_s[i].rO    = m_s[i].cO;

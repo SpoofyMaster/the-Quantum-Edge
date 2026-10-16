@@ -48,6 +48,12 @@
 // (origin = the top of the last rejected bounce), and BOTH follows each BPR as two setups, a continuation one and a
 // reversal one, so a reversal can still trade after the continuation did. Detector params revLevel / revNeedReject
 // (MQL5 only); tests/test_bpr_breakout_v7_reversal.py.
+// 7.01 (review of v7): the 100 % of a rejected visit is the bounce after the visit's low (every visit, T1 included,
+// and a visit opened by a failed breakout candle); with DEEPEST a later touch's wick counts once its visit is rejected;
+// a reversal needs its FVG after its 100 % bar; a reversal setup's expiry counts from its last rejection. Executor:
+// the trade direction of a reversal setup in the log / setups CSV from the start; with BOTH a reversal setup's entries
+// share the 0.20 % without the touch entry's share; DIAG counts setups with BOTH; a finished setup's copy of its BPR's
+// zone / T labels is deleted while the other setup of that BPR is still tracked.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -60,7 +66,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "7.00"
+#property version     "7.01"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -388,6 +394,21 @@ string Px(const double v)
    return(DoubleToString(v, _Digits));
   }
 
+// v7.01: the trade direction a setup's records stand for (a reversal setup trades against its BPR from the start)
+int TradeDirOf(const BfEvent &e)
+  {
+   return((e.kind == BF_SETUP_REVERSAL) ? -e.zdir : e.dir);
+  }
+
+// v7.01: risk shares of a setup = its Fibonacci entries, + 1 when it owns the touch entry (with BOTH the reversal
+// setup never does)
+int SharesOf(const int kind)
+  {
+   if(InpTouchEntry && !(InpSetupType == BF_SETUP_BOTH && kind == BF_SETUP_REVERSAL))
+      return(g_nLevels + 1);
+   return(g_nLevels);
+  }
+
 string DirText(const int dir)
   {
    return((dir > 0) ? "LONG" : "SHORT");
@@ -642,7 +663,7 @@ string SetupCsv(const BfEvent &e)
   {
    bool conf = (e.confirmBar >= 0);
    bool dec  = (e.snSL != 0.0);
-   string line = IntegerToString(e.id) + "," + IntegerToString(e.dir) + "," + CBfLogger::Ts(BarTime(e.created)) + "," +
+   string line = IntegerToString(e.id) + "," + IntegerToString(TradeDirOf(e)) + "," + CBfLogger::Ts(BarTime(e.created)) + "," +
                  Px(e.B) + "," + Px(e.T) + "," + IntegerToString(e.touches) + "," +
                  ((e.ref >= 0) ? CBfLogger::Ts(BarTime((e.lvlBar >= 0) ? e.lvlBar : e.ref)) : "") + "," +
                  ((e.ref >= 0) ? Px(e.lvl) : "") + "," +
@@ -658,8 +679,8 @@ string SetupCsv(const BfEvent &e)
 // One Experts-log line per detector record
 string EventText(const BfEvent &e)
   {
-   string s = "#" + IntegerToString(e.id) + ((e.kind == BF_SETUP_REVERSAL) ? " REV" : "") + " " + DirText(e.dir) + " " +
-              BfEventName(e.ev);
+   string s = "#" + IntegerToString(e.id) + ((e.kind == BF_SETUP_REVERSAL) ? " REV" : "") + " " +
+              DirText(TradeDirOf(e)) + " " + BfEventName(e.ev);
    int    k = e.k;
    if(e.ev == BF_EV_TOUCH)
       s = s + " " + IntegerToString(k) + " of max " + IntegerToString(g_maxTouches) + " (zone " + Px(e.B) + " - " +
@@ -714,7 +735,8 @@ void DrawEvent(const BfEvent &e)
    t  = g_t[e.n];
    lo = g_l[e.n];
    hi = g_h[e.n];
-   tip = "#" + IntegerToString(e.id) + " " + DirText(e.dir) + " " + BfEventName(e.ev);
+   tip = "#" + IntegerToString(e.id) + ((e.kind == BF_SETUP_REVERSAL) ? " REV" : "") + " " + DirText(TradeDirOf(e)) +
+         " " + BfEventName(e.ev);
    if(e.ev == BF_EV_TOUCH)
      {
       // the setup's own zone (the LuxAlgo box may leave the engine arrays, and its colour is not the direction)
@@ -748,7 +770,33 @@ void DrawEvent(const BfEvent &e)
                                   Px(e.X));
             else
                if(e.ev == BF_EV_DONE || e.ev == BF_EV_CLOSED)
+                 {
+                  //--- v7.01 BOTH: the other setup of this BPR, still tracked, draws the same zone and T labels; drop
+                  //    this setup's copies so the live ones stay visible, then grey the rest
+                  if(SiblingTracked(e))
+                    {
+                     g_render.SetupDelete(e.id, "ZONE");
+                     for(int k = 1; k <= 5; k++)
+                        g_render.SetupDelete(e.id, "T" + IntegerToString(k));
+                    }
                   g_render.SetupGrey(e.id);
+                 }
+  }
+
+// v7.01: another tracked setup of the same BPR (BOTH: the continuation and the reversal setup of one BPR)
+bool SiblingTracked(const BfEvent &e)
+  {
+   int     i;
+   int     n = g_det.TrackedCount();
+   BfSetup s;
+   for(i = 0; i < n; i++)
+     {
+      if(!g_det.GetTracked(i, s))
+         continue;
+      if(s.id != e.id && s.created == e.created && s.zdir == e.zdir && s.B == e.B && s.T == e.T)
+         return(true);
+     }
+   return(false);
   }
 
 // The setup Fibonacci (spec s.8): dashed while the leg is tracked (phase LEG), solid with the order lines once
@@ -1380,7 +1428,8 @@ void ExecBatch(const BfIntent &its[], const int n)
    if(wait == "")
      {
       g_risk.OnTradeEvent(g_ses);
-      budget = g_risk.LevelBudget(g_nShares);
+      // v7.01: the setup's own share count (with BOTH a reversal setup has no touch-entry share)
+      budget = g_risk.LevelBudget(g_det.GetSetup(id, ss) ? SharesOf(ss.kind) : g_nShares);
       for(j = 0; j < n; j++)
         {
          P[j]    = g_trade.NormalizePrice(its[j].P);
@@ -2551,7 +2600,9 @@ int St(const int code)
 // diagnostics rows (panel and Experts log): why setups do or do not become orders
 string DiagFunnel(void)
   {
-   return("funnel: BPRs " + IntegerToString(St(BF_STAT_ARMED)) + " | touches " + IntegerToString(St(BF_STAT_TOUCH)) +
+   // v7.01: with BOTH every BPR has two setups, so the counts are per setup
+   return("funnel: " + ((InpSetupType == BF_SETUP_BOTH) ? "setups (2 per BPR: continuation + reversal) " : "BPRs ") +
+          IntegerToString(St(BF_STAT_ARMED)) + " | touches " + IntegerToString(St(BF_STAT_TOUCH)) +
           " | breakouts " + IntegerToString(St(BF_STAT_BREAKOUT)) + " (failed " + IntegerToString(St(BF_STAT_BRK_FAIL)) +
           ") | confirmed " + IntegerToString(St(BF_STAT_CONFIRM)) + " | entry decisions " +
           IntegerToString(St(BF_STAT_PLACE)) + " (orders accepted " + IntegerToString(g_trade.nSent) + ") | closed " +
@@ -2800,7 +2851,10 @@ void SelfCheck(void)
       g_log.Info("SELF-CHECK note: the cost filter is off - an entry may be placed even when spread + commission + " +
                  "slippage are a large part of its risk (small Fibonacci legs)");
    g_log.Info("SELF-CHECK risk: " + DoubleToString(g_riskPct, 2) + "% per setup = " + DoubleToString(budget, 2) + " " +
-              AccountInfoString(ACCOUNT_CURRENCY) + " per entry (" + IntegerToString(g_nShares) + " entries" + (InpTouchEntry ? " incl. the touch entry" : "") + ") | volume min " +
+              AccountInfoString(ACCOUNT_CURRENCY) + " per entry (" + IntegerToString(g_nShares) + " entries" + (InpTouchEntry ? " incl. the touch entry" : "") + ")" +
+              ((InpTouchEntry && InpSetupType == BF_SETUP_BOTH) ? "; reversal setups (no touch entry) " +
+               DoubleToString(g_risk.LevelBudget(g_nLevels), 2) + " per entry (" + IntegerToString(g_nLevels) + " entries)" : "") +
+              " | volume min " +
               DoubleToString(vmin, 2) + " step " + DoubleToString(g_trade.VolumeStep(), 2) +
               ((maxStop > 0.0) ? " | the minimum volume fits a stop of at most " + DoubleToString(maxStop, _Digits) +
                " price units (wider stops -> SIZE_BELOW_MIN)" : " | the minimum volume does not fit the budget: " +

@@ -301,6 +301,70 @@ def v7_sequences() -> dict[str, list]:
                                 bar(100.1, 100.9, 99.7, 99.8), bar(99.8, 99.85, 99.25, 99.6),
                                 bar(99.95, 100.3, 99.92, 100.0), bar(100.0, 100.05, 99.3, 99.4),
                                 bar(99.4, 99.45, 99.28, 99.35), bar(99.35, 99.6, 99.3, 99.55)],
+        # v7.01 (review): the same descent split into candles two ways. After 'two_touches' (top 101.6 on 26) price
+        # visits the zone on 28 (low 99.6), bounces to 100.35 (REJECT on 30) and breaks down 31-32. split_a: 27
+        # already falls to 100.0; split_b: 27 stays high and 28 falls the whole way. Both: 100 % = 100.35.
+        "split_a": scenarios()["two_touches"] + [
+            bar(101.55, 101.6, 100.0, 100.1), bar(100.1, 100.15, 99.6, 99.7), bar(99.7, 100.3, 99.65, 100.2),
+            bar(100.2, 100.35, 99.95, 100.0), bar(100.0, 100.05, 99.3, 99.4), bar(99.4, 99.45, 98.9, 99.0),
+            bar(99.0, 99.05, 98.4, 98.5), bar(98.5, 99.0, 98.45, 98.95)],
+        "split_b": scenarios()["two_touches"] + [
+            bar(101.55, 101.6, 101.0, 101.1), bar(101.1, 101.15, 99.6, 99.7), bar(99.7, 100.3, 99.65, 100.2),
+            bar(100.2, 100.35, 99.95, 100.0), bar(100.0, 100.05, 99.3, 99.4), bar(99.4, 99.45, 98.9, 99.0),
+            bar(99.0, 99.05, 98.4, 98.5), bar(98.5, 99.0, 98.45, 98.95)],
+        # v7.01 (review): T1 14, rejection 15 (top 101.6), 17 enters the zone and closes below the T1 wick (BREAKOUT,
+        # a visit but not a touch), 18 closes back above it (BREAK_FAIL), 19 rejects the visit (bounce top 100.5),
+        # 21 breaks out again, 22 confirms: 100 % = 100.5, the bounce after the visit's low 99.3
+        "failed_break_visit": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 101.6, 99.95, 101.5),
+                                   bar(101.5, 101.55, 100.3, 100.35), bar(100.35, 100.4, 99.3, 99.4),
+                                   bar(99.4, 99.95, 99.35, 99.9), bar(100.0, 100.5, 99.95, 100.4),
+                                   bar(100.4, 100.45, 100.0, 100.1), bar(100.1, 100.15, 99.3, 99.35),
+                                   bar(99.35, 99.4, 98.9, 99.0), bar(99.0, 99.6, 98.95, 99.5),
+                                   bar(99.5, 99.6, 98.0, 98.1)],
+        # v7.01 (review): T1 14, then a crash through the BPR within the T1 visit (low 95.0 on 17, no rejection yet),
+        # back up to 21 (REJECT, top 100.15), 22 closes below the T1 wick, 23 confirms, 24 pulls back: the leg is the
+        # bounce 100.15 -> 99.0, not T1's high -> the crash low
+        "t1_crash": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.05, 99.0, 99.1), bar(99.1, 99.2, 97.0, 97.1),
+                         bar(97.1, 97.2, 95.0, 95.2), bar(95.2, 97.0, 95.1, 96.9), bar(96.9, 99.0, 96.8, 98.9),
+                         bar(98.9, 100.1, 98.8, 100.0), bar(100.0, 100.15, 99.95, 100.1),
+                         bar(100.1, 100.12, 99.3, 99.4), bar(99.4, 99.45, 99.0, 99.1), bar(99.1, 99.4, 99.05, 99.3)],
+        # v7.01 (review): 'fill_target' (T1 14 wick 99.5, long trade to 101.8), then the drop: 27 enters the zone
+        # with a wick to 99.2 and closes 99.7 (T2, never rejected), 28 and 29 close below the T1 wick: the
+        # breakout (an unrejected T2 does not move the DEEPEST level), 30 the low 98.6, 32 fills, 33 the target
+        "drop_after_t1": scenarios()["fill_target"] + [
+            bar(101.7, 101.75, 100.9, 101.0), bar(101.0, 101.05, 99.2, 99.7), bar(99.7, 99.8, 99.25, 99.35),
+            bar(99.35, 99.4, 99.22, 99.3), bar(99.3, 99.35, 98.6, 98.7), bar(98.7, 99.3, 98.65, 99.25),
+            bar(99.25, 100.3, 99.2, 100.2), bar(100.2, 100.25, 98.0, 98.1), bar(98.1, 98.15, 97.0, 97.1)],
+        # v7.01 (review): 'two_touches', then a drop without any bearish gap: the only bearish gap after T2 is bar 24,
+        # inside the long trade before the reversal's 100 % (26). No reversal orders (FVG rule).
+        "fvg_before_top": scenarios()["two_touches"] + [
+            bar(101.55, 101.6, 100.85, 100.9), bar(100.9, 101.4, 100.3, 100.4), bar(100.4, 100.85, 99.3, 99.4),
+            bar(99.4, 100.3, 98.9, 99.0), bar(99.0, 99.3, 98.4, 98.5), bar(98.5, 98.95, 98.45, 98.9),
+            bar(98.9, 100.1, 98.85, 100.0), bar(100.0, 100.05, 98.6, 98.7), bar(98.7, 98.9, 98.3, 98.35)],
+        # v7.01: T1 14, R 15, T2 16 (wick 99.7), 17 a wide candle in the visit (high 100.8) that makes its low 99.6,
+        # 18 rejects (top 100.4), 19 closes below the T1 wick, 20 confirms: the bounce is measured after the visit's
+        # low, so the 100 % is 100.4, not 17's high
+        "visit_wide_candle": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                  bar(100.1, 100.15, 99.7, 99.85), bar(99.85, 100.8, 99.6, 99.7),
+                                  bar(99.95, 100.4, 99.93, 100.3), bar(100.3, 100.32, 99.3, 99.4),
+                                  bar(99.4, 99.45, 99.0, 99.1), bar(99.1, 99.5, 99.05, 99.45)],
+        # v7.01: T1 14, R 15, T2 16, 17 the visit's low 99.25, 18 a spike to 100.6 inside the visit, 19 closes below
+        # the T1 wick inside the same visit (BREAKOUT, low 99.35: not a new visit low), 20 fails, 21 rejects (top
+        # 100.4), 22 breaks out, 23 confirms: the bounce after the visit's low tops at 100.6
+        "visit_lower_high": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                 bar(100.1, 100.15, 99.7, 99.8), bar(99.8, 99.85, 99.25, 99.6),
+                                 bar(99.6, 100.6, 99.45, 99.7), bar(99.7, 99.75, 99.35, 99.4),
+                                 bar(99.4, 99.9, 99.38, 99.85), bar(99.95, 100.4, 99.93, 100.3),
+                                 bar(100.3, 100.32, 99.3, 99.4), bar(99.4, 99.45, 99.0, 99.1),
+                                 bar(99.1, 99.6, 99.05, 99.55)],
+        # v7.01: the visit's low 99.2 (17), its bounce top 100.6 (18, still in the zone), a lower low 99.3 after that
+        # top (19), the rejection (20), then two closes below the T1 wick with lows 99.35 / 99.32: the 0 % is 99.3,
+        # the lowest low after the 100 %
+        "cand_x_after_top": p + [bar(100.1, 100.2, 99.5, 100.0), bar(100.0, 100.18, 99.95, 100.1),
+                                 bar(100.1, 100.15, 99.7, 99.8), bar(99.8, 99.85, 99.2, 99.6),
+                                 bar(99.6, 100.6, 99.55, 99.7), bar(99.7, 99.75, 99.3, 99.55),
+                                 bar(99.95, 100.3, 99.93, 100.2), bar(100.2, 100.22, 99.35, 99.4),
+                                 bar(99.4, 99.45, 99.32, 99.35), bar(99.35, 99.6, 99.33, 99.55)],
     }
     for v in sq.values():
         check(v)

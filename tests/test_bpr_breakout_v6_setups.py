@@ -176,14 +176,14 @@ def test_continuation_does_not_trade_the_reversal(exe, tmp_path, d):
 @pytest.mark.parametrize("d", [1, -1], ids=["long-BPR", "short-BPR"])
 def test_reversal_after_t2_uses_the_t2_candle(exe, tmp_path, d):
     """LAST level (v6): T1 14 (low 99.5), rejection 15, T2 16 (low 99.6): 17 closes at 99.55 - below the T2 candle's
-    low only - and starts the reversal. v7: T2 was not rejected before that breakout, so the leg origin stays the
-    highest high since T1 (14: 100.2; v6 restarted it at T2: 100.12). With the v7 default level (the deepest wick,
-    99.5) 17 is no breakout; 18 is."""
+    low only - and starts the reversal. v7.01: T2 was not rejected before that breakout, so the leg keeps the bounce
+    of the rejected T1 visit: its top 100.15 (15; v6 restarted the leg at T2: 100.12). With the v7 default level (the
+    deepest wick, 99.5) 17 is no breakout; 18 is."""
     recs, _ = run(exe, tmp_path, seq("rev_t2", d), setup_type=REV, **V6R)
     assert key(recs_of(recs, n=16)) == [(16, "TOUCH", d, 2, None)]
     assert key(recs_of(recs, n=17)) == [(17, "BREAKOUT", -d, 0, None)]
     conf = recs_of(recs, n=18, ev="CONFIRM")[0]
-    assert conf["O"] == pytest.approx(100.2 if d > 0 else 99.8)
+    assert conf["O"] == pytest.approx(100.15 if d > 0 else 99.85)
     dp, _ = run(exe, tmp_path, seq("rev_t2", d), setup_type=REV)
     assert not recs_of(dp, n=17, ev="BREAKOUT") and key(recs_of(dp, n=18)) == [(18, "BREAKOUT", -d, 0, None)]
 
