@@ -318,6 +318,12 @@ struct BfParams
                                           // closes beyond the zone inside a visit as the rejection. -1 = v4-v7 rules
    bool              revNeedFvg;          // the reversal waits for an FVG of its trade direction (false = its limits
                                           // can go in at the confirmation)
+   // v9 (EA only; 0 = v8)
+   int               revRejCandles;       // the reversal breakout needs at least this many candles in the BPR's
+                                          // direction (bullish candles for a bullish BPR) that do not close beyond the
+                                          // reversal level, after the T1 candle and after the last close beyond that
+                                          // level ("a rejection of at least 2 green candles, successive or not, before
+                                          // price comes back for the breakout")
    // session / execution
    bool              useSession;
    double            commissionPerLotSide; // account currency per lot per side (UNVERIFIED); informative
@@ -360,6 +366,7 @@ void BfDefaultParams(BfParams &p)
    p.revNeedReject        = true;
    p.t1WaitBars           = -1;
    p.revNeedFvg           = true;
+   p.revRejCandles        = 0;
    p.useSession           = true;
    p.commissionPerLotSide = 3.50;
    p.slippageTicks        = 1.0;
@@ -398,6 +405,7 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.revNeedReject        = src.revNeedReject;
    dst.t1WaitBars           = src.t1WaitBars;
    dst.revNeedFvg           = src.revNeedFvg;
+   dst.revRejCandles        = src.revRejCandles;
    dst.useSession           = src.useSession;
    dst.commissionPerLotSide = src.commissionPerLotSide;
    dst.slippageTicks        = src.slippageTicks;
@@ -509,6 +517,10 @@ struct BfSetup
    int               cLvlBar;
    int               lastRej;             // v7.01: bar of the last REJECT (a reversal setup's expiry counts from it)
    int               lastVisit;           // v8: first bar of the latest visit of the zone (T1, T2, a pullback visit)
+   int               nRejC;               // v9: rejection candles (in the BPR's direction, not closing beyond the
+                                          // reversal level) after the T1 candle and after the last close beyond it
+   bool              rejCReset;           // v9: the last candle closed beyond the reversal level: nRejC restarts on
+                                          // the next bar
   };
 
 void BfClearSetup(BfSetup &s)
@@ -573,6 +585,8 @@ void BfClearSetup(BfSetup &s)
    s.cLvlBar     = -1;
    s.lastRej     = -1;
    s.lastVisit   = -1;
+   s.nRejC       = 0;
+   s.rejCReset   = false;
   }
 
 void BfCopySetup(BfSetup &dst, const BfSetup &src)
@@ -637,6 +651,8 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.cLvlBar     = src.cLvlBar;
    dst.lastRej     = src.lastRej;
    dst.lastVisit   = src.lastVisit;
+   dst.nRejC       = src.nRejC;
+   dst.rejCReset   = src.rejCReset;
   }
 
 //+------------------------------------------------------------------+
@@ -725,6 +741,7 @@ struct BfEvent
    bool              rev;                 // v6: reversal breakout (lvl is then the reversal level)
    int               lvlBar;              // v6: the bar lvl comes from (ref; the touch candle for a reversal)
    int               kind;                // v7: BF_SETUP_CONTINUATION / BF_SETUP_REVERSAL (the setup's kind)
+   int               rejC;                // v9: the setup's rejection candles before this bar's candle (nRejC)
   };
 
 void BfClearEvent(BfEvent &e)
@@ -767,6 +784,7 @@ void BfClearEvent(BfEvent &e)
    e.rev         = false;
    e.lvlBar      = -1;
    e.kind        = BF_SETUP_CONTINUATION;
+   e.rejC        = 0;
   }
 
 void BfCopyEvent(BfEvent &dst, const BfEvent &src)
@@ -809,6 +827,7 @@ void BfCopyEvent(BfEvent &dst, const BfEvent &src)
    dst.rev         = src.rev;
    dst.lvlBar      = src.lvlBar;
    dst.kind        = src.kind;
+   dst.rejC        = src.rejC;
   }
 
 #endif

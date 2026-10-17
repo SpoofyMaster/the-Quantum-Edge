@@ -46,6 +46,7 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "rev_reject") p.revNeedReject = v != 0;              // v7, EA only
    else if(k == "t1_wait") p.t1WaitBars = (int)v;                    // v8, EA only: -1 = v7, 0 = no limit
    else if(k == "rev_fvg") p.revNeedFvg = v != 0;                    // v8, EA only
+   else if(k == "rev_rej_c") p.revRejCandles = (int)v;               // v9, EA only: 0 = v8
    else if(k == "ext") extOut = v != 0;                              // v7 tests: + kind / zdir / lvl / lvlBar per record
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
@@ -104,7 +105,8 @@ int main(int argc, char **argv)
                 px ? Num(e.P).c_str() : "null", px ? Num(e.SL).c_str() : "null", px ? Num(e.TP).c_str() : "null",
                 ox ? Num(e.O).c_str() : "null", ox ? Num(e.X).c_str() : "null");
          if(extOut)
-            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d", e.kind, e.zdir, Num(e.lvl).c_str(), e.lvlBar);
+            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d", e.kind, e.zdir, Num(e.lvl).c_str(),
+                   e.lvlBar, e.rejC);
          printf("}\n");
         }
       det.ClearEvents();

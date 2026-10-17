@@ -1,4 +1,45 @@
-# BprFvgEA v8: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+# BprFvgEA v9: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+
+> **v9 (2026-10-17)** = v8 plus your rule of 2026-10-17 for the reversal: "after T1 price must absolutely make a
+> rejection which a minimum 2 candles successive or not ... before price comes back for breakout", with "a minimum 2
+> Green candles for a bullish rejection and 2 RED candles for a bearish rejection". The chart
+> `research/indicators/preview/bpr_rejection_example.svg` (`example_rejection.svg` in the zip) shows your C1 / C2
+> example as v9 reads it.
+>
+> | Input | v9 default | What it does |
+> |---|---|---|
+> | `InpRevRejCandles` | 2 | The reversal breakout needs at least this many **rejection candles** after T1. `0` = v8 (any rejection). |
+>
+> **What counts as a rejection candle** (bullish BPR; a bearish BPR is the mirror image, with red candles):
+> - a **green** candle (close above open) **after** the T1 candle; the T1 candle itself does not count;
+> - the candles do not have to follow each other: green, red, green is 2;
+> - a candle that closes **below the reversal level** (the T1 wick by default) does not count: price is already
+>   through the BPR, so it is no rejection from it;
+> - a doji (close = open) does not count.
+>
+> **Price comes back too early.** A close below the reversal level before the 2 rejection candles is not a breakout.
+> It also restarts the count: the 2 candles must come after it, before the next close below the level. The same
+> applies after a failed breakout (`BREAK_FAIL`).
+>
+> **Unchanged.** The rejection itself is still needed (`InpRevNeedRejection`). The breakout is still 2 closes beyond
+> the level, and the limits still go in on the second close. The continuation setup is not affected.
+>
+> **Your example in numbers** (the chart's bars, `REVERSAL`):
+> - T1 on 17 (wick 99.00);
+> - C1 on 18, C2 on 19 (green);
+> - first close below 99.00 on 22 ("2 rejection candles before it" in the log), second on 23: sell limits on 23 at
+>   99.90 / 100.30 / 100.61 (100 % = 101.60, 0 % = 98.20);
+> - moved on 24 to 99.60 / 100.07 / 100.44; the 50 % fills on 26, the target is reached on 27.
+>
+> With only C1 (T1, one green candle, then the drop), v8 took the reversal and v9 does not. Two of the v8 test examples
+> are like that (`late_t1`, `one_candle_reaction`); they no longer trade.
+>
+> **On the chart and in the log.**
+> - The chart labels each rejection candle `C1`, `C2`, … as you drew them (above a green candle, below a red one). If
+>   price closes beyond the level before the breakout, these labels go and the count starts again.
+> - A reversal `REJECT` shows `rejection candles since T1: n; the breakout needs 2`.
+> - A reversal `BREAKOUT` shows `n rejection candles before it`.
+> - The CSV files are now `BFEA9_*` (same columns).
 
 > **v8 (2026-10-16)** = 7.01 plus your example of 2026-10-16. The BPR forms, price goes away, comes back later and taps
 > it (T1), reacts, then breaks the T1 wick. "The EA must track every BPR created and where was the first tap"; "the
@@ -441,6 +482,7 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpSetupType` | CONTINUATION | **v6/v7.** `CONTINUATION` (v1–v5), `REVERSAL` (breakout through the BPR, traded the other way), `BOTH` (v7: a continuation setup and a reversal setup per BPR, each on its own). See the top. |
 | `InpRevLevel` | DEEPEST | **v7.** Reversal level: `DEEPEST` wick of the T1 / T2 candles, `T1` wick, or `LAST` touch candle's wick (v6) |
 | `InpRevNeedRejection` | true | **v7.** A rejection after T1 must come before the reversal breakout (`false` = v6) |
+| `InpRevRejCandles` | 2 | **v9.** At least this many candles in the BPR's direction (green for a bullish BPR, red for a bearish one) after the T1 candle, before the reversal breakout. They need not follow each other. A candle closing beyond the reversal level does not count, and restarts the count. `0` = v8. |
 | `InpRevNeedFvg` | false | **v8.** `true`: the reversal waits for an FVG of the drop after its 100 % before its limits (v7). `false`: the limits can go in on the confirming close. |
 | `InpMaxBarsToT1` | 0 | **v8.** Bars from a BPR's creation to its first touch: 0 = no limit (every BPR is followed until it is touched); `-1` = v7 rules (the breakout window counts from the creation, warm-up BPRs are dropped, a full list refuses new BPRs, no one-candle rejection). |
 | `InpTouchEntry` | false | **v6.** A market order in the BPR's direction at the next open after the T1 candle (if it did not break the BPR). Stop beyond the BPR + `InpStopBufferTicks`. |

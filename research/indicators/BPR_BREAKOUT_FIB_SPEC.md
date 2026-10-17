@@ -1,4 +1,4 @@
-# BprFvgEA v8: BPR rejection → breakout → Fibonacci pullback (+ reversal setup, touch entry)
+# BprFvgEA v9: BPR rejection → breakout → Fibonacci pullback (+ reversal setup, touch entry)
 
 **Status:** hypothesis **H-14**. `HYPOTHESIS`: it has not been tested. Nothing here is evidence of an edge.
 
@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 8.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 9.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -76,6 +76,7 @@ gives the rules.
 | `InpRevNeedRejection` | (MQL5 only: `revNeedReject`) | true | v7: a rejection after T1 before the reversal breakout (§4.5) |
 | `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §4.5, §7) |
 | `InpRevNeedFvg` | (MQL5 only: `revNeedFvg`) | true (EA: false) | v8: the reversal waits for its FVG (§4.5) |
+| `InpRevRejCandles` | (MQL5 only: `revRejCandles`) | 0 (EA: 2) | v9: rejection candles needed before the reversal breakout (§4.5) |
 
 The research defaults (this table's second-to-last column, the detector's `BfDefaultParams`, the parity set) keep the
 v7 rules; the EA's inputs default to the v8 behaviour where marked "EA:".
@@ -277,6 +278,19 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   leg candidate). A close exactly at the edge is not enough. This is the owner's "bullish reaction" off T1 in one
   candle: before v8, a candle opening inside the zone belonged to the visit, and a re-entry on the next candle kept the
   setup unrejected. A continuation setup keeps the §4.1 rule.
+- **v9 rejection candles `nRejC`** (`revRejCandles > 0`; reversal setups only). The owner's rule: "after T1 price must
+  absolutely make a rejection which a minimum 2 candles successive or not ... before price comes back for breakout",
+  "2 Green candles for a bullish rejection and 2 RED candles for a bearish rejection". On every bar `u` after the T1
+  candle (`touches > 0`, `u > touchBar1`), before step 4:
+  1. if the previous bar set `rejCReset`: `nRejC = 0`, and the flag clears;
+  2. if `BeyondRev(u)` (the close is beyond `lvlR`): set `rejCReset` (the count restarts from the next bar);
+  3. otherwise, if the candle is in the BPR's direction (`c[u] > o[u]` for a bullish BPR, `c[u] < o[u]` for a bearish
+     one): `nRejC += 1`.
+
+  So `nRejC` on a bar is the number of rejection candles after T1 and after the last close beyond the level, up to and
+  including this bar. A rejection candle never closes beyond the level, so it is never a breakout candle itself. A doji
+  and the T1 candle do not count. Every record carries the setup's `nRejC` (`rejC`; the harness prints it as `rc` with
+  `ext=1`). On a `BREAKOUT` it is the count the breakout used.
 - **The reversal leg `rO` / `rX`** (100 % / 0 %): `TrackRev(u)` runs on every pre-confirmation bar from T1 on: if
   `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`.
   - T1 starts it: `rO = h[u]`, `rX = l[u]`. This only matters while no visit has been rejected
@@ -299,7 +313,7 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   is false (a REVERSAL setup kept only for its touch entry): then `DONE(BROKEN)`. A continuation setup ends
   `DONE(BROKEN)` as in v5.
 - **Reversal breakout (step 5b).**
-  - **Condition.** Phase `ZONE` (not on the bar of a `BREAK_FAIL`), `allowed(−zdir)`, `rej || !revNeedReject` (v7,
+  - **Condition.** Phase `ZONE` (not on the bar of a `BREAK_FAIL`), `allowed(−zdir)`, `nRejC ≥ revRejCandles` (v9), `rej || !revNeedReject` (v7,
     default on: "t1 + rejection from it and pullback"), and `BeyondRev(u)`: bullish BPR `c[u] < lvlR`, bearish
     `c[u] > lvlR`. The candle may touch or cross the zone; it is not a touch.
   - **Then.** The phase becomes `BREAK` with `rev = true` and `dir = −zdir`, and record `BREAKOUT`, whose `dir` is the

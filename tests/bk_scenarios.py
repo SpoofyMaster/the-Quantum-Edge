@@ -432,6 +432,53 @@ def v8_sequences() -> dict[str, list]:
         check(v)
     return sq
 
+
+# v9: the drop after the reversal's rejection, from a candle that closed at c: 1st close below the T1 wick 99.0
+# (BREAKOUT), 2nd close (CONFIRM), a new low 97.6, a pullback to 99.7, the target
+def v9_drop(c: float) -> list:
+    return [bar(c, c + 0.05, 98.8, 98.9), bar(98.9, 99.0, 98.2, 98.3), bar(98.3, 98.5, 97.6, 97.7),
+            bar(97.7, 98.9, 97.65, 98.8), bar(98.8, 99.7, 98.7, 99.3), bar(99.3, 99.35, 97.3, 97.4)]
+
+
+def v9_t1() -> list:
+    """The owner's tap from above up to T1: the BPR forms (13), green candles go up without touching it (14-15), a red
+    candle comes back (16) and taps it on 17 (T1, red, wick 99.0, closes inside the zone)."""
+    return prefix() + [bar(100.2, 100.95, 100.15, 100.9), bar(100.9, 101.6, 100.85, 101.5),
+                       bar(101.5, 101.55, 100.0, 100.1), bar(100.1, 100.15, 99.0, 99.6)]
+
+
+def v9_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v9 rule (tests/test_bpr_breakout_v9_rejection.py), from the owner's example of
+    2026-10-17: after T1, the reversal needs a rejection of at least 2 candles in the BPR's direction (green for a
+    bullish BPR), successive or not, before the breakout. Also in the parity set at the default settings. Bullish BPR
+    [98.0, 99.9] armed on 13; mirror() gives the bearish side (red rejection candles)."""
+    t1 = v9_t1()
+    c1 = bar(99.6, 100.3, 99.55, 100.2)                       # 18: C1, closes back above the zone (the rejection)
+    sq = {
+        # the owner's drawing: T1 17, C1 18 and C2 19 (two green candles), 20 a red candle with the top of the
+        # reaction (101.6, the 100 %), 21 red, then the drop: 22 closes below the T1 wick, 23 again (limits),
+        # 24 a new low (97.6), 25-26 the pullback fills the 50 % (99.6), 27 reaches the target
+        "c1c2": t1 + [c1, bar(100.2, 100.8, 100.15, 100.7), bar(100.7, 101.6, 100.6, 100.65),
+                      bar(100.65, 100.7, 100.2, 100.3)] + v9_drop(100.3),
+        # the owner's complaint: T1 17, ONE green candle (18), then the drop at once: 19 closes below the T1 wick, 20
+        # again. v8 traded it; v9 does not. 22-23 green candles below / back above the wick, 24 a new close below it
+        # (one rejection candle since 19: still no reversal)
+        "one_green_then_break": t1 + [c1] + v9_drop(100.2),
+        # two green candles that do not follow each other: C1 18, a red candle above the zone (19), C2 20
+        "green_red_green": t1 + [c1, bar(100.2, 100.3, 100.0, 100.05), bar(100.05, 100.8, 100.0, 100.7),
+                                 bar(100.7, 101.6, 100.6, 100.65), bar(100.65, 100.7, 100.2, 100.3)] + v9_drop(100.3),
+        # price comes back too early (with InpRevLevel = T1): C1 18, 19 closes below the T1 wick (one rejection
+        # candle: no reversal), 20 green back above it (one again, counted from 19), 21 below it again (no reversal),
+        # 22 and 23 green above it (two since 21), 24 closes below it: the reversal breakout, 25 confirms
+        "reset_after_early_break": t1 + [c1, bar(100.2, 100.25, 98.8, 98.9), bar(98.9, 99.6, 98.85, 99.5),
+                                         bar(99.5, 99.55, 98.7, 98.8), bar(98.8, 99.6, 98.75, 99.5),
+                                         bar(99.5, 100.6, 99.45, 100.5)] + v9_drop(100.5),
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""

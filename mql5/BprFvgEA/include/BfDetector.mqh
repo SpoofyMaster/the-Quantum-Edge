@@ -123,6 +123,7 @@ private:
       m_ev[m_nEv].rev         = s.rev;
       m_ev[m_nEv].lvlBar      = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlRBar : s.ref;
       m_ev[m_nEv].kind        = s.kind;
+      m_ev[m_nEv].rejC        = s.nRejC;
       m_nEv++;
      }
 
@@ -584,8 +585,8 @@ private:
    //+---------------------------------------------------------------+
    //| spec s.4.1-s.4.4: one existing setup on closed bar u          |
    //+---------------------------------------------------------------+
-   void              StepExisting(const int i, const int u, const double &h[], const double &l[], const double &c[],
-                                  const BfEnv &env)
+   void              StepExisting(const int i, const int u, const double &o[], const double &h[], const double &l[],
+                                  const double &c[], const BfEnv &env)
      {
       int  d  = m_s[i].dir;
       int  zd = m_s[i].zdir;
@@ -612,6 +613,24 @@ private:
             return;
            }
          tn = (zd > 0) ? (l[u] <= m_s[i].T) : (h[u] >= m_s[i].B);
+         //--- v9 reversal: the rejection candles ("a minimum 2 green candles, successive or not, before price comes
+         //    back for the breakout"). After the T1 candle, a candle in the BPR's direction (bullish for a bullish BPR)
+         //    that does not close beyond the reversal level counts. A close beyond the level (a breakout, or price
+         //    coming back too early) restarts the count from the next candle, so the breakout candle sees only the
+         //    rejection candles after the last such close.
+         if(HasRev(i) && m_s[i].touches > 0 && u > m_s[i].touchBar1)
+           {
+            if(m_s[i].rejCReset)
+              {
+               m_s[i].nRejC     = 0;
+               m_s[i].rejCReset = false;
+              }
+            if(BeyondRev(i, c[u]))
+               m_s[i].rejCReset = true;
+            else
+               if((zd > 0) ? (c[u] > o[u]) : (c[u] < o[u]))
+                  m_s[i].nRejC++;
+           }
          //--- step 4: BREAK (continuation, or v6 reversal)
          if(ph == BF_PH_BREAK)
            {
@@ -662,10 +681,10 @@ private:
               }
             //--- v6 step 5b: reversal breakout candle: ZONE + a close beyond the reversal level lvlR (v7: the deepest
             //    wick of the T1 / T2 candles by default). It may touch the zone (it goes through it). v7: by default a
-            //    rejection must have come after T1 ("T1, rejection, pullback, breakout"). The trade direction becomes
-            //    -zdir from here.
+            //    rejection must have come after T1 ("T1, rejection, pullback, breakout"); v9: with at least
+            //    revRejCandles rejection candles before this one. The trade direction becomes -zdir from here.
             if(m_s[i].phase == BF_PH_ZONE && ph != BF_PH_BREAK && HasRev(i) && DirAllowed(-zd) &&
-               (!m_p.revNeedReject || m_s[i].rej) && BeyondRev(i, c[u]))
+               (!m_p.revNeedReject || m_s[i].rej) && m_s[i].nRejC >= m_p.revRejCandles && BeyondRev(i, c[u]))
               {
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].rev    = true;
@@ -1276,7 +1295,7 @@ public:
            }
       //--- step 3: existing setups in creation order
       for(i = 0; i < m_n; i++)
-         StepExisting(i, u, h, l, c, env);
+         StepExisting(i, u, o, h, l, c, env);
       Compact();
       //--- step 4: new setups
       NewSetups(u, eng, ev);
