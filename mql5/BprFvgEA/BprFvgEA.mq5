@@ -84,7 +84,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "9.00"
+#property version     "9.01"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -157,7 +157,7 @@ input group "==== SESSION, RISK, EXECUTION ===="
 input ENUM_BF_SERVER_TIME InpServerMode           = BF_SERVER_NY_PLUS_7;// Server time convention
 input int                 InpServerOffsetH        = 0;                  // Fixed-offset mode only: server = UTC + hours
 input bool                InpUseSession           = true;               // Entries 08:00 London .. 14:45 New York, Mon-Fri
-input bool                InpCancelAtSessionEnd   = true;               // Cancel pending orders at 14:45 New York (false = keep them until filled / expired)
+input bool                InpCancelAtSessionEnd   = true;               // Cancel pending orders at 14:45 New York and at the 16:44 rollover (false = keep them until filled / the leg ends)
 input bool                InpEntriesAfterSessionEnd = false;            // Allow NEW orders after 14:45 New York, until 16:44 New York (Mon-Fri)
 input bool                InpFlatBeforeRollover   = true;               // Close positions at 16:44 New York (false = held over the rollover / weekend: swap, gaps)
 input double              InpRiskPct              = 0.20;               // Risk per SETUP, % equity incl. commission (max 0.20), split over the entries
@@ -1649,10 +1649,14 @@ void ExecBatch(const BfIntent &its[], const int n)
         {
          // safety net only: the detector cancels the order through its own intents
          // server-side expiry, never later than the next 16:44 New York: the broker removes the order even when no
-         // tick arrives in 16:44-17:00 (the EA's own deletes need a tick)
+         // tick arrives in 16:44-17:00 (the EA's own deletes need a tick). 9.01: not with InpCancelAtSessionEnd =
+         // false (the orders are kept over the rollover). The leg-expiry safety net then gets 3 more days: it counts
+         // clock time, the detector's leg expiry counts bars, and no bar forms over a weekend or a daily break
          expiry = (datetime)((long)TimeCurrent() + (long)(g_legExp + 3) * (long)PeriodSeconds());
-         if((long)expiry > (long)TimeCurrent() + SecondsToRolloverCut())
+         if(InpCancelAtSessionEnd && (long)expiry > (long)TimeCurrent() + SecondsToRolloverCut())
             expiry = (datetime)((long)TimeCurrent() + SecondsToRolloverCut());
+         if(!InpCancelAtSessionEnd)
+            expiry = (datetime)((long)expiry + 3 * 86400);
          ok = g_trade.PlaceLimit(dir, lots[j], P[j], SL, TP, expiry, cmt, ticket);
         }
       if(!ok)
@@ -2231,15 +2235,15 @@ void SyncTrade(void)
            }
          if(OrderSelect(g_ctx.lv[k].orderTicket))
            {
-            if(g_ctx.lv[k].cancelWanted || (InRolloverWindow() && !g_ctx.lv[k].partialDel))
+            if(g_ctx.lv[k].cancelWanted || (InpCancelAtSessionEnd && InRolloverWindow() && !g_ctx.lv[k].partialDel))
               {
                if(!MgmtAllowed() || !RetryDue(g_ctx.lv[k].lastTry))
                   continue;
                if(!g_ctx.lv[k].cancelWanted)
                  {
-                  // 16:44-17:00 New York (whatever InpUseSession / InpCancelAtSessionEnd / InpFlatBeforeRollover are):
-                  // no pending order over the rollover (a fill there would be closed at once by the 16:44 flat, or
-                  // with the flat OFF would open in the rollover spread)
+                  // 16:44-17:00 New York (whatever InpUseSession / InpFlatBeforeRollover are; 9.01: only with
+                  // InpCancelAtSessionEnd = true): no pending order over the rollover (a fill there would be closed at
+                  // once by the 16:44 flat, or with the flat OFF would open in the rollover spread)
                   g_ctx.lv[k].cancelWanted = true;
                   g_nRollDel++;
                   g_log.Info(LevelTag(k) + "16:44-17:00 New York ROLLOVER: the pending order is deleted (this is the " +
@@ -2583,14 +2587,12 @@ bool LateEntryOk(const datetime server)
    return(dow >= 1 && dow <= 5 && m >= BF_NY_LAST_MIN && m < BF_NY_FLAT_MIN);
   }
 
-// v3: the cut that keeps pending orders out of the rollover even without a tick in 16:44-17:00 New York: the next
-// bar opens at or after 16:44 NY, on a weekend, or in another FX day than the bar that just closed (a data gap)
-bool RolloverCut(const datetime nextOpen, const datetime barTime)
+// 9.01: no order can be sent at server time t: outside the entry window (InpUseSession), in the last 2 minutes before
+// the 16:44 New York rollover cut, or in 16:44-17:00 New York (ExecBatch refuses those)
+bool NoOrderAt(const datetime t)
   {
-   datetime ny  = g_ses.ServerToNY(nextOpen);
-   int      dow = CBfSession::DowOf(ny);
-   int      m   = CBfSession::MinuteOfDay(ny);
-   return(m >= BF_NY_FLAT_MIN || dow == 0 || dow == 6 || g_ses.FxDay(nextOpen) != g_ses.FxDay(barTime));
+   int m = CBfSession::MinuteOfDay(g_ses.ServerToNY(t));
+   return((InpUseSession && !SessionOkAt(t)) || (m >= BF_NY_FLAT_MIN - 2 && m < BF_NY_ROLL_MIN));
   }
 
 void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool stale, const datetime barTime)
@@ -2605,16 +2607,22 @@ void BuildEnv(BfEnv &env, const bool warm, const datetime nextOpen, const bool s
    env.slotOwner      = env.slotFree ? 0 : SlotOwner();   // v5: 0 unless InpAnticipateEntries
    // v3 switches (the detector uses both signals only with InpUseSession = true):
    // - InpEntriesAfterSessionEnd: new orders also from 14:45 to 16:44 New York (the entry window ends at 16:44)
-   // - InpCancelAtSessionEnd = false: no cancel when the entry window ends; pending orders stay until they fill, the leg
-   //   expires (InpLegExpiryBars), a new extreme re-anchors the setup, or the rollover cut (16:44 New York, weekend,
-   //   or a new FX day after a data gap) is reached
+   // - InpCancelAtSessionEnd = false (9.01): no time-based cancel at all; pending orders stay until they fill, the leg
+   //   expires (InpLegExpiryBars) or breaks. Not at the end of the entry window, and not at the 16:44 New York rollover
+   //   cut either (v3-v9 still cancelled there). When no order can be sent (outside the entry window, near or in the
+   //   rollover, now or on the next bar) a new extreme does not move them either (keepOrders): the move would cancel
+   //   them for good.
    env.sessionEntryOk = g_ses.EntryOk(nextOpen) || (InpEntriesAfterSessionEnd && LateEntryOk(nextOpen));
    if(InpCancelAtSessionEnd)
       // = SessionCancel(nextOpen) with the defaults (v2); with the extended window also a new FX day after a data gap
       env.sessionCancel = !env.sessionEntryOk ||
                           (InpEntriesAfterSessionEnd && g_ses.FxDay(nextOpen) != g_ses.FxDay(barTime));
    else
-      env.sessionCancel = RolloverCut(nextOpen, barTime);
+      env.sessionCancel = false;
+   // the move would be sent on this bar's decision (nextOpen), or retried on the next bar; a catch-up bar after a
+   // gap is decided now (TimeCurrent): when any of these cannot send, the orders are not moved
+   env.keepOrders     = !InpCancelAtSessionEnd && (NoOrderAt(TimeCurrent()) || NoOrderAt(nextOpen) ||
+                                                   NoOrderAt((datetime)((long)nextOpen + PeriodSeconds())));
    env.riskOk         = g_risk.RiskOk();         // the order-error breaker is checked (and reported) by ExecBatch
    // a catch-up bar (not the last closed bar) has no decision tick: its spread is unknown -> no entry on it
    env.spreadOk       = (!stale && (g_maxSpreadPts <= 0 || env.sp <= (double)g_maxSpreadPts * _Point + 1e-12));
@@ -2858,7 +2866,7 @@ string FiltersText(void)
    string win  = !InpUseSession ? "OFF (any time)" :
                  (InpEntriesAfterSessionEnd ? "08:00 LDN-16:44 NY" : "08:00 LDN-14:45 NY");
    string canc = !InpUseSession ? "off (InpUseSession = false)" :
-                 (InpCancelAtSessionEnd ? "ON (at the end of the entry window)" : "OFF (switch)");
+                 (InpCancelAtSessionEnd ? "ON (at the end of the entry window)" : "OFF (switch: pending orders kept, also over the rollover)");
    return("switches: cost filter " + cost + " | RR filter " + rr + " | entry window " + win +
           " | cancel at window end " + canc + " | rollover order deletes " + IntegerToString(g_nRollDel));
   }

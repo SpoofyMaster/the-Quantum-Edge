@@ -8,6 +8,9 @@
 #include <cstring>
 
 static int sessCancelBar = -1, sessOffBar = -1;   // v5 tests: one bar with env.sessionCancel / !env.sessionEntryOk
+static int sessOffFrom = -1;                       // 9.01 tests: !env.sessionEntryOk from this bar on
+static bool keepOrders = false;                    // 9.01 tests: env.keepOrders = !env.sessionEntryOk (the EA's mapping
+                                                   // with InpCancelAtSessionEnd = false, without its rollover timing)
 static bool extOut = false;                        // v7 tests: extra fields (never in the parity runs)
 
 static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom, int &holdBars, const char *kv)
@@ -55,6 +58,8 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "hold_bars") holdBars = (int)v;
    else if(k == "sess_cancel") sessCancelBar = (int)v;
    else if(k == "sess_off") sessOffBar = (int)v;
+   else if(k == "sess_off_from") sessOffFrom = (int)v;
+   else if(k == "keep_orders") keepOrders = v != 0;
   }
 
 static std::string Num(double v) { char b[64]; snprintf(b, 64, "%.17g", v); return b; }
@@ -187,7 +192,8 @@ int main(int argc, char **argv)
          if(ok) own = (occ > 0) ? occ : tid;
          env.slotOwner = own;
         }
-      env.sessionEntryOk = (u != sessOffBar); env.sessionCancel = (u == sessCancelBar);
+      env.sessionEntryOk = (u != sessOffBar && (sessOffFrom < 0 || u < sessOffFrom)); env.sessionCancel = (u == sessCancelBar);
+      env.keepOrders = keepOrders && !env.sessionEntryOk;
       env.riskOk = true; env.spreadOk = true; env.sp = sp;
       det.OnBarClosed(u, O.data(), H.data(), L.data(), C.data(), st, ev, env);
       for(int k = 0; k < det.IntentCount(); k++)

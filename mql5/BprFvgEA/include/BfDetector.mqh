@@ -821,8 +821,9 @@ private:
         }
       if(ph == BF_PH_ORDERED)
         {
-         //--- 4.3
-         if(NewExt(i, h[u], l[u]))
+         //--- 4.3. 9.01: with env.keepOrders (pending orders kept, and no order can be sent now) a new extreme does
+         //    not re-anchor: moving the orders would cancel them with no way to send them again
+         if(!env.keepOrders && NewExt(i, h[u], l[u]))
            {
             CancelPending(i, u, BF_R_NEW_EXTREME);
             ResetLevels(i);

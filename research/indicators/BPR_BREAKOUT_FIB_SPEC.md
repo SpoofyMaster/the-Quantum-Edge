@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 9.00; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 9.01; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5; 9.01 = `InpCancelAtSessionEnd = false` keeps the pending orders, §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -221,7 +221,8 @@ These rules apply from `confirmBar + 1` onwards. `ready` is reset to false at th
 
 ### 4.3 Phase `ORDERED` (at least one level pending, none filled)
 
-1. **`newExt(u)` → re-anchor.**
+1. **`newExt(u)` → re-anchor** (9.01: not when `env.keepOrders`, §8: the levels stay pending where they are and steps
+   2-4 follow).
    - every pending level is cancelled, with a `CANCEL(k, NEW_EXTREME)` record and a cancel intent;
    - all levels go back to `NONE`, `X` is updated, and the phase becomes `LEG`;
    - `ready = false` for this bar. v5 `anticipate`: `ready` is set with the FVG condition instead, so the setup decides
@@ -503,18 +504,23 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   - `InpUseRRFilter = false`: the executor passes `min_rr = 0` (off).
   - `InpEntriesAfterSessionEnd = true`: `env.sessionEntryOk` also covers 14:45–16:44 New York, Mon–Fri, so the entry
     window ends at 16:44.
-  - `InpCancelAtSessionEnd = false`: `env.sessionCancel` no longer fires when the entry window ends. It fires only at
-    the **rollover cut**: the next bar opens at or after 16:44 New York, on a weekend, or in another FX day than the
-    bar that closed (a data gap). The cut acts on the first tick after the gap, so a fill on that tick is not
-    prevented by it; the server-side expiry below covers that case.
+  - `InpCancelAtSessionEnd = false`: `env.sessionCancel` never fires (9.01; v3–v9 still fired it at the **rollover
+    cut**: the next bar opening at or after 16:44 New York, on a weekend, or in another FX day after a data gap). The
+    executor also sets `env.keepOrders` when no order can be sent (with `use_session`: outside the entry window; any
+    setting: 16:44–17:00 New York or less than 2 minutes before 16:44) at this bar's decision, on the next bar (a move
+    that has to wait or be retried) or now (a bar replayed after a gap). §4.3: in `ORDERED`, a new extreme then does
+    not re-anchor; the pending levels stay where they are (a re-anchor would cancel them with no way to send them
+    again). No rollover delete and no 16:44 expiry cap either (below); the leg-expiry server-side expiry gets 3 more
+    days, so a weekend or a daily break cannot end the order before its bar-count leg expiry.
   - With `InpCancelAtSessionEnd = true`, `env.sessionCancel = !env.sessionEntryOk`, which is v2's `SessionCancel`
     with the defaults. With the extended window it also fires on a new FX day after a data gap.
-  - **Every limit order's server-side expiry is capped at the next 16:44 New York** (all settings). The broker removes
-    the order even without a tick. The cap is GTC only when the symbol refuses expiry times. No new order is sent in
-    the last 2 minutes before 16:44.
+  - **Every limit order's server-side expiry is capped at the next 16:44 New York** (9.01: only with
+    `InpCancelAtSessionEnd = true`). The broker removes the order even without a tick. The cap is GTC only when the
+    symbol refuses expiry times. No new order is sent in the last 2 minutes before 16:44.
 
   The detector applies both session signals only with `use_session = true`. The executor's 16:44–17:00 rules (no new
-  order; pending orders deleted on a tick in that window) still apply whatever the switches are.
+  order; pending orders deleted on a tick in that window) apply whatever the other switches are; 9.01: the delete
+  only with `InpCancelAtSessionEnd = true`.
 
   The first two equal `max_cost_r = 0` / `min_rr = 0` in the reference. Any backtest that uses a switch is a new
   trial.

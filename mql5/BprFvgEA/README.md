@@ -1,5 +1,32 @@
 # BprFvgEA v9: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
 
+> **9.01 (2026-10-18)** fixes your bug report: with `InpCancelAtSessionEnd = false` the EA still cancelled pending
+> orders. With the switch `false` it now cancels **no pending order for a time reason**:
+> - not at 14:45 New York (as before);
+> - not at the 16:44 New York rollover cut (the detector's `SESSION_END` cancel), and not on a tick between 16:44 and
+>   17:00 (the EA's own rollover delete);
+> - the broker-side expiry is no longer capped at 16:44; the leg-expiry safety net gets 3 more days, so a weekend or
+>   a daily break cannot remove an order before its leg ends;
+> - when no order can be sent (after 14:45, in the last 2 minutes before 16:44 and between 16:44 and 17:00), a new
+>   high / low no longer cancels the orders to move them (the move could not be sent again, so they were lost). They
+>   stay at their last levels. This also applies on the last bar before the window closes (a move that has to wait
+>   one bar could not be sent any more) and on bars replayed after a reconnect.
+>
+> Orders still end by the strategy's own rules: filled, the leg broken, the leg expired (`InpLegExpiryBars`), the
+> target reached. Inside the entry window they still follow the Fibonacci at every new high / low.
+>
+> **Notes.**
+> - With `InpFlatBeforeRollover = true`, an order that fills between 16:44 and 17:00 New York is closed at once by the
+>   16:44 flat. Set `InpFlatBeforeRollover = false` to hold such a fill.
+> - **Changing an input, the timeframe or the symbol, recompiling, or restarting the terminal deletes this EA's pending
+>   orders** (positions are kept). This is not the switch: a restarted EA cannot take its old orders back. Set the
+>   inputs before the orders exist (in the Strategy Tester: before the run).
+> - With `InpAnticipateEntries = false` a move takes the orders off the market until the next pullback candle (the v4
+>   rule). If the entry window closes before that candle, they are not sent again. With the default `true` the move
+>   is sent on the same bar.
+>
+> With `InpCancelAtSessionEnd = true` (the default) nothing changes.
+
 > **v9 (2026-10-17)** = v8 plus your rule of 2026-10-17 for the reversal: "after T1 price must absolutely make a
 > rejection which a minimum 2 candles successive or not ... before price comes back for breakout", with "a minimum 2
 > Green candles for a bullish rejection and 2 RED candles for a bearish rejection". The chart
@@ -315,6 +342,7 @@
 >   hours or days.
 > - **Unchanged:** pending orders are still deleted at the 16:44–17:00 New York rollover and never live past the
 >   next 16:44 New York (server-side expiry); no new order is sent then. Only **positions** may now cross the rollover.
+>   (9.01: with `InpCancelAtSessionEnd = false` the pending orders are kept over the rollover too.)
 > - **Removing the EA** (or closing its chart or the terminal) no longer closes its positions when **both** switches
 >   are off: the EA has no market exit to run, and the positions keep their server SL / TP. With either switch on,
 >   they are closed as before. If you start the EA again later **with a switch on**, a kept position is closed at
@@ -330,7 +358,7 @@
 > |---|---|---|
 > | `InpUseCostFilter` | true | Entries are placed whatever their round-trip cost (`InpMaxCostR` is ignored). No more `SKIP (COST)`. |
 > | `InpUseRRFilter` | true | Entries are placed whatever their reward:risk (`InpMinRR` is ignored). No more `SKIP (RR)`. The default `InpMinRR` is already 0 (off). |
-> | `InpCancelAtSessionEnd` | true | Pending limit orders are **not** cancelled at 14:45 New York (no more `CANCEL (SESSION_END)` at 14:45). They stay until they fill, the leg expires (`InpLegExpiryBars`), a new high re-anchors the setup, or the rollover cut (16:44 New York) arrives. |
+> | `InpCancelAtSessionEnd` | true | Pending limit orders are **not** cancelled at 14:45 New York (no more `CANCEL (SESSION_END)` at 14:45). They stay until they fill, the leg expires (`InpLegExpiryBars`), a new high re-anchors the setup, or the rollover cut (16:44 New York) arrives. **9.01:** no rollover cut any more, and no re-anchor when no order can be sent (see the 9.01 note at the top). |
 >
 > And one switch that is **off** by default:
 >
@@ -343,8 +371,8 @@
 > **What the switches do not change:**
 > - **New orders after 16:44 New York.** Those need `InpUseSession = false`, which removes the window entirely,
 >   including the 08:00 London start. Even then, no order is sent between 16:44 and 17:00 New York.
-> - **The 16:44–17:00 New York rollover rule.** Pending orders are still deleted then, because a fill there would be
->   closed at once by the 16:44 flat.
+> - **The 16:44–17:00 New York rollover rule** (9.01: only with `InpCancelAtSessionEnd = true`). Pending orders are
+>   still deleted then, because a fill there would be closed at once by the 16:44 flat.
 >   - Every limit order is sent with a **server-side expiry no later than the next 16:44 New York**, so the broker
 >     removes it even when no tick arrives. If the broker refuses expiry times, the order is GTC and relies on the
 >     EA's own deletes.
@@ -516,7 +544,7 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 |---|---|---|
 | `InpServerMode` / `InpServerOffsetH` | NY+7 / 0 | Server time → UTC. NY+7 is IC Markets (`UNVERIFIED`). The [self-check](#self-check-at-start) prints the resulting entry window. |
 | `InpUseSession` | true | New orders only 08:00 London → 14:45 New York, Mon–Fri. Pending orders are cancelled at 14:45 New York (unless `InpCancelAtSessionEnd = false`). |
-| `InpCancelAtSessionEnd` | true | **v3 switch.** `false`: pending orders are kept after 14:45 New York until they fill or the leg expires. They are still deleted at the 16:44–17:00 New York rollover. |
+| `InpCancelAtSessionEnd` | true | **v3 switch.** `false`: pending orders are kept after 14:45 New York until they fill, the leg breaks or expires, or the target is reached. **9.01:** also over the 16:44–17:00 New York rollover (no rollover delete, no 16:44 expiry), and when no order can be sent a new high / low does not cancel them to move them. With `InpFlatBeforeRollover = true` a fill between 16:44 and 17:00 is closed at once. |
 | `InpEntriesAfterSessionEnd` | false | **v3 switch.** `true`: new orders may also be placed from 14:45 to 16:44 New York (Mon–Fri). |
 | `InpFlatBeforeRollover` | true | **v4 switch.** `false`: no 16:44 New York flat (`close at market: ROLLOVER`); positions may be held over the rollover and the weekend (swap, gap risk). Pending orders are still deleted at 16:44. Not a research trial. |
 | `InpRiskPct` | 0.20 | Risk **per setup**, % of equity incl. commission, split over the entries (capped at 0.20) |
@@ -597,7 +625,7 @@ Every step uses **closed bars only**.
    - the 16:44 New York flat (off with `InpFlatBeforeRollover = false`).
 
    Unfilled orders are also cancelled at 14:45 New York (`SESSION_END`; kept with `InpCancelAtSessionEnd = false`,
-   then deleted at the 16:44 New York rollover) and after `InpLegExpiryBars` (`EXPIRED`).
+   since 9.01 also over the 16:44 New York rollover) and after `InpLegExpiryBars` (`EXPIRED`).
 
 If a level is already reached when its order is sent (a gap at the next bar's open), it is sent as a **market order**
 at the better price, with the same SL / TP.

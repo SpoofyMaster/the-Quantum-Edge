@@ -165,6 +165,12 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   (`InpRevRejCandles`, default 2; a close beyond the reversal level that is not the breakout restarts the count and is
   no touch; a failed breakout keeps the count; `C1` / `C2` on the chart); MQL5 only, checked on the C++
   transliteration (`tests/test_bpr_breakout_v9_rejection.py`); research defaults unchanged (parity set).
+- [x] EA-17 9.01 (2026-10-18, journal day13): owner's bug report: `InpCancelAtSessionEnd = false` still cancelled
+  pending orders (the 16:44 rollover cut and delete, the 16:44 expiry, and a re-anchor that could not be sent after
+  14:45). Fixed: with the switch false no time-based cancel, and no re-anchor while no order can be sent
+  (`env.keepOrders`); `tests/test_bpr_breakout_v901_keep_orders.py`. Defaults unchanged.
+- [?] U-22 User: compile 9.01; run the tester with `InpCancelAtSessionEnd = false` and check that pending orders are
+  only removed by fills, the leg rules or the target (no `SESSION_END`, no rollover delete).
 - [?] U-21 User: compile v9 and send every compiler message. Run the tester with `InpSetupType = REVERSAL` and check
   that no reversal comes without 2 rejection candles after T1 (the `REJECT` / `BREAKOUT` log lines show the count);
   send the `[BFEA]` lines and the `BFEA9_*` CSV files.

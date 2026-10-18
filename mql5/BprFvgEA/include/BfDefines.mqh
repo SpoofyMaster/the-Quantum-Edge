@@ -440,6 +440,8 @@ struct BfEnv
    double            sp;                  // spread at the decision moment (price units)
    int               slotOwner;           // v5: id of the setup whose own pending limits are all that holds the slot
                                           // (0 = none); with anticipate it may re-decide after its re-anchor
+   bool              keepOrders;          // 9.01: the pending orders are kept (InpCancelAtSessionEnd = false) and no
+                                          // order can be sent now: a new extreme does not move (cancel) them
   };
 
 void BfClearEnv(BfEnv &e)
@@ -447,6 +449,7 @@ void BfClearEnv(BfEnv &e)
    e.slotFree       = false;
    e.sessionEntryOk = false;
    e.sessionCancel  = false;
+   e.keepOrders     = false;
    e.riskOk         = false;
    e.spreadOk       = false;
    e.sp             = 0.0;
