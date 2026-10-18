@@ -280,17 +280,21 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   setup unrejected. A continuation setup keeps the §4.1 rule.
 - **v9 rejection candles `nRejC`** (`revRejCandles > 0`; reversal setups only). The owner's rule: "after T1 price must
   absolutely make a rejection which a minimum 2 candles successive or not ... before price comes back for breakout",
-  "2 Green candles for a bullish rejection and 2 RED candles for a bearish rejection". On every bar `u` after the T1
-  candle (`touches > 0`, `u > touchBar1`), before step 4:
-  1. if the previous bar set `rejCReset`: `nRejC = 0`, and the flag clears;
-  2. if `BeyondRev(u)` (the close is beyond `lvlR`): set `rejCReset` (the count restarts from the next bar);
-  3. otherwise, if the candle is in the BPR's direction (`c[u] > o[u]` for a bullish BPR, `c[u] < o[u]` for a bearish
-     one): `nRejC += 1`.
+  "2 Green candles for a bullish rejection and 2 RED candles for a bearish rejection".
+  1. **Count** (before step 4). On a bar `u` after the T1 candle (`touches > 0`, `u > touchBar1`) that does not start
+     in `BREAK`: if the candle is in the BPR's direction (`c[u] > o[u]` for a bullish BPR, `c[u] < o[u]` for a bearish
+     one) and its close is not beyond `lvlR` (`!BeyondRev(u)`): `nRejC += 1`.
+  2. **Too early** (after step 5b, so only when this bar is not the reversal breakout). If the bar started in `ZONE`
+     with `touches > 0` and `BeyondRev(u)`: `early`, and `nRejC = 0`. In step 6 a new visit opened by an `early`
+     candle (`inEp` false) is a pullback visit, not a touch: it is not counted as T2, `TOUCH_LIMIT` does not apply and
+     its wick is no level candidate (`DEEPEST` / `LAST` keep the level).
+  3. **A breakout in progress** (`BREAK`) neither counts nor restarts: after a `BREAK_FAIL` the count is the one the
+     breakout used, and the next close beyond the level is a breakout again.
 
-  So `nRejC` on a bar is the number of rejection candles after T1 and after the last close beyond the level, up to and
-  including this bar. A rejection candle never closes beyond the level, so it is never a breakout candle itself. A doji
-  and the T1 candle do not count. Every record carries the setup's `nRejC` (`rejC`; the harness prints it as `rc` with
-  `ext=1`). On a `BREAKOUT` it is the count the breakout used.
+  So the reversal breakout needs `revRejCandles` rejection candles after T1 and after the last close beyond the level
+  that was not a breakout. A rejection candle never closes beyond the level, so it is never a breakout candle itself.
+  A doji and the T1 candle do not count. Every record carries the setup's `nRejC` after its bar (`rejC`; the harness
+  prints it as `rc` with `ext=1`). On a `BREAKOUT` it is the count the breakout used.
 - **The reversal leg `rO` / `rX`** (100 % / 0 %): `TrackRev(u)` runs on every pre-confirmation bar from T1 on: if
   `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`.
   - T1 starts it: `rO = h[u]`, `rX = l[u]`. This only matters while no visit has been rejected

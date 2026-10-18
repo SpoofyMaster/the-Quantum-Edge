@@ -322,8 +322,9 @@ struct BfParams
    int               revRejCandles;       // the reversal breakout needs at least this many candles in the BPR's
                                           // direction (bullish candles for a bullish BPR) that do not close beyond the
                                           // reversal level, after the T1 candle and after the last close beyond that
-                                          // level ("a rejection of at least 2 green candles, successive or not, before
-                                          // price comes back for the breakout")
+                                          // level that was not a breakout ("a rejection of at least 2 green candles,
+                                          // successive or not, before price comes back for the breakout"). > 0 also:
+                                          // such a close is no touch (no T2, the level stays)
    // session / execution
    bool              useSession;
    double            commissionPerLotSide; // account currency per lot per side (UNVERIFIED); informative
@@ -519,8 +520,7 @@ struct BfSetup
    int               lastVisit;           // v8: first bar of the latest visit of the zone (T1, T2, a pullback visit)
    int               nRejC;               // v9: rejection candles (in the BPR's direction, not closing beyond the
                                           // reversal level) after the T1 candle and after the last close beyond it
-   bool              rejCReset;           // v9: the last candle closed beyond the reversal level: nRejC restarts on
-                                          // the next bar
+                                          // that was not a breakout; a breakout in progress (BREAK) keeps it
   };
 
 void BfClearSetup(BfSetup &s)
@@ -586,7 +586,6 @@ void BfClearSetup(BfSetup &s)
    s.lastRej     = -1;
    s.lastVisit   = -1;
    s.nRejC       = 0;
-   s.rejCReset   = false;
   }
 
 void BfCopySetup(BfSetup &dst, const BfSetup &src)
@@ -652,7 +651,6 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.lastRej     = src.lastRej;
    dst.lastVisit   = src.lastVisit;
    dst.nRejC       = src.nRejC;
-   dst.rejCReset   = src.rejCReset;
   }
 
 //+------------------------------------------------------------------+
@@ -741,7 +739,8 @@ struct BfEvent
    bool              rev;                 // v6: reversal breakout (lvl is then the reversal level)
    int               lvlBar;              // v6: the bar lvl comes from (ref; the touch candle for a reversal)
    int               kind;                // v7: BF_SETUP_CONTINUATION / BF_SETUP_REVERSAL (the setup's kind)
-   int               rejC;                // v9: the setup's rejection candles before this bar's candle (nRejC)
+   int               rejC;                // v9: the setup's rejection candles after this bar's candle (nRejC; on a
+                                          // BREAKOUT: the count the breakout used, the breakout candle never counts)
   };
 
 void BfClearEvent(BfEvent &e)

@@ -69,7 +69,8 @@
 // Green candles for a bullish rejection and 2 RED candles for a bearish rejection", successive or not, before price
 // comes back for the breakout): InpRevRejCandles (default 2) = the reversal breakout needs at least that many candles
 // in the BPR's direction after the T1 candle that do not close beyond the reversal level; a close beyond the level
-// restarts the count. The chart labels them C1, C2, ... 0 = v8. Detector param revRejCandles (MQL5 only);
+// that is not the breakout restarts the count and is no touch (no T2, the level stays); a failed breakout keeps the
+// count. The chart labels them C1, C2, ... 0 = v8. Detector param revRejCandles (MQL5 only);
 // tests/test_bpr_breakout_v9_rejection.py.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
@@ -713,8 +714,10 @@ string EventText(const BfEvent &e)
    else
       if(e.ev == BF_EV_BREAKOUT || e.ev == BF_EV_BREAK_FAIL)
          s = s + " level " + Px(e.lvl) + (e.rev ? " (REVERSAL: " + RevLevelText() + ", the " + ((e.dir < 0) ? "low" :
-             "high") + " of the touch candle at " + CBfLogger::Ts(BarTime(e.lvlBar)) + "; " +
-             IntegerToString(e.rejC) + " rejection candles before it)" : " (" +
+             "high") + " of the touch candle at " + CBfLogger::Ts(BarTime(e.lvlBar)) +
+             ((e.ev == BF_EV_BREAKOUT && g_bp.revRejCandles > 0) ? "; " + IntegerToString(e.rejC) +
+              " rejection candles before it" : "") + ")" :
+             " (" +
              ((e.dir > 0) ? "high" : "low") + " of the candle at " + CBfLogger::Ts(BarTime(e.ref)) + ")");
       else
          if(e.ev == BF_EV_CONFIRM)
@@ -734,9 +737,9 @@ string EventText(const BfEvent &e)
                      if(e.ev == BF_EV_TOUCH_ENTRY)
                         s = s + " (decided: market at the next open) P~" + Px(e.P) + " SL=" + Px(e.SL) + " TP~" +
                             Px(e.TP) + " (" + DoubleToString(g_touchRR, 2) + " R from the actual entry)";
-   if(e.ev == BF_EV_REJECT && e.kind == BF_SETUP_REVERSAL)
-      s = s + " (rejection candles since T1: " + IntegerToString(e.rejC) + "; the breakout needs " +
-          IntegerToString(g_bp.revRejCandles) + ")";
+   if(e.ev == BF_EV_REJECT && e.kind == BF_SETUP_REVERSAL && g_bp.revRejCandles > 0)
+      s = s + " (rejection candles: " + IntegerToString(e.rejC) + ", counted after T1 and after the last close beyond " +
+          "the reversal level; the breakout needs " + IntegerToString(g_bp.revRejCandles) + ")";
    if(e.reason != BF_R_NONE)
       s = s + " (" + BfReasonName(e.reason) + ")";
    if(e.ev == BF_EV_DONE)
@@ -842,7 +845,8 @@ void ShowKeptSetups(void)
                   CBfLogger::Ts(BarTime(lb)) + ")" : "") +
                  ((s.phase == BF_PH_BREAK && s.brkBar >= 0 && s.brkBar < g_n) ? ", breakout candle " +
                   CBfLogger::Ts(BarTime(s.brkBar)) : "") +
-                 ((rv && s.touches > 0) ? ", rejection candles " + IntegerToString(s.nRejC) : ""));
+                 ((rv && s.touches > 0 && g_bp.revRejCandles > 0) ? ", rejection candles " +
+                  IntegerToString(s.nRejC) : ""));
       if(!g_renderOn || !InpShowSetups)
          continue;
       for(k = 1; k <= 2; k++)
@@ -866,12 +870,12 @@ void ShowKeptSetups(void)
   }
 
 // v9: the reversal setups' rejection candles on the chart: C1, C2, ... on each candle the detector counts (above it
-// for a bullish BPR, below it for a bearish one). A close beyond the reversal level restarts the count on the next bar:
-// the labels of the earlier attempt are then deleted. g_rcId / g_rcN / g_rcF hold each tracked reversal setup's count
-// and restart flag after the previous bar. draw = false only records them (after the warm-up).
+// for a bullish BPR, below it for a bearish one). A close beyond the reversal level that is not the breakout restarts
+// the count (it drops below the previous bar's): the labels of the earlier attempt are then deleted. A breakout keeps
+// the count, so the labels stay with the trade. g_rcId / g_rcN hold each tracked reversal setup's count after the
+// previous bar; draw = false only records them (after the warm-up).
 int  g_rcId[];
 int  g_rcN[];
-bool g_rcF[];
 
 void TrackRejCandles(const int u, const bool draw)
   {
@@ -880,44 +884,32 @@ void TrackRejCandles(const int u, const bool draw)
    int     k;
    int     m     = 0;
    int     prevN;
-   bool    prevF;
-   int     start;
    int     n     = g_det.TrackedCount();
    int     ids[];
    int     cnt[];
-   bool    flg[];
    BfSetup s;
    ArrayResize(ids, n);
    ArrayResize(cnt, n);
-   ArrayResize(flg, n);
    for(i = 0; i < n; i++)
      {
       if(!g_det.GetTracked(i, s) || s.kind != BF_SETUP_REVERSAL)
          continue;
       prevN = 0;
-      prevF = false;
       for(j = 0; j < ArraySize(g_rcId); j++)
          if(g_rcId[j] == s.id)
            {
             prevN = g_rcN[j];
-            prevF = g_rcF[j];
             break;
            }
       ids[m] = s.id;
       cnt[m] = s.nRejC;
-      flg[m] = s.rejCReset;
       m++;
-      if(!draw || !g_renderOn || !InpShowSetups || u < 0 || u >= g_n ||
-         (s.phase != BF_PH_ZONE && s.phase != BF_PH_BREAK))
+      if(!draw || !g_renderOn || !InpShowSetups || u < 0 || u >= g_n)
          continue;
-      start = prevN;
-      if(prevF)
-        {
+      if(s.nRejC < prevN)
          for(k = 1; k <= prevN; k++)
             g_render.SetupDelete(s.id, "C" + IntegerToString(k));
-         start = 0;
-        }
-      if(s.nRejC > start)
+      if(s.nRejC > prevN)
          g_render.SetupText(s.id, "C" + IntegerToString(s.nRejC), g_t[u], (s.zdir > 0) ? g_h[u] : g_l[u],
                             "C" + IntegerToString(s.nRejC), DirColor(s.zdir),
                             (s.zdir > 0) ? ANCHOR_LOWER : ANCHOR_UPPER,
@@ -926,12 +918,10 @@ void TrackRejCandles(const int u, const bool draw)
      }
    ArrayResize(g_rcId, m);
    ArrayResize(g_rcN, m);
-   ArrayResize(g_rcF, m);
    for(i = 0; i < m; i++)
      {
       g_rcId[i] = ids[i];
       g_rcN[i]  = cnt[i];
-      g_rcF[i]  = flg[i];
      }
   }
 

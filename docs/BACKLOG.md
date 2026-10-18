@@ -162,7 +162,8 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   confirmation? (v8 review, journal day11.)
 - [x] EA-16 v9 (2026-10-17, journal day12): the reversal needs a rejection of at least 2 candles in the BPR's
   direction after T1 (green for a bullish BPR, red for a bearish one), successive or not, before the breakout
-  (`InpRevRejCandles`, default 2; a close beyond the reversal level restarts the count); MQL5 only, checked on the C++
+  (`InpRevRejCandles`, default 2; a close beyond the reversal level that is not the breakout restarts the count and is
+  no touch; a failed breakout keeps the count; `C1` / `C2` on the chart); MQL5 only, checked on the C++
   transliteration (`tests/test_bpr_breakout_v9_rejection.py`); research defaults unchanged (parity set).
 - [?] U-21 User: compile v9 and send every compiler message. Run the tester with `InpSetupType = REVERSAL` and check
   that no reversal comes without 2 rejection candles after T1 (the `REJECT` / `BREAKOUT` log lines show the count);

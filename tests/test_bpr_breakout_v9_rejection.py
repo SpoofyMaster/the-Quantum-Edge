@@ -9,9 +9,11 @@ minimum 2 Green candles for a bullish rejection and 2 RED candles for a bearish 
 
 Detector param revRejCandles (EA input InpRevRejCandles, harness key rev_rej_c; EA default 2, detector default 0 = v8):
 after the T1 candle, a candle in the BPR's direction (bullish for a bullish BPR) that does not close beyond the
-reversal level counts. A close beyond the level restarts the count from the next candle. The reversal breakout candle
-needs at least revRejCandles counted candles before it. The harness prints the count as "rc" (ext=1) on every record:
-on a BREAKOUT it is the count the breakout used. Skipped without g++.
+reversal level counts; candles of a breakout in progress (BREAK) neither count nor restart the count. A close beyond
+the level that is not the breakout (price back too early) restarts the count and is no touch: it does not become T2
+and its wick does not move the reversal level. A failed breakout (BREAK_FAIL) keeps the count. The reversal breakout
+candle needs at least revRejCandles counted candles before it. The harness prints the count as "rc" (ext=1) on every
+record: on a BREAKOUT it is the count the breakout used. Skipped without g++.
 """
 import shutil
 
@@ -90,13 +92,14 @@ def test_c1_c2_then_the_reversal(exe, tmp_path, d):
 
 @D
 @pytest.mark.parametrize("st", [REV, BOTH])
-def test_t1_one_candle_then_the_break_is_no_reversal(exe, tmp_path, d, st):
+@pytest.mark.parametrize("lv", [0, 2], ids=["DEEPEST", "LAST"])
+def test_t1_one_candle_then_the_break_is_no_reversal(exe, tmp_path, d, st, lv):
     """The owner's complaint: T1 on 17, ONE candle in the BPR's direction (18), then the drop at once (19 / 20). v8 took
     it as the reversal (BREAKOUT 19, CONFIRM 20); v9 does not, and the later green candle back above the T1 wick (23)
     is one rejection candle since the last close below it: 24 is no reversal either."""
-    v8, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), setup_type=st, **EA8)
-    assert breakouts(v8, rev_id(v8, d)) == [(19, 1)]
-    v9, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), setup_type=st, **EA9)
+    v8, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), setup_type=st, rev_level=lv, **EA8)
+    assert breakouts(v8, rev_id(v8, d))[0] == (19, 1)
+    v9, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), setup_type=st, rev_level=lv, **EA9)
     i = rev_id(v9, d)
     assert not of(v9, i, "BREAKOUT") and not of(v9, i, "CONFIRM") and not of(v9, i, "PLACE_LIMIT")
 
@@ -110,17 +113,65 @@ def test_rejection_candles_need_not_follow_each_other(exe, tmp_path, d):
 
 
 @D
-def test_a_close_beyond_the_level_restarts_the_count(exe, tmp_path, d):
-    """InpRevLevel = T1 (99.0). C1 18; 19 closes below the wick (1 rejection candle: no reversal); 20 back above (1,
-    counted from 19); 21 below again (no reversal); 22 and 23 above (2 since 21); 24 the reversal breakout, 25 confirms
-    with the 100 % at the last bounce (100.6). v8 broke out on 19 and 21 (each failed) before 24."""
-    recs, _ = run(exe, tmp_path, side(V9["reset_after_early_break"], d), setup_type=REV, rev_level=1, **EA9)
+@pytest.mark.parametrize("lv", [0, 1, 2], ids=["DEEPEST", "T1", "LAST"])
+def test_a_close_beyond_the_level_restarts_the_count(exe, tmp_path, d, lv):
+    """C1 18; 19 closes below the T1 wick 99.0 (1 rejection candle: no reversal); 20 back above (1, counted from 19);
+    21 below again (no reversal); 22 and 23 above (2 since 21); 24 the reversal breakout at the T1 wick, 25 confirms
+    with the 100 % at the last bounce (100.6). 19 and 21 are no touches, so with every InpRevLevel the level stays the
+    T1 wick. v8 broke out on 19 and 21 (each failed) before 24."""
+    recs, _ = run(exe, tmp_path, side(V9["reset_after_early_break"], d), setup_type=REV, rev_level=lv, **EA9)
     i = rev_id(recs, d)
     assert breakouts(recs, i) == [(24, 2)] and not of(recs, i, "BREAK_FAIL")
+    assert of(recs, i, "BREAKOUT")[0]["lvl"] == pytest.approx(px(d, 99.0))
+    assert [r["n"] for r in of(recs, i, "TOUCH")] == [17]
     pl = of(recs, i, "PLACE_LIMIT", 25)
     assert len(pl) == 3 and pl[0]["O"] == pytest.approx(px(d, 100.6))
-    v8, _ = run(exe, tmp_path, side(V9["reset_after_early_break"], d), setup_type=REV, rev_level=1, **EA8)
+    v8, _ = run(exe, tmp_path, side(V9["reset_after_early_break"], d), setup_type=REV, rev_level=lv, **EA8)
     assert [n for n, _ in breakouts(v8, rev_id(v8, d))] == [19, 21, 24]
+
+
+@D
+def test_a_failed_breakout_keeps_the_count(exe, tmp_path, d):
+    """T1 17, C1 18, C2 19: the breakout on 22 (2 rejection candles). 23 closes back above the T1 wick (BREAK_FAIL);
+    the rejection came before price came back, so the count stays: 24 closes below the wick again, the breakout (still
+    2), 25 confirms, the trade reaches its target on 28, as in v8."""
+    bars = V9["failed_break_keeps_count"]
+    assert bars[:22] == V9["c1c2"][:22]
+    for kv in (EA9, EA8):
+        recs, _ = run(exe, tmp_path, side(bars, d), setup_type=REV, **kv)
+        i = rev_id(recs, d)
+        assert [n for n, _ in breakouts(recs, i)] == [22, 24] and [r["n"] for r in of(recs, i, "BREAK_FAIL")] == [23]
+        assert of(recs, i, "CONFIRM", 25) and of(recs, i, "PLACE_LIMIT", 25) and of(recs, i, "CLOSED", 28), kv
+    recs, _ = run(exe, tmp_path, side(bars, d), setup_type=REV, **EA9)
+    assert breakouts(recs, rev_id(recs, d)) == [(22, 2), (24, 2)]
+
+
+@D
+@pytest.mark.parametrize("lv", [0, 2], ids=["DEEPEST", "LAST"])
+def test_a_close_through_the_bpr_is_no_touch(exe, tmp_path, d, lv):
+    """T1 17 (wick 99.0), C1 18, then 19 crashes through the whole BPR and closes below it (97.6): one rejection
+    candle, so no reversal; it is no T2 either, so its low (97.5) never becomes the level. 20 and 21 come back above
+    the zone (2 rejection candles), 22 closes below the T1 wick: the reversal breakout at 99.0, limits on 23."""
+    bars = v9_t1() + [C1, bar(100.2, 100.25, 97.5, 97.6), bar(97.6, 99.2, 97.55, 99.1), bar(99.1, 100.4, 99.05, 100.3),
+                      bar(100.3, 100.35, 98.6, 98.7), bar(98.7, 98.75, 98.3, 98.4), bar(98.4, 98.5, 97.9, 98.0),
+                      bar(98.0, 99.6, 97.95, 99.5), bar(99.5, 99.55, 97.4, 97.5)]
+    recs, _ = run(exe, tmp_path, side(bars, d), setup_type=REV, rev_level=lv, **EA9)
+    i = rev_id(recs, d)
+    assert [r["n"] for r in of(recs, i, "TOUCH")] == [17]
+    assert breakouts(recs, i) == [(22, 2)] and of(recs, i, "BREAKOUT")[0]["lvl"] == pytest.approx(px(d, 99.0))
+    assert of(recs, i, "CONFIRM", 23) and of(recs, i, "PLACE_LIMIT", 23)
+
+
+@D
+def test_v8_mode_keeps_the_v8_touch(exe, tmp_path, d):
+    """rev_rej_c 0 is v8 exactly. A REVERSAL setup kept for its touch entry only (the reversal's direction is filtered
+    out) takes the close below the T1 wick on 19 as T2, as v8 did. With 2 rejection candles needed, that close is no
+    touch."""
+    kv = dict(setup_type=REV, touch_entry=1, direction=1 if d > 0 else 2)
+    v8, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), **kv, **EA8)
+    assert [r["n"] for r in of(v8, rev_id(v8, d), "TOUCH")] == [17, 19]
+    v9, _ = run(exe, tmp_path, side(V9["one_green_then_break"], d), **kv, **EA9)
+    assert [r["n"] for r in of(v9, rev_id(v9, d), "TOUCH")] == [17]
 
 
 # ---------------------------------------------------------------------------------------------------------------
@@ -231,7 +282,8 @@ def test_the_continuation_is_unchanged(exe, tmp_path):
         ca = {r["id"] for r in a if r["ev"] == "ARMED" and r["kind"] == 0}
         cb = {r["id"] for r in b if r["ev"] == "ARMED" and r["kind"] == 0}
         # ids are shared by both kinds, so compare the continuation records by their bar, event and prices
-        key = lambda rs, ids: [(r["n"], r["ev"], r["k"], r["P"], r["O"], r["X"]) for r in rs if r["id"] in ids]  # noqa: E731
+        def key(rs, ids):
+            return [(r["n"], r["ev"], r["k"], r["P"], r["O"], r["X"]) for r in rs if r["id"] in ids]
         sa, sb = key(a, ca), key(b, cb)
         # the reversal setups take the slot at other times in v8 and v9, so only the records before any decision are
         # comparable one to one: every continuation BREAKOUT / CONFIRM of v8 exists in v9 at the same bar
@@ -239,18 +291,26 @@ def test_the_continuation_is_unchanged(exe, tmp_path):
         assert brk(sa) == brk(sb)
 
 
-def expected_count(bars, t1, brk, lvl, zd):
-    """the rejection candles before bar brk: after T1 and after the last close beyond lvl, in the BPR's direction, not
-    closing beyond lvl"""
+def expected_count(bars, recs, i, brk, lvl, zd):
+    """the rejection candles before the breakout on bar brk, recounted from the bars and the setup's own breakout
+    records: after T1, outside a breakout in progress (the bars after a BREAKOUT up to its BREAK_FAIL), in the BPR's
+    direction and not closing beyond lvl; a close beyond lvl that is not a breakout restarts the count"""
     beyond = (lambda c: c < lvl) if zd > 0 else (lambda c: c > lvl)
-    start = t1 + 1
-    for u in range(t1 + 1, brk):
-        if beyond(bars[u][3]):
-            start = u + 1
+    t1 = next(x["n"] for x in recs if x["id"] == i and x["ev"] == "TOUCH")
+    brks = {x["n"] for x in recs if x["id"] == i and x["ev"] == "BREAKOUT"}
+    fails = sorted(x["n"] for x in recs if x["id"] == i and x["ev"] == "BREAK_FAIL")
+    in_break = set()
+    for b in brks:
+        f = next((f for f in fails if f > b), None)
+        in_break |= set(range(b + 1, (f if f is not None else brk) + 1))
     n = 0
-    for u in range(start, brk):
+    for u in range(t1 + 1, brk):
         o, _, _, c = bars[u]
-        if not beyond(c) and ((c > o) if zd > 0 else (c < o)):
+        if u in in_break or u in brks:
+            continue
+        if beyond(c):
+            n = 0
+        elif (c > o) if zd > 0 else (c < o):
             n += 1
     return n
 
@@ -260,14 +320,16 @@ RANDOM9 = [
     (102, dict(setup_type=BOTH, rev_level=1, **EA9)),
     (103, dict(setup_type=REV, rev_level=1, rev_rej_c=3, anticipate=1, t1_wait=0, rev_fvg=0)),
     (104, dict(setup_type=BOTH, rev_level=1, touch_entry=1, **EA9)),
+    (105, dict(setup_type=REV, rev_level=0, **EA9)),
+    (106, dict(setup_type=BOTH, rev_level=2, **EA9)),
 ]
 
 
 @pytest.mark.parametrize("case", RANDOM9, ids=[f"seed{c[0]}" for c in RANDOM9])
 def test_random_series_rejection_count(exe, tmp_path, case):
-    """With InpRevLevel = T1 the level is fixed at the T1 wick, so the count can be recomputed from the bars: every
-    reversal BREAKOUT has at least revRejCandles rejection candles, and the count it carries is that recount. The v6 /
-    v7 invariants hold."""
+    """Every reversal BREAKOUT has at least revRejCandles rejection candles. With InpRevLevel = T1 the level is fixed
+    at the T1 wick, so the count is also recomputed from the bars and must equal the one the breakout carries. A T2
+    (any InpRevLevel) never closes beyond the T1 wick: such a close is no touch. The v6 / v7 invariants hold."""
     seed, kv = case
     bars = _bars(seed, 4000)
     recs, _ = run(exe, tmp_path, bars, hold=60, **kv)
@@ -275,11 +337,19 @@ def test_random_series_rejection_count(exe, tmp_path, case):
     _check7(recs, bars, kv)
     n = 0
     for r in recs:
-        if r["ev"] == "BREAKOUT" and r["kind"] == 1:
-            t1 = next(x["n"] for x in recs if x["id"] == r["id"] and x["ev"] == "TOUCH")
-            want = expected_count(bars, t1, r["n"], r["lvl"], r["zdir"])
-            assert r["rc"] == want >= kv["rev_rej_c"], (r, want)
+        if r.get("kind") != 1:              # the touch entry's fill records carry no kind
+            continue
+        if r["ev"] == "BREAKOUT":
+            assert r["rc"] >= kv["rev_rej_c"], r
+            if kv["rev_level"] == 1:
+                want = expected_count(bars, recs, r["id"], r["n"], r["lvl"], r["zdir"])
+                assert r["rc"] == want, (r, want)
             n += 1
+        if r["ev"] == "TOUCH" and r["k"] == 2:
+            t1 = next(x["n"] for x in recs if x["id"] == r["id"] and x["ev"] == "TOUCH")
+            w = bars[t1][2] if r["zdir"] > 0 else bars[t1][1]
+            c = bars[r["n"]][3]
+            assert (c >= w) if r["zdir"] > 0 else (c <= w), (r, w, c)
     assert n >= 5
 
 

@@ -595,6 +595,7 @@ private:
       bool touched;
       bool brokeNow;
       bool rj;
+      bool early;
       m_s[i].ready      = false;
       m_s[i].touchReady = false;
       if(ph == BF_PH_WAIT || ph == BF_PH_ZONE || ph == BF_PH_BREAK)
@@ -614,23 +615,12 @@ private:
            }
          tn = (zd > 0) ? (l[u] <= m_s[i].T) : (h[u] >= m_s[i].B);
          //--- v9 reversal: the rejection candles ("a minimum 2 green candles, successive or not, before price comes
-         //    back for the breakout"). After the T1 candle, a candle in the BPR's direction (bullish for a bullish BPR)
-         //    that does not close beyond the reversal level counts. A close beyond the level (a breakout, or price
-         //    coming back too early) restarts the count from the next candle, so the breakout candle sees only the
-         //    rejection candles after the last such close.
-         if(HasRev(i) && m_s[i].touches > 0 && u > m_s[i].touchBar1)
-           {
-            if(m_s[i].rejCReset)
-              {
-               m_s[i].nRejC     = 0;
-               m_s[i].rejCReset = false;
-              }
-            if(BeyondRev(i, c[u]))
-               m_s[i].rejCReset = true;
-            else
-               if((zd > 0) ? (c[u] > o[u]) : (c[u] < o[u]))
-                  m_s[i].nRejC++;
-           }
+         //    back for the breakout"). After the T1 candle and outside a breakout in progress (BREAK), a candle in the
+         //    BPR's direction (bullish for a bullish BPR) that does not close beyond the reversal level counts. A close
+         //    beyond the level that is not the breakout restarts the count (below, after step 5b).
+         if(HasRev(i) && ph != BF_PH_BREAK && m_s[i].touches > 0 && u > m_s[i].touchBar1 && !BeyondRev(i, c[u]) &&
+            ((zd > 0) ? (c[u] > o[u]) : (c[u] < o[u])))
+            m_s[i].nRejC++;
          //--- step 4: BREAK (continuation, or v6 reversal)
          if(ph == BF_PH_BREAK)
            {
@@ -705,6 +695,13 @@ private:
                return;
               }
            }
+         //--- v9: a close beyond the reversal level that is not the reversal breakout (price came back before enough
+         //    rejection candles): the count restarts, and the candle is no touch. If it opens a new visit, step 6
+         //    treats it like a pullback visit: it does not take the T2 slot and its wick does not become the level.
+         early = (m_p.revRejCandles > 0 && HasRev(i) && ph == BF_PH_ZONE && m_s[i].touches > 0 &&
+                  BeyondRev(i, c[u]));
+         if(early)
+            m_s[i].nRejC = 0;
          //--- v8 reversal (t1WaitBars >= 0): inside a visit, a candle that closes beyond the zone's far edge (above
          //    it for a bullish BPR) is the rejection (a bullish reaction off the BPR), even if its wick is in the zone
          if(m_p.t1WaitBars >= 0 && tn && m_s[i].inEp && HasRev(i) &&
@@ -713,10 +710,11 @@ private:
          //--- step 6: touch logic
          if(tn)
            {
-            if(!m_s[i].inEp && HasRev(i) && m_s[i].touches >= m_p.maxTouches)
+            if(!m_s[i].inEp && HasRev(i) && (m_s[i].touches >= m_p.maxTouches || early))
               {
                //--- v7 reversal setup: a visit of the zone after the last touch is the pullback, not a touch. It does
                //    not end the setup and does not move the level; if it is rejected, its bounce is the new origin.
+               //    v9: so is a visit opened by a close beyond the level that is not the breakout.
                TrackRev(i, u, h[u], l[u]);
                StartCand(i, u, h[u], l[u]);
               }

@@ -467,12 +467,19 @@ def v9_sequences() -> dict[str, list]:
         # two green candles that do not follow each other: C1 18, a red candle above the zone (19), C2 20
         "green_red_green": t1 + [c1, bar(100.2, 100.3, 100.0, 100.05), bar(100.05, 100.8, 100.0, 100.7),
                                  bar(100.7, 101.6, 100.6, 100.65), bar(100.65, 100.7, 100.2, 100.3)] + v9_drop(100.3),
-        # price comes back too early (with InpRevLevel = T1): C1 18, 19 closes below the T1 wick (one rejection
-        # candle: no reversal), 20 green back above it (one again, counted from 19), 21 below it again (no reversal),
-        # 22 and 23 green above it (two since 21), 24 closes below it: the reversal breakout, 25 confirms
+        # price comes back too early: C1 18, 19 closes below the T1 wick (one rejection candle: no reversal, and no
+        # touch: the level stays 99.0), 20 green back above it (one again, counted from 19), 21 below it again (no
+        # reversal), 22 and 23 green above it (two since 21), 24 closes below it: the reversal breakout, 25 confirms
         "reset_after_early_break": t1 + [c1, bar(100.2, 100.25, 98.8, 98.9), bar(98.9, 99.6, 98.85, 99.5),
                                          bar(99.5, 99.55, 98.7, 98.8), bar(98.8, 99.6, 98.75, 99.5),
                                          bar(99.5, 100.6, 99.45, 100.5)] + v9_drop(100.5),
+        # a failed breakout keeps the count: T1 17, C1 18, C2 19, the breakout on 22 (2 rejection candles), 23 closes
+        # back above the T1 wick (BREAK_FAIL), 24 below it again: the breakout (still 2), 25 confirms, 28 the target
+        "failed_break_keeps_count": t1 + [c1, bar(100.2, 100.8, 100.15, 100.7), bar(100.7, 101.6, 100.6, 100.65),
+                                          bar(100.65, 100.7, 100.2, 100.3), bar(100.3, 100.35, 98.8, 98.9),
+                                          bar(98.9, 99.1, 98.85, 99.05), bar(99.05, 99.1, 98.2, 98.3),
+                                          bar(98.3, 98.5, 97.6, 97.7), bar(97.7, 98.9, 97.65, 98.8),
+                                          bar(98.8, 99.7, 98.7, 99.3), bar(99.3, 99.35, 97.3, 97.4)],
     }
     for v in sq.values():
         check(v)
