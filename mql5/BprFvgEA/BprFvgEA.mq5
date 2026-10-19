@@ -190,6 +190,7 @@ input bool                InpLogCsv               = true;               // CSV l
 //| has orders or positions (InpMaxSetups)                           |
 //+------------------------------------------------------------------+
 #define BF_MAX_CTX        10      // v10: the most setups with orders / positions at the same time (InpMaxSetups)
+#define BF_MAX_PL         30      // v10: PLACE_LIMIT intents of one bar kept by ExecuteIntents (BF_MAX_CTX x BF_NLEV)
 #define BF_XS_NONE        0       // level not sent
 #define BF_XS_PENDING     1       // limit order in the book
 #define BF_XS_OPEN        2       // filled: a position (or part of the netting position)
@@ -1858,7 +1859,9 @@ void ExecBatch(const BfIntent &its[], const int n)
          // first bar close at or after it); at least one minute ahead (an expiry too close is refused)
          if(g_bp.pendingMaxSec > 0 && haveSs && ss.ordTime > 0)
            {
-            cap = MathMax(ss.ordTime + (long)g_bp.pendingMaxSec + (long)PeriodSeconds(), (long)TimeCurrent() + 60);
+            cap = ss.ordTime + (long)g_bp.pendingMaxSec + (long)PeriodSeconds();
+            if(cap < (long)TimeCurrent() + 60)
+               cap = (long)TimeCurrent() + 60;
             if((long)expiry > cap)
                expiry = (datetime)cap;
            }
@@ -2275,7 +2278,7 @@ void ExecuteIntents(void)
    int      nb;
    int      gid[BF_MAX_CTX];
    BfIntent it;
-   BfIntent pl[BF_MAX_CTX * BF_NLEV];
+   BfIntent pl[BF_MAX_PL];
    BfIntent batch[BF_NLEV];
    BfIntent tch;
    bool     hasTouch = false;
@@ -2302,7 +2305,7 @@ void ExecuteIntents(void)
            }
         }
       else
-         if(it.type == BF_EV_PLACE_LIMIT && np < BF_MAX_CTX * BF_NLEV)
+         if(it.type == BF_EV_PLACE_LIMIT && np < BF_MAX_PL)
            {
             seen = false;
             for(g = 0; g < ng && !seen; g++)
