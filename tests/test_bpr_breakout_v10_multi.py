@@ -79,13 +79,16 @@ def of(recs, i, *evs):
 @pytest.mark.parametrize("m", [1, 2, 3, 5, 9])
 def test_time_limit_cancels_the_unfilled_orders(exe, tmp_path, d, m):
     """Placed on 23 (in the book from the open of 24), no fill: cancelled on the close of 23 + m (the open of 24 + m),
-    EXPIRED with the time-limit flag, and the setup ends. Without the limit the orders stay."""
+    EXPIRED with the time-limit flag, and the setup ends. The cancel intents carry the flag too (the EA's log text).
+    Without the limit the orders stay."""
     bars = side(C1C2 + FLAT, d)
-    recs, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=60 * m, **EA9)
+    recs, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=60 * m, intents=1, **EA9)
     i = rev_id(recs, d)
     assert of(recs, i, "PLACE_LIMIT", "CANCEL", "DONE") == \
         [(23, "PLACE_LIMIT", k, None, 0) for k in (1, 2, 3)] + \
         [(23 + m, "CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)] + [(23 + m, "DONE", 0, "EXPIRED", 1)]
+    assert of(recs, i, "H_CANCEL") == [(23 + m, "H_CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)]
+    recs = [r for r in recs if r["ev"] != "H_CANCEL"]
     base, _ = run(exe, tmp_path, bars, setup_type=REV, **EA9)
     assert of(base, i, "PLACE_LIMIT", "CANCEL", "DONE") == [(23, "PLACE_LIMIT", k, None, 0) for k in (1, 2, 3)]
     # everything before the cancel is the same as without the limit
@@ -111,6 +114,25 @@ def test_a_move_does_not_restart_the_time_limit(exe, tmp_path, d):
         [(24, "CANCEL", k, "NEW_EXTREME", 0) for k in (1, 2, 3)] + \
         [(24, "PLACE_LIMIT", k, None, 0) for k in (1, 2, 3)] + \
         [(26, "CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)] + [(26, "DONE", 0, "EXPIRED", 1)]
+
+
+@D
+def test_time_limit_also_cancels_kept_orders(exe, tmp_path, d):
+    """9.01 InpCancelAtSessionEnd = false: from 24 no order can be sent, so the new low on 24 does not move the limits
+    (keepOrders). The time limit is a cancel the owner asked for: it still ends them, on 23 + 3. The move's own
+    cancel intents never carry the flag."""
+    bars = side(C1C2 + [NEW_LOW] + FLAT2, d)
+    kv = dict(setup_type=REV, sess_off_from=24, keep_orders=1, **EA9)
+    recs, _ = run(exe, tmp_path, bars, pend_max_sec=180, intents=1, **kv)
+    i = rev_id(recs, d)
+    assert of(recs, i, "PLACE_LIMIT", "CANCEL", "DONE") == \
+        [(23, "PLACE_LIMIT", k, None, 0) for k in (1, 2, 3)] + \
+        [(26, "CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)] + [(26, "DONE", 0, "EXPIRED", 1)]
+    assert of(recs, i, "H_CANCEL") == [(26, "H_CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)]
+    base, _ = run(exe, tmp_path, bars, **kv)
+    assert of(base, i, "CANCEL", "DONE") == []
+    moved, _ = run(exe, tmp_path, side(C1C2 + [NEW_LOW] + FLAT2, d), setup_type=REV, pend_max_sec=180, intents=1, **EA9)
+    assert of(moved, i, "H_CANCEL")[:3] == [(24, "H_CANCEL", k, "NEW_EXTREME", 0) for k in (1, 2, 3)]
 
 
 @D
@@ -399,11 +421,13 @@ def test_a_setup_moving_its_orders_keeps_its_slot(exe, tmp_path, seed):
     assert same >= 5
 
 
+@pytest.mark.parametrize("gate", ["sess_off_from", "risk_off_from", "spread_off_from"])
 @pytest.mark.parametrize("cap", [1, 3])
-def test_several_setups_respect_the_entry_window(exe, tmp_path, cap):
-    """No order is placed while the entry window is closed (from bar 1500 on), one at a time or several."""
+def test_several_setups_respect_the_gates(exe, tmp_path, cap, gate):
+    """No order is placed while the entry window is closed, the daily risk is used up (env.riskOk) or the spread is
+    too wide (env.spreadOk), from bar 1500 on: one at a time or several."""
     kv = dict(setup_type=BOTH, **EA9)
-    recs, _, _ = run_err(exe, tmp_path, _bars(72, 3000), max_setups=cap, sess_off_from=1500, **kv)
+    recs, _, _ = run_err(exe, tmp_path, _bars(72, 3000), max_setups=cap, **{gate: 1500}, **kv)
     assert [r for r in recs if r["ev"] == "PLACE_LIMIT" and r["n"] < 1500]
     assert not [r for r in recs if r["ev"] == "PLACE_LIMIT" and r["n"] >= 1500]
 

@@ -14,6 +14,8 @@ static int sessOffFrom = -1;                       // 9.01 tests: !env.sessionEn
 static int barSec = 60;                            // v10 tests: env.now = (u + 1) * barSec (the next bar's open)
 static bool fillsOut = false;                      // v10 tests: print H_FILL lines (fills of levels)
 static bool slotsOut = false;                      // v10 tests: print one H_SLOTS line per bar (multi mode)
+static int riskOffFrom = -1, spreadOffFrom = -1;  // v10 tests: !env.riskOk / !env.spreadOk from this bar on
+static bool intentsOut = false;                    // v10 tests: print one H_CANCEL line per cancel intent (with pt)
 static int retryBar = -1;                          // v10 tests: on this bar the executor answers every PLACE_LIMIT
                                                    // decision with NotifyRetry (no order sent), like the EA's waits
 static bool keepOrders = false;                    // 9.01 tests: env.keepOrders = !env.sessionEntryOk (the EA's mapping
@@ -63,6 +65,9 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "fills") fillsOut = v != 0;                          // v10 tests
    else if(k == "slots") slotsOut = v != 0;                          // v10 tests
    else if(k == "retry_bar") retryBar = (int)v;                      // v10 tests
+   else if(k == "risk_off_from") riskOffFrom = (int)v;               // v10 tests
+   else if(k == "spread_off_from") spreadOffFrom = (int)v;           // v10 tests
+   else if(k == "intents") intentsOut = v != 0;                      // v10 tests
    else if(k == "ext") extOut = v != 0;                              // v7 tests: + kind / zdir / lvl / lvlBar per record
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
@@ -235,7 +240,8 @@ int main(int argc, char **argv)
       int blk0 = det.StatValue(BF_STAT_BLK_SLOT);
       env.sessionEntryOk = (u != sessOffBar && (sessOffFrom < 0 || u < sessOffFrom)); env.sessionCancel = (u == sessCancelBar);
       env.keepOrders = keepOrders && !env.sessionEntryOk;
-      env.riskOk = true; env.spreadOk = true; env.sp = sp;
+      env.riskOk = (riskOffFrom < 0 || u < riskOffFrom); env.spreadOk = (spreadOffFrom < 0 || u < spreadOffFrom);
+      env.sp = sp;
       det.OnBarClosed(u, O.data(), H.data(), L.data(), C.data(), st, ev, env);
       std::vector<int> retried;
       for(int k = 0; k < det.IntentCount(); k++)
@@ -248,6 +254,9 @@ int main(int argc, char **argv)
             if(std::find(retried.begin(), retried.end(), it.id) == retried.end()) retried.push_back(it.id);
             continue;
            }
+         if(it.type == BF_EV_CANCEL && intentsOut)
+            printf("{\"n\":%d,\"id\":%d,\"ev\":\"H_CANCEL\",\"dir\":%d,\"k\":%d,\"reason\":\"%s\",\"pt\":%d}\n", u, it.id,
+                   it.dir, it.k, BfReasonName(it.reason).c_str(), it.pendTime ? 1 : 0);
          if(it.type == BF_EV_PLACE_LIMIT) pend[key] = HOrd{it.P, it.SL, it.TP, it.dir, u};
          else if(it.type == BF_EV_CANCEL) pend.erase(key);
          else if(it.type == BF_EV_TOUCH_ENTRY) touch.push_back(HTouch{it.id, it.dir, u, it.SL, it.TP, it.P, false});
