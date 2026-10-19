@@ -1,4 +1,61 @@
-# BprFvgEA v9: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+# BprFvgEA v10: LuxAlgo BPR / FVG zones + BPR rejection → breakout → Fibonacci entries (MetaTrader 5)
+
+> **v10 (2026-10-19)** = 9.01 plus your two requests of 2026-10-19:
+> 1. "a limit time to configure on the input for how many time the EA should let the limit orders before canceling
+>    them";
+> 2. "the EA should trade all the setups confirmed": until now, when another setup confirmed while one was trading,
+>    the EA skipped it and kept tracking only the first.
+>
+> | Input | v10 default | What it does |
+> |---|---|---|
+> | `InpPendingMaxMin` | 0 (off) | A setup's limit orders stay in the book **at most this many minutes**, then the EA cancels them (`CANCEL … (EXPIRED: pending-order time limit, N min after the first placement)`). `0` = no time limit (v9). |
+> | `InpMaxSetups` | 5 | **Setups traded at the same time.** Every confirmed setup places its limits while fewer than this many setups have orders or positions. `1` = one at a time (v9). Maximum 10. Hedging accounts only (see below). |
+>
+> **The time limit, exactly.**
+> - It counts from the setup's **first placement**. Example with 30 minutes on M1: limits placed at 10:00 are cancelled
+>   at 10:30.
+> - **A move does not restart it.** With `InpAnticipateEntries` the limits follow every new high / low; they are still
+>   cancelled 30 minutes after the first placement.
+> - **A filled entry runs on.** If one entry filled, the EA cancels only the ones still pending; the position keeps
+>   its SL / TP / time stop.
+> - **The setup ends with it.** A setup whose orders were cancelled by the time limit does not place them again (also
+>   when it was waiting to send a move, for example after 14:45 New York).
+> - It is checked **on each candle close** (M1: within a minute). As a safety net, each order also gets a broker-side
+>   expiry one candle later.
+> - The other limits are unchanged: `InpLegExpiryBars` (60 candles after the confirmation), the 14:45 New York cancel
+>   (`InpCancelAtSessionEnd`), the target, a broken leg. Whichever comes first cancels the orders.
+>
+> **Several setups at a time.**
+> - When two setups confirm on the same candle, **both** place their limits now. Before v10 the second was skipped.
+>   A setup that confirms while others trade places its limits too, as long as a slot is free.
+> - **Each setup is tracked on its own**, with its own limits, moves, fills, stop and target. The first trade is
+>   followed exactly as before.
+> - **Risk.** Each setup has its own 0.20 % (split over its entries), as before. **The 1.00 % planned daily loss
+>   covers all of them together**: a setup places its orders only if the loss realised today + the planned risk of
+>   every open position and pending order + its own stay within 1.00 %. So with 5 setups of 0.20 % at once, a
+>   sixth waits. After a loss, fewer fit. A setup that cannot place now (all slots taken, or the daily budget) waits
+>   and decides again on the next candles while it is still valid.
+> - **Same direction.** Several setups can trade the same direction at once (for example two bullish BPRs). Each has
+>   its own stop and its own risk, decided from its own BPR; nothing is ever added to a losing trade, and no size
+>   grows after a loss. Their losses can still come together when price moves against all of them: at most the
+>   1.00 % of the day.
+> - **Touch entry** (`InpTouchEntry`): still one touch position at a time. It holds one of the slots.
+> - **Netting accounts.** One position per symbol: setups would merge into it and share one SL / TP. On a netting
+>   account the EA therefore stays at **one setup at a time**, whatever `InpMaxSetups` says (the self-check says so).
+> - **Unowned positions.** While the EA manages a position that no setup owns (after a restart, or a fill that raced a
+>   cancel), no new setup places orders, as before.
+>
+> **On the chart and in the log.**
+> - The panel row `orders/positions (2 of 5 setups): #12 SHORT …: L1 limit … || #15 LONG …: L2 open …` lists every
+>   setup with orders or positions.
+> - A setup kept out by the slots logs `orders not sent now: slot busy: all 5 setup slots are busy`, or the daily-loss
+>   reason with `+ other setups <planned risk>`.
+> - The rules row shows `setups at a time up to 5, most so far n | limit orders cancelled 30 min after the setup's
+>   first placement`; the `ended:` row counts the setups ended by the time limit.
+> - The CSV files are now `BFEA10_*` (same columns).
+>
+> **Defaults and research.** With `InpMaxSetups = 1` and `InpPendingMaxMin = 0`, v10 behaves as 9.01. Several setups
+> at a time change what a backtest measures (more trades, risks that overlap). A backtest with them is a new trial.
 
 > **9.01 (2026-10-18)** fixes your bug report: with `InpCancelAtSessionEnd = false` the EA still cancelled pending
 > orders. With the switch `false` it now cancels **no pending order for a time reason**:
@@ -301,8 +358,8 @@
 > - **Many order changes.** While the leg extends, every new high deletes and re-sends up to 3 limits: up to 6 trade
 >   requests per candle on M1. Each re-send counts as an "entry decision" on the panel, and `re-anchored` counts the
 >   moves.
-> - **Still one setup at a time.** The setup that moves its own orders may reuse its slot on the same candle; other
->   setups wait. The old orders are deleted before the new ones are sent. The new ones go out only if the account
+> - **Still one setup at a time** (v10: up to `InpMaxSetups`). The setup that moves its own orders may reuse its slot
+>   on the same candle; other setups wait. The old orders are deleted before the new ones are sent. The new ones go out only if the account
 >   history proves that no order the EA deleted in the last minute filled, even partly. On a live or demo server the
 >   EA waits up to about half a second for that history. Otherwise (a failed delete, a fill just before the delete,
 >   history still missing) nothing new is sent, and the setup decides again on a later candle.
@@ -339,7 +396,7 @@
 >   after the Friday close) the close waits for the first tick after the reopen, so the position can be held over the
 >   weekend. This is why the panel marks this case `NOT a research trial` too.
 > - **One setup at a time.** While a position is open, no new setup trades. Without the time stop this can last for
->   hours or days.
+>   hours or days. (v10: with `InpMaxSetups` above 1 the other slots stay free for new setups.)
 > - **Unchanged:** pending orders are still deleted at the 16:44–17:00 New York rollover and never live past the
 >   next 16:44 New York (server-side expiry); no new order is sent then. Only **positions** may now cross the rollover.
 >   (9.01: with `InpCancelAtSessionEnd = false` the pending orders are kept over the rollover too.)
@@ -450,8 +507,10 @@ v2:
 - **Hard limits in code**, which no input can raise:
   - risk is **0.20 % of equity per setup**, commission included, split equally over the enabled entries (0.067 % each
     with three entries);
-  - **1.00 % planned daily loss** per FX day (from 17:00 New York), then lockout;
-  - one setup with orders or positions at a time;
+  - **1.00 % planned daily loss** per FX day (from 17:00 New York), then lockout. v10: it covers all setups together
+    (the loss realised today + the planned risk of every open position and pending order);
+  - at most `InpMaxSetups` setups with orders or positions at a time (v10, default 5, at most 10; one on a netting
+    account; one at a time up to v9);
   - no martingale, grid, averaging down or size increase after losses. The three Fibonacci entries are a fixed plan,
     decided once, with a fixed total risk. They are never added after a loss.
 - **Default exits** (on by default; since v4 each can be switched off for the tester / demo, and a run with either off
@@ -526,6 +585,7 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpFvgRule` | LUXALGO | FVG needed in the breakout leg. `LUXALGO`: an FVG the LuxAlgo engine makes (displacement candle + gap). `ANY_GAP`: any 3-candle gap. `NONE`: no FVG needed. |
 | `InpSetupExpiryBars` | 240 | v8: the bars a setup may spend **at its BPR** without confirming: from the first candle of its latest visit (T1, T2, a pullback), and in a breakout from the breakout candle. While price is away after a rejection the count stops. With `InpMaxBarsToT1 = -1`: from the BPR's creation (a reversal setup: from its last rejection when later). |
 | `InpLegExpiryBars` | 60 | After the confirmation, orders may be placed or filled for this many bars |
+| `InpPendingMaxMin` | 0 | **v10.** A setup's limit orders are cancelled this many minutes after its first placement (`EXPIRED`, "pending-order time limit"). A move does not restart it; a filled entry runs on. 0 = no time limit. |
 | `InpAnticipateEntries` | **true** | **v5 switch, on by default since v8.** The limits are placed from the confirmation (continuation: FVG condition still needed), without waiting for a pullback candle, and moved at every new high / low of the leg. A fast pullback fills them instead of ending in `LEG_BROKEN`. `false` = wait for a pullback candle (v4–v7). |
 | `InpLegBreakOnClose` | false | **v5 switch.** `true`: `LEG_BROKEN` only when a candle closes beyond the leg origin (a wick is not enough). |
 | `InpFib1` / `InpFib2` / `InpFib3` | 50 / 61.8 / 71 | Entry retracements in % of the leg. 0 turns an entry off. |
@@ -548,7 +608,8 @@ not affiliated with or endorsed by LuxAlgo. The setup rules are the project owne
 | `InpEntriesAfterSessionEnd` | false | **v3 switch.** `true`: new orders may also be placed from 14:45 to 16:44 New York (Mon–Fri). |
 | `InpFlatBeforeRollover` | true | **v4 switch.** `false`: no 16:44 New York flat (`close at market: ROLLOVER`); positions may be held over the rollover and the weekend (swap, gap risk). Pending orders are still deleted at 16:44. Not a research trial. |
 | `InpRiskPct` | 0.20 | Risk **per setup**, % of equity incl. commission, split over the entries (capped at 0.20) |
-| `InpDailyLossPct` | 1.00 | Planned daily loss, % (capped at 1.00) |
+| `InpDailyLossPct` | 1.00 | Planned daily loss, % (capped at 1.00). v10: realised loss today + the planned risk of all setups' positions and orders. |
+| `InpMaxSetups` | 5 | **v10.** Setups with orders or positions at the same time, each with its own `InpRiskPct` (1 = one at a time, as v2–v9; at most 10). Netting accounts: always 1. |
 | `InpMaxTradesDay` | 0 | Maximum positions per FX day (0 = no limit) |
 | `InpCommissionPerLotSide` | 3.50 | Commission per lot per side, account currency (`UNVERIFIED`) |
 | `InpSlippageTicks` | 1 | Added to the stop distance for sizing, and to the cost check |
@@ -683,7 +744,7 @@ The panel (top left) answers "why is nothing happening?" at a glance:
 | 8 | `waiting: no FVG 12 bars \| blocked: session 40 slot 0 daily-risk 0 spread/catch-up 0 \| retried 0 \| re-anchored 2` | Ready setups that could not decide, and why |
 | 9 | `ended: broken 30 … session 0 (rollover order deletes 0) refused 0 …` | How setups ended without a trade |
 | 10 | `orders: accepted 9 refused 0 \| filling … \| last error: …` | Broker responses, with the last retcode |
-| 11 | `orders/positions: #12 LONG SL … TP …: L1 limit … \| L2 open 0.04 @ …` | The live orders and positions |
+| 11 | `orders/positions (2 of 5 setups): #12 LONG SL … TP …: L1 limit … \| L2 open 0.04 @ … \|\| #15 …` | The live orders and positions, per setup (v10: `\|\|` between setups) |
 | 12 | `today: … \| lockout: no \| positions 2 \| last: …` | Daily risk state and the last event |
 
 The same rows go to the Experts log as `DIAG` lines at every new FX day and when the EA stops.
@@ -715,7 +776,7 @@ After the warm-up the Experts log shows `SELF-CHECK` lines:
 **What to send back after a test:**
 1. the Journal / Experts lines starting with `[BFEA]`, at least the `SELF-CHECK` and `DIAG` lines;
 2. the tester report;
-3. `BFEA9_trades_*_TESTER.csv` and `BFEA9_setups_*_TESTER.csv` from the Common Files folder (`BFEA8_*` in v8, `BFEA7_*` in v7,
+3. `BFEA10_trades_*_TESTER.csv` and `BFEA10_setups_*_TESTER.csv` from the Common Files folder (`BFEA9_*` in v9, `BFEA8_*` in v8, `BFEA7_*` in v7,
    `BFEA6_*` in v6, `BFEA2_*` before).
 
 ## Logs
@@ -737,7 +798,7 @@ After the warm-up the Experts log shows `SELF-CHECK` lines:
   - `CLOSED TP pnl … R=…`;
   - `orders not sent now: <reason>`, and the order-failure lines with the broker's retcode.
 - **CSV** in the Common Files folder. `_TESTER` files are rewritten on each tester run; `_LIVE` files are appended to.
-  - **`BFEA9_setups_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`** (`BFEA8_*` / `BFEA7_*` / `BFEA6_*` in v8 / v7 / v6, same columns; `BFEA2_*` up to v5,
+  - **`BFEA10_setups_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`** (`BFEA9_*` / `BFEA8_*` / `BFEA7_*` / `BFEA6_*` in v9 / v8 / v7 / v6, same columns; `BFEA2_*` up to v5,
     two columns fewer). One row per setup when it ends, plus the open ones when the EA stops. Columns:
     - `run, id, dir, created_time, B, T, touches`;
     - `ref_time, level, breakout_time, confirm_time, O, X`;
@@ -749,7 +810,7 @@ After the warm-up the Experts log shows `SELF-CHECK` lines:
     are the reversal level and the touch candle whose wick it is.
 
     `L1`–`L3` hold a state and a price (`CLOSED@2351.23`), a state and a reason (`SKIPPED:COST`), or `off`.
-  - **`BFEA9_trades_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`.** One row per closed position. Columns:
+  - **`BFEA10_trades_<symbol>_<tf>_<magic>_<TESTER|LIVE>.csv`.** One row per closed position. Columns:
     - `run, id, levels, dir`;
     - `entry_time, entry, lots, SL, TP`;
     - `exit_time, exit, exit_reason, pnl, R, planned_risk, setup`.
@@ -784,6 +845,14 @@ All of these are inputs or are stated in the spec (§0):
 
 - **Not compiled yet.**
 - **Strategy untested** (H-14). A pre-registered backtest (EXP011) is the next research step.
+- **v10.**
+  - **Several setups at a time** are tested on the C++ copy of the detector (slots, decisions, moves, touch entries).
+    The executor's side (one context per setup, the slot and daily-loss checks, the order bookkeeping) is checked by
+    reading and the static check only, not in MT5.
+  - **The time limit is checked on candle closes.** On M1 an order may live up to one candle longer than the limit
+    if no tick arrives; the broker-side expiry (one more candle) is the safety net. After a restart a setup is not
+    restored, so its old orders are deleted at once anyway.
+  - **Netting accounts** stay at one setup at a time.
 - **Netting accounts.** The three fills merge into one position:
   - the time stop counts from the first fill;
   - closing one entry closes all of them;
@@ -839,6 +908,7 @@ All of these are inputs or are stated in the spec (§0):
 | `tests/test_bpr_breakout_ea_harness.py` | The pure files (`BfDefines`, `BfEngine`, `BfDetector`) are compiled as C++ and compared **record by record** with `qe/strategies/bpr_breakout.py`, under a bar-based fill/exit harness: 10 random configurations and 117 hand-built sequences (114 long and mirrored, incl. the v5 / v6 / v7 / v8 / v9 ones, each with three FVG rules and the strict-rejection option, plus 3 boundary cases), including exact comparison boundaries. Diagnostic counters must match too. Mutation checks: 24 deliberate small bugs (flipped comparisons, removed conditions, a wrong price or buffer) were all caught. |
 | `tests/test_bpr_breakout_v8_tracking.py` | **v8 tracking and quick limits, on the C++ copy of the MQL5 detector only (49 tests).** The owner's tap-from-above example, long and short: T1 on 17 (wick 99.0), the one-candle rejection on 18, the limits on the second close (24) with their prices, moved on the new low (25), the target (28); the same bars with the v7 rules wait for a pullback candle (26); `BOTH` trades the continuation then the reversal. A first touch 300 bars after the creation (traded; v7 ended it EXPIRED on 254). `InpMaxBarsToT1 = 100`. The window: no clock while price is away (a continuation T2 300 bars later, a late break of the T1 wick, a late T2 then the break, a late continuation breakout: all traded; v7 ended them EXPIRED), a long visit still expires. The one-candle reaction (rejection, T2, break; not for a continuation setup, not with the v7 rules) and its boundary (a close exactly at the edge is no rejection). Capacity: a ladder of 80 BPRs price never revisits; with the harness built for 4 setups, a setup with pending orders and one in a visit are never dropped, the idle ones go in order of their last zone event (a BPR created first but rejected later is kept), and two random series (every dropped setup was idle). Warm-up setups kept in WAIT and ZONE (in the visit and after the rejection), not when confirmed. The reversal without the FVG wait, and the continuation unchanged by it. 6 random series (v6 / v7 invariants plus: no expiry before T1 without a limit) and causality. Mutation check: 22 of 22 caught; the 7.01 and v5 sets still caught on the v8 code (one known equivalent). |
 | `tests/test_bpr_breakout_v9_rejection.py` | **v9 rejection candles, on the C++ copy of the MQL5 detector only (71 tests).** Your C1 / C2 example with its prices (breakout 22 with 2 rejection candles, limits on 23, target 27). Your complaint (T1, one candle, then the break): v8 traded it, v9 does not (DEEPEST / LAST, REVERSAL / BOTH). Two candles that do not follow each other. A close beyond the level too early restarts the count and is no touch (the level stays, with every `InpRevLevel`); a failed breakout keeps the count; a close through the whole BPR. A rule table: one, two and three candles with 1-3 needed, a doji, a red candle, a close exactly at the T1 wick (counts) and one tick below it (does not). The T1 candle does not count; the rejection is still needed; v8 mode unchanged. Your earlier examples still trade, the two one-candle ones no longer do. Warm-up, the continuation unchanged, 6 random series (the count recomputed from the bars; no T2 beyond the T1 wick) and causality. Mutation check: 16 of 18 caught, the 2 others equivalent (0 differences in 600 runs). |
+| `tests/test_bpr_breakout_v10_multi.py` | **v10 time limit and several setups at a time, on the C++ copy of the MQL5 detector only (73 tests).** The time limit on your C1 / C2 example (limits on 23): cancelled exactly m minutes after the first placement (m = 1–9; M5 clock time), not restarted by a move, a filled entry runs on while the others are cancelled, a setup waiting to move after 14:45 ends, no limit before the first placement (also when the first decision could not be sent). Random series: no order placed or left in the book after the limit. Several setups: the slots are never exceeded and never left unused while a setup waits; when one at a time skipped a setup (in three cases a second setup confirmed on the same candle), v10 places it on that candle and follows the first trade exactly as before; a setup that moves its orders keeps its slot; one touch entry at a time. Defaults (1 setup, no limit) = v9.01. Causality. Mutation check: 27 of 27 caught. |
 | `tests/test_bpr_breakout_v7_reversal.py` | **v7 reversal rules, on the C++ copy of the MQL5 detector only (66 tests; 7.01 added the review's cases: the same descent split two ways, a failed-breakout visit, a crash inside the T1 visit, an unrejected T2, the FVG before the 100 %, the expiry from the last rejection, a wide candle at the visit's low, a breakout inside a visit, a low after the bounce top).** The owner's example, long and short: level 99.50 at the T1 wick, closes on 28 / 29, 100 % = 101.6, 0 % = 96.4, the sell-limit prices, SL / TP, the target. With `BOTH` the continuation trade first (identical to `CONTINUATION`), then the reversal (identical to `REVERSAL`). The three level options in both wick orders and with equal wicks. The rejection rule. A pullback into the zone is no third touch. The 100 % at the last rejected bounce, at an unrejected T2 spike, and the 0 % at a wick inside a visit. Expiry; one touch allowed; setups per allowed trade direction; the touch entry once per BPR. On 8 random series it checks the v6 invariants plus the v7 ones: kinds; no `TOUCH_LIMIT` for a reversal setup; the reversal level recomputed from the touch candles' wicks for each option; the breakout close beyond it; a rejection first. It also checks coverage (a reversal after its BPR's continuation confirmed; a level taken from T2) and causality. The new sequences are in the parity set (defaults = v4 Python reference). Mutation check (v7): 31 of 33 deliberate bugs caught. The other 2 produce identical output on 800 random runs (equivalent). 7.01 set: 21 of 22 caught. The 22nd gives identical output on 1000 random runs. The v6 set catches every bug whose code still exists; the v5 set catches 17 of 17. |
 | `tests/test_bpr_breakout_v6_setups.py` | **v6 reversal setup and touch entry, on the C++ copy of the MQL5 detector only (60 tests; v7: the v6 sequences that break down right after T1 run with the v6 options, and `BOTH` is checked per setup).** Long and short: the reversal trade (breakout, confirmation, leg 100.2 → 98.4, sell-limit prices, target); the T2 candle as the reversal level; a failed reversal then a continuation (BOTH); a close exactly on the level; a broken BPR ending only the continuation; the leg restarting at a new high; the direction filter on the trade; the touch entry's price, stop, target and RR, T1 only, no entry when T1 breaks the BPR, the cost filter; the setup's limits while its own touch position is open. On 10 random series it checks invariants: one setup with orders or positions at a time (touch positions included), a touch entry only into an empty slot, BPR versus trade direction, leg geometry, order geometry, and every T1 candidate tried after a skipped one. It also checks coverage and causality. With the defaults these sequences equal the v4 Python reference (parity set). Mutation check (v6): 29 of 29 deliberate bugs caught; the v5 set still catches 17 of 17. |
 | `tests/test_bpr_breakout_v5_switches.py` | **v5 switches, on the C++ copy of the MQL5 detector only (44 tests).** Hand-built long and short sequences check: orders on the confirmation candle; the same-candle move on a new high; the FVG still required; the owner's fast pullback (filled, then stopped, never `LEG_BROKEN`); the close rule and its exact boundary; moves stopped by the leg expiry (with its boundary) and by a session cancel; the move still blocked by the entry window; spike candles and short legs on the extra decision candles. On 9 random series it checks invariants: one setup with orders at a time; on a move candle only the moving setup decides; no order after the leg expiry; SL < P < TP. It also checks causality: records up to bar t do not depend on later bars. The new sequences are also in the parity set above: with the switches off, they equal the v4 Python reference. Mutation check: 18 of 19 deliberate bugs caught; the 19th only differs in a state the slot rule makes unreachable. |

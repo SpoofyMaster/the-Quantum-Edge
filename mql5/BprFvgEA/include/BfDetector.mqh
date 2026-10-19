@@ -124,6 +124,7 @@ private:
       m_ev[m_nEv].lvlBar      = (s.rev || s.kind == BF_SETUP_REVERSAL) ? s.lvlRBar : s.ref;
       m_ev[m_nEv].kind        = s.kind;
       m_ev[m_nEv].rejC        = s.nRejC;
+      m_ev[m_nEv].pendTime    = s.pendTimeUp;
       m_nEv++;
      }
 
@@ -141,6 +142,7 @@ private:
       m_in[m_nIn].k      = k;
       m_in[m_nIn].reason = reason;
       m_in[m_nIn].bar    = bar;
+      m_in[m_nIn].pendTime = s.pendTimeUp;                       // v10
       if(type == BF_EV_PLACE_LIMIT && k >= 1 && k <= BF_NLEV)
         {
          m_in[m_nIn].P  = s.lvP[k - 1];
@@ -480,6 +482,13 @@ private:
       return(lu < m_s[i].X);
      }
 
+   //--- v10: the pending-order time limit is reached: pendingMaxSec after the setup's first placement (env.now)
+   bool              PendTimeUp(const int i, const BfEnv &env)
+     {
+      return(m_p.pendingMaxSec > 0 && m_s[i].ordTime > 0 && env.now > 0 &&
+             env.now - m_s[i].ordTime >= (long)m_p.pendingMaxSec);
+     }
+
    //--- v5 legBreakOnClose: only the close counts (a wick beyond the origin does not break the leg)
    bool              OriginBroken(const int i, const double hu, const double lu, const double cu)
      {
@@ -808,6 +817,13 @@ private:
             SetDone(i, u, BF_R_EXPIRED);
             return;
            }
+         //--- v10: the time limit runs from the first placement, also while a re-anchored setup waits to send again
+         if(PendTimeUp(i, env))
+           {
+            m_s[i].pendTimeUp = true;
+            SetDone(i, u, BF_R_EXPIRED);
+            return;
+           }
          if(NewExt(i, h[u], l[u]))
            {
             m_s[i].X    = (d > 0) ? h[u] : l[u];
@@ -821,12 +837,21 @@ private:
         }
       if(ph == BF_PH_ORDERED)
         {
+         //--- v10: the pending-order time limit (pendingMaxSec after the first placement) ends the orders and the setup
+         if(PendTimeUp(i, env))
+           {
+            m_s[i].pendTimeUp = true;
+            CancelPending(i, u, BF_R_EXPIRED);
+            SetDone(i, u, BF_R_EXPIRED);
+            return;
+           }
          //--- 4.3. 9.01: with env.keepOrders (pending orders kept, and no order can be sent now) a new extreme does
          //    not re-anchor: moving the orders would cancel them with no way to send them again
          if(!env.keepOrders && NewExt(i, h[u], l[u]))
            {
             CancelPending(i, u, BF_R_NEW_EXTREME);
             ResetLevels(i);
+            m_s[i].reAnchorBar = u;                             // v10: it keeps its slot to decide again
             m_s[i].X     = (d > 0) ? h[u] : l[u];
             m_s[i].xBar  = u;
             m_s[i].phase = BF_PH_LEG;
@@ -871,8 +896,14 @@ private:
                if(u - m_s[i].confirmBar > m_p.legExpiryBars)
                   CancelPending(i, u, BF_R_EXPIRED);
                else
-                  if(m_p.useSession && env.sessionCancel)
-                     CancelPending(i, u, BF_R_SESSION_END);
+                  if(PendTimeUp(i, env))
+                    {
+                     m_s[i].pendTimeUp = true;                  // v10: the filled part runs on, the rest is cancelled
+                     CancelPending(i, u, BF_R_EXPIRED);
+                    }
+                  else
+                     if(m_p.useSession && env.sessionCancel)
+                        CancelPending(i, u, BF_R_SESSION_END);
            }
          MaybeClosed(i, u, BF_R_TARGET);
         }
@@ -1076,6 +1107,11 @@ private:
         }
       m_s[i].phase       = BF_PH_ORDERED;
       m_s[i].decisionBar = u;
+      if(m_s[i].ordTime == 0)
+        {
+         m_s[i].ordTime = env.now;                              // v10: the pending-order time limit starts here
+         m_s[i].ordBar  = u;
+        }
       return(true);
      }
 
@@ -1129,6 +1165,67 @@ private:
      }
 
    //+---------------------------------------------------------------+
+   //| v10 (maxSetups > 1): every ready setup decides on its bar, in |
+   //| creation order, while a slot is free (env.freeSlots). A setup |
+   //| that moved its own orders on this bar (re-anchor), or whose   |
+   //| own touch position holds a slot (env.slotOwner), keeps it.    |
+   //+---------------------------------------------------------------+
+   void              DecideMulti(const int u, const double &c[], const BfEnv &env)
+     {
+      int  i;
+      int  nReady  = 0;
+      int  blocked = -1;
+      int  free_   = env.freeSlots;
+      bool own;
+      bool touched = (env.slotOwner > 0);                       // the EA holds one touch position at a time
+      for(i = 0; i < m_n; i++)
+         if((m_s[i].phase == BF_PH_LEG && m_s[i].ready) || m_s[i].touchReady)
+            nReady++;
+      if(nReady == 0)
+         return;
+      if(m_p.useSession && !env.sessionEntryOk)
+         blocked = BF_STAT_BLK_SESS;
+      else
+         if(!env.riskOk)
+            blocked = BF_STAT_BLK_RISK;
+         else
+            if(!env.spreadOk)
+               blocked = BF_STAT_BLK_SPRD;
+      if(blocked >= 0)
+        {
+         for(i = 0; i < nReady; i++)
+            Stat(blocked);
+         return;
+        }
+      for(i = 0; i < m_n; i++)
+        {
+         if(m_s[i].touchReady)
+           {
+            //--- one touch entry at a time (env.slotOwner = the setup of the open one), so one per bar at most
+            if(free_ <= 0 || touched)
+               Stat(BF_STAT_BLK_SLOT);
+            else
+               if(TryTouch(i, u, c, env))
+                 {
+                  free_--;
+                  touched = true;
+                 }
+            continue;
+           }
+         if(m_s[i].phase != BF_PH_LEG || !m_s[i].ready)
+            continue;
+         own = (m_s[i].reAnchorBar == u || (env.slotOwner > 0 && env.slotOwner == m_s[i].id));
+         if(!own && free_ <= 0)
+           {
+            Stat(BF_STAT_BLK_SLOT);
+            continue;
+           }
+         if(TryDecide(i, u, c, env) && !own)
+            free_--;
+        }
+     }
+
+   //+---------------------------------------------------------------+
    //| spec s.5: decisions, creation order, one setup per bar        |
    //+---------------------------------------------------------------+
    void              Decide(const int u, const double &c[], const BfEnv &env)
@@ -1137,6 +1234,11 @@ private:
       int nReady  = 0;
       int blocked = -1;
       int own     = -1;                                         // v5: ready setup that owns the busy slot
+      if(m_p.maxSetups > 1)
+        {
+         DecideMulti(u, c, env);                                // v10
+         return;
+        }
       for(i = 0; i < m_n; i++)
         {
          if(m_s[i].phase == BF_PH_LEG && m_s[i].ready)
@@ -1359,6 +1461,11 @@ public:
          return;
       if(m_s[i].phase != BF_PH_ORDERED || m_s[i].everFilled)
          return;
+      if(m_s[i].ordBar == m_s[i].decisionBar)
+        {
+         m_s[i].ordTime = 0;                                    // v10: no order was ever placed: no time limit yet
+         m_s[i].ordBar  = -1;
+        }
       ResetLevels(i);
       m_s[i].phase = BF_PH_LEG;
       Stat(BF_STAT_RETRY);
@@ -1387,6 +1494,17 @@ public:
       if(i < 0)
          return(BF_PH_NONE);
       return(m_s[i].phase);
+     }
+
+   //--- v10 harness environment: the setups ORDERED or FILLED
+   int               BusyCount(void)
+     {
+      int i;
+      int n = 0;
+      for(i = 0; i < m_n; i++)
+         if(m_s[i].phase == BF_PH_ORDERED || m_s[i].phase == BF_PH_FILLED)
+            n++;
+      return(n);
      }
 
    //--- harness environment: slot_free = no setup ORDERED or FILLED

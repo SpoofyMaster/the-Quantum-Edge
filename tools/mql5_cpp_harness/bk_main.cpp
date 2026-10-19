@@ -3,12 +3,19 @@
 // lines, then one "STATS" line with the diagnostic counters. Usage: bk_harness <bars.txt> key=value ...
 #include "bf_pure.cpp"
 #include <vector>
+#include <string>
+#include <algorithm>
 #include <map>
 #include <cstdlib>
 #include <cstring>
 
 static int sessCancelBar = -1, sessOffBar = -1;   // v5 tests: one bar with env.sessionCancel / !env.sessionEntryOk
 static int sessOffFrom = -1;                       // 9.01 tests: !env.sessionEntryOk from this bar on
+static int barSec = 60;                            // v10 tests: env.now = (u + 1) * barSec (the next bar's open)
+static bool fillsOut = false;                      // v10 tests: print H_FILL lines (fills of levels)
+static bool slotsOut = false;                      // v10 tests: print one H_SLOTS line per bar (multi mode)
+static int retryBar = -1;                          // v10 tests: on this bar the executor answers every PLACE_LIMIT
+                                                   // decision with NotifyRetry (no order sent), like the EA's waits
 static bool keepOrders = false;                    // 9.01 tests: env.keepOrders = !env.sessionEntryOk (the EA's mapping
                                                    // with InpCancelAtSessionEnd = false, without its rollover timing)
 static bool extOut = false;                        // v7 tests: extra fields (never in the parity runs)
@@ -50,6 +57,12 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "t1_wait") p.t1WaitBars = (int)v;                    // v8, EA only: -1 = v7, 0 = no limit
    else if(k == "rev_fvg") p.revNeedFvg = v != 0;                    // v8, EA only
    else if(k == "rev_rej_c") p.revRejCandles = (int)v;               // v9, EA only: 0 = v8
+   else if(k == "max_setups") p.maxSetups = (int)v;                  // v10, EA only: 1 = one setup at a time
+   else if(k == "pend_max_sec") p.pendingMaxSec = (int)v;            // v10, EA only: 0 = off
+   else if(k == "bar_sec") barSec = (int)v;                          // v10 tests
+   else if(k == "fills") fillsOut = v != 0;                          // v10 tests
+   else if(k == "slots") slotsOut = v != 0;                          // v10 tests
+   else if(k == "retry_bar") retryBar = (int)v;                      // v10 tests
    else if(k == "ext") extOut = v != 0;                              // v7 tests: + kind / zdir / lvl / lvlBar per record
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
@@ -90,6 +103,7 @@ int main(int argc, char **argv)
    static CBfDetector det;
    det.Init(p, tradeFrom);
    std::map<std::pair<int, int>, HOrd> pend, pos;      // (id, k), ordered like Python's sorted()
+   int maxBusy = 0;                                     // v10 tests: the most setups ORDERED / FILLED at a bar's end
    std::vector<HTouch> touch;                           // v6: at most one (slot rule); printed as H_TOUCH_* lines
    auto hline = [&](int n, const HTouch &t, const char *ev)
      {
@@ -110,8 +124,8 @@ int main(int argc, char **argv)
                 px ? Num(e.P).c_str() : "null", px ? Num(e.SL).c_str() : "null", px ? Num(e.TP).c_str() : "null",
                 ox ? Num(e.O).c_str() : "null", ox ? Num(e.X).c_str() : "null");
          if(extOut)
-            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d", e.kind, e.zdir, Num(e.lvl).c_str(),
-                   e.lvlBar, e.rejC);
+            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d,\"pt\":%d", e.kind, e.zdir,
+                   Num(e.lvl).c_str(), e.lvlBar, e.rejC, e.pendTime ? 1 : 0);
          printf("}\n");
         }
       det.ClearEvents();
@@ -167,6 +181,9 @@ int main(int argc, char **argv)
             HOrd np = q; np.bar = u;
             pos[key] = np;
             it = pend.erase(it);
+            if(fillsOut)
+               printf("{\"n\":%d,\"id\":%d,\"ev\":\"H_FILL\",\"dir\":%d,\"k\":%d,\"reason\":null,\"P\":%s,\"SL\":%s,\"TP\":%s,\"O\":null,\"X\":null}\n",
+                      u, key.first, q.dir, key.second, Num(q.P).c_str(), Num(q.SL).c_str(), Num(q.TP).c_str());
             det.NotifyFilled(key.first, key.second);
            }
          else ++it;
@@ -192,22 +209,58 @@ int main(int argc, char **argv)
          if(ok) own = (occ > 0) ? occ : tid;
          env.slotOwner = own;
         }
+      // v10: several setups at a time. A setup holds a slot while it is ORDERED / FILLED, or while its touch
+      // position is open (the EA: its busy contexts, plus a touch position whose setup has none)
+      if(p.maxSetups > 1)
+        {
+         int used = det.BusyCount();
+         env.slotOwner = 0;
+         for(const HTouch &t : touch)
+           {
+            int ph = det.PhaseOf(t.id);
+            if(ph != BF_PH_ORDERED && ph != BF_PH_FILLED) used++;
+            env.slotOwner = t.id;
+           }
+         env.freeSlots = (p.maxSetups > used) ? p.maxSetups - used : 0;
+         env.slotFree = (env.freeSlots > 0);
+        }
+      env.now = (long)(u + 1) * barSec;
+      std::string busyIds;                              // v10 tests (slots=1): the setups ORDERED / FILLED now
+      for(int k = 0; k < det.TrackedCount(); k++)
+        {
+         BfSetup ts;
+         if(det.GetTracked(k, ts) && (ts.phase == BF_PH_ORDERED || ts.phase == BF_PH_FILLED))
+            busyIds += (busyIds.empty() ? "" : ",") + std::to_string(ts.id);
+        }
+      int blk0 = det.StatValue(BF_STAT_BLK_SLOT);
       env.sessionEntryOk = (u != sessOffBar && (sessOffFrom < 0 || u < sessOffFrom)); env.sessionCancel = (u == sessCancelBar);
       env.keepOrders = keepOrders && !env.sessionEntryOk;
       env.riskOk = true; env.spreadOk = true; env.sp = sp;
       det.OnBarClosed(u, O.data(), H.data(), L.data(), C.data(), st, ev, env);
+      std::vector<int> retried;
       for(int k = 0; k < det.IntentCount(); k++)
         {
          BfIntent it;
          det.GetIntent(k, it);
          std::pair<int, int> key(it.id, it.k);
+         if(it.type == BF_EV_PLACE_LIMIT && u == retryBar)
+           {
+            if(std::find(retried.begin(), retried.end(), it.id) == retried.end()) retried.push_back(it.id);
+            continue;
+           }
          if(it.type == BF_EV_PLACE_LIMIT) pend[key] = HOrd{it.P, it.SL, it.TP, it.dir, u};
          else if(it.type == BF_EV_CANCEL) pend.erase(key);
          else if(it.type == BF_EV_TOUCH_ENTRY) touch.push_back(HTouch{it.id, it.dir, u, it.SL, it.TP, it.P, false});
         }
       det.ClearIntents();
+      for(int id : retried) det.NotifyRetry(id);
       flush();
+      if(det.BusyCount() > maxBusy) maxBusy = det.BusyCount();
+      if(slotsOut)
+         printf("{\"n\":%d,\"id\":0,\"ev\":\"H_SLOTS\",\"busy\":[%s],\"free\":%d,\"blk\":%d,\"after\":%d,\"owner\":%d}\n", u,
+                busyIds.c_str(), env.freeSlots, det.StatValue(BF_STAT_BLK_SLOT) - blk0, det.BusyCount(), env.slotOwner);
      }
+   fprintf(stderr, "MAXBUSY %d\n", maxBusy);
    printf("STATS");
    for(int k = 0; k < BF_NSTAT; k++) printf(" %d", det.StatValue(k));
    printf("\n");

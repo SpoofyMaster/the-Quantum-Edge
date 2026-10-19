@@ -159,7 +159,9 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [?] U-20 Owner decision: with `BOTH`, the continuation's position on the same BPR can still be open when the
   reversal confirms (its stop is beyond the touch low, below the T1 wick); the reversal then waits for the slot (one
   setup at a time) and can miss its first pullback. Keep this, or close the continuation's position at the reversal's
-  confirmation? (v8 review, journal day11.)
+  confirmation? (v8 review, journal day11.) v10: with `InpMaxSetups` > 1 (the default 5) the reversal no longer waits:
+  on a hedging account both positions can be open together (opposite directions, each with its own stop). Closing
+  the continuation at the reversal's confirmation is still the owner's call.
 - [x] EA-16 v9 (2026-10-17, journal day12): the reversal needs a rejection of at least 2 candles in the BPR's
   direction after T1 (green for a bullish BPR, red for a bearish one), successive or not, before the breakout
   (`InpRevRejCandles`, default 2; a close beyond the reversal level that is not the breakout restarts the count and is
@@ -169,6 +171,14 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
   pending orders (the 16:44 rollover cut and delete, the 16:44 expiry, and a re-anchor that could not be sent after
   14:45). Fixed: with the switch false no time-based cancel, and no re-anchor while no order can be sent
   (`env.keepOrders`); `tests/test_bpr_breakout_v901_keep_orders.py`. Defaults unchanged.
+- [x] EA-18 v10 (2026-10-19, journal day14): owner request: a time limit for the limit orders (`InpPendingMaxMin`,
+  from the setup's first placement, default off) and trade every confirmed setup (`InpMaxSetups`, default 5, max 10,
+  hedging; 1 = v9), all within the 1.00 % planned daily loss; `tests/test_bpr_breakout_v10_multi.py`.
+- [?] U-23 User: compile v10 and send every compiler message (the multi-setup executor is new code). Run the tester
+  with `InpSetupType = REVERSAL` (many overlapping setups) and `InpPendingMaxMin = 30`; check that two setups confirmed
+  on the same candle both place their limits, that the panel never shows more than `InpMaxSetups` setups, that no
+  limit order lives longer than 30 minutes (`EXPIRED: pending-order time limit`), and send the `[BFEA]` lines and the
+  `BFEA10_*` CSV files.
 - [?] U-22 User: compile 9.01; run the tester with `InpCancelAtSessionEnd = false` and check that pending orders are
   only removed by fills, the leg rules or the target (no `SESSION_END`, no rollover delete).
 - [?] U-21 User: compile v9 and send every compiler message. Run the tester with `InpSetupType = REVERSAL` and check

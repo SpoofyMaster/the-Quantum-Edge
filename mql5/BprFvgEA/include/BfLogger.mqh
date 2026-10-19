@@ -93,8 +93,8 @@ public:
       m_fresh   = tester;
       m_quiet   = quiet;
       m_run     = run;
-      m_fSetups = "BFEA9_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
-      m_fTrades = "BFEA9_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fSetups = "BFEA10_setups_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
+      m_fTrades = "BFEA10_trades_" + s + "_" + tf + "_" + IntegerToString(magic) + "_" + mode + ".csv";
       m_rows    = 0;
       if(m_csv)
         {

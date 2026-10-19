@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 9.01; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5; 9.01 = `InpCancelAtSessionEnd = false` keeps the pending orders, §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 10; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5; 9.01 = `InpCancelAtSessionEnd = false` keeps the pending orders, §8; v10 = 9.01 plus the pending-order time limit and several setups at a time, §4.2–§5 and §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -77,6 +77,8 @@ gives the rules.
 | `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §4.5, §7) |
 | `InpRevNeedFvg` | (MQL5 only: `revNeedFvg`) | true (EA: false) | v8: the reversal waits for its FVG (§4.5) |
 | `InpRevRejCandles` | (MQL5 only: `revRejCandles`) | 0 (EA: 2) | v9: rejection candles needed before the reversal breakout (§4.5) |
+| `InpPendingMaxMin` | (MQL5 only: `pendingMaxSec` = minutes × 60) | 0 | v10: a setup's limits end this long after its first placement (§4.2–§4.4 notes) |
+| `InpMaxSetups` | (MQL5 only: `maxSetups`) | 1 (EA: 5) | v10: setups with orders or positions at the same time (§5, §8) |
 
 The research defaults (this table's second-to-last column, the detector's `BfDefaultParams`, the parity set) keep the
 v7 rules; the EA's inputs default to the v8 behaviour where marked "EA:".
@@ -219,6 +221,17 @@ These rules apply from `confirmBar + 1` onwards. `ready` is reset to false at th
   without an FVG counts in `noFvg`. The confirmation bar is a decision bar too: in §4.1 steps 4 and 5, right after
   `CONFIRM`, `ready` is set with the same FVG condition.
 
+**v10 pending-order time limit (`pendingMaxSec > 0`, MQL5 detector only).** `ordTime` is `env.now` (the decision
+moment: the next bar's open, server time) of the setup's **first** placement (§5 result; a decision the executor
+answers with `NotifyRetry` does not count, §6). `timeUp(u)` = `ordTime > 0 && env.now − ordTime ≥ pendingMaxSec`.
+- `LEG` (a setup that re-anchored and has not placed again): after steps 1–2, `timeUp(u)` → `DONE(EXPIRED)`.
+- `ORDERED` (§4.3): first, `timeUp(u)` → every pending level is cancelled (`CANCEL(k, EXPIRED)`), then
+  `DONE(EXPIRED)`.
+- `FILLED` (§4.4): after steps 1–2, `timeUp(u)` → the pending levels are cancelled (`CANCEL(k, EXPIRED)`); the filled
+  ones run on.
+- The records carry the flag `pendTime` (harness `pt`), and so do the cancel intents. A re-anchor never resets
+  `ordTime`.
+
 ### 4.3 Phase `ORDERED` (at least one level pending, none filled)
 
 1. **`newExt(u)` → re-anchor** (9.01: not when `env.keepOrders`, §8: the levels stay pending where they are and steps
@@ -344,6 +357,20 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
 `env.spreadOk`, on bars `u ≥ trade_from`. If any is false, no setup decides on this bar. The ready setups count in
 the `blocked*` diagnostics and try again on the next bar.
 
+**v10 several setups (`maxSetups > 1`, MQL5 detector only).** The executor gives `env.freeSlots` (how many more
+setups may take orders now: `maxSetups` − the setups with orders or positions − a touch position whose setup has
+none; 0 while an unowned position or order exists) and `env.slotOwner` (the setup of the open touch position, hedging
+accounts). With the gates (session, risk, spread) met, every candidate decides in creation order:
+- a ready `LEG` setup that re-anchored on this bar (`reAnchorBar = u`), or whose own touch position is open, decides
+  without a free slot (its slot is its own);
+- any other ready `LEG` setup decides while a slot is left (`free > 0`) and takes one when it places a level;
+  otherwise `blocked slot`;
+- a `touchReady` setup decides while a slot is left and no touch position is open or was decided on this bar (one at a
+  time), and takes a slot.
+
+So several setups may decide on the same bar, and a setup that confirms while others trade places its orders while a
+slot is free. With `maxSetups = 1` the rules below apply unchanged.
+
 **v5 slot owner (`anticipate`).** `env.slotOwner` is the id of the setup whose own pending limits are all that held
 the slot when the bar closed. The executor sets it only when there is no position, no unowned position, no other
 order, and no level being deleted or partly filled. When `env.slotFree` is false and that setup is ready (it
@@ -401,7 +428,7 @@ one placed level, the phase becomes `ORDERED` and `decisionBar = u`. With none, 
 | `NotifyFilled(id, k)` | A level's order became a position | The level becomes `FILLED`; an `ORDERED` setup becomes `FILLED`. |
 | `NotifyClosed(id, k)` | That position closed | The level becomes `CLOSED`. With nothing pending and nothing open, the setup becomes `CLOSED`. |
 | `NotifyCancelled(id, k, reason)` | The broker refused or removed a pending level | Record `DROP(k, reason)`. With nothing pending and nothing open, the setup becomes `CLOSED` if any level filled, otherwise `DONE(reason)`. |
-| `NotifyRetry(id)` | **No order of the decision was sent**, for a transient reason: slot busy, breaker, risk baseline not ready, no tick, algo trading off, daily-loss budget | Every pending level goes back to `NONE`, and the phase becomes `LEG`. No record. |
+| `NotifyRetry(id)` | **No order of the decision was sent**, for a transient reason: slot busy, breaker, risk baseline not ready, no tick, algo trading off, daily-loss budget | Every pending level goes back to `NONE`, and the phase becomes `LEG`. No record. v10: when this was the setup's first placement, its time limit has not started (`ordTime = 0`). |
 
 A fill on a level the detector has already cancelled cannot be passed back: the executor manages that position on
 its own. It still gets the time stop, the 16:44 New York flat (each while its v4 switch is on) and its server SL / TP.
@@ -456,7 +483,24 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
   account is log-only. The guard fails closed.
 - **One setup at a time.** One setup holds orders or positions at a time, with up to 3 limit orders. Each filled
   level is its own position on a hedging account. On a netting account the fills merge into one position, so
-  `NotifyClosed` is sent for every level that shares the position.
+  `NotifyClosed` is sent for every level that shares the position. v10: up to `InpMaxSetups`, below.
+- **v10 (owner request 2026-10-19, MQL5 only).**
+  - **Contexts.** One execution context per setup with orders or positions (`g_cx[10]`); `g_ctx` is the macro for
+    `g_cx[g_ci]`. `SyncTrade` and `ManagePositions` run over every context; `ExecCancel` / `ExecBatch` select the
+    setup's context. `IsTracked` / `IsTrackedOrder` look in all contexts.
+  - **Slots.** `MaxSetupsNow()` = `InpMaxSetups` on a hedging account, 1 on a netting account. `UsedSlots()` = busy
+    contexts + the touch position when its setup has no busy context. `BuildEnv`: `env.freeSlots` =
+    `MaxSetupsNow() − UsedSlots()`, or 0 while an unowned position, an untracked position or an untracked pending
+    order (not just deleted by the EA) exists; `env.slotOwner` = the touch position's setup (hedging).
+  - **A batch** (`MultiSlotWait`): its own context when it has one (a re-anchor on this bar; the old orders must be
+    gone, else `NotifyRetry`); otherwise a free slot (the touch position's own setup needs none) and a context not
+    used since the last tick. The daily-loss check adds the planned risk of every other context's pending and open
+    levels (`PlannedOther`) and of the touch position.
+  - **`ExecuteIntents`.** Cancels first, then one batch per setup in the order of the intents, then the touch entry.
+  - **Time limit.** `env.now` = the next bar's open. Each limit order's server-side expiry is also capped at
+    `ordTime + pendingMaxSec + one bar` (at least one minute ahead).
+  - **Touch entry.** One touch position at a time; it needs a free slot. Its daily-loss check adds every context's
+    planned risk.
 - **Placement of one decision (the batch of `PLACE_LIMIT` intents).**
   1. **Global checks first:**
      - account permitted;
