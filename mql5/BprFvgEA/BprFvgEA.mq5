@@ -77,8 +77,8 @@
 // Version 10 = 9.01 + two owner requests of 2026-10-19:
 //  - InpPendingMaxMin (default 0 = off): a setup's limit orders stay in the book at most that many minutes after its
 //    first placement, then they are cancelled (EXPIRED, "pending-order time limit"). Moves at a new high / low do not
-//    restart it; a filled part runs on to its SL / TP / time stop. The server-side expiry of each order is capped to
-//    the same time (+ one bar) as a safety net.
+//    restart it; a filled part runs on to its SL / TP / time stop. The server-side expiry of each order is that same
+//    minute (the broker removes it then); the EA's own cancel follows on the first bar close at or after it.
 //  - InpMaxSetups (default 5): every confirmed setup is traded, up to that many at the same time (each with its own
 //    0.20 %; all of them within the 1.00 % planned daily loss). v2-v9 traded one setup at a time and skipped the others.
 //    1 = the v9 rule. Hedging accounts only: on a netting account the setups would share one position, so it stays 1.
@@ -1087,7 +1087,8 @@ void HandleEvents(void)
       if(e.ev == BF_EV_DONE && e.dupOf > 0)
          g_nDup++;                               // v10: one trade per leg
       // v10: setups whose limit orders the pending-order time limit ended (its records come together on one bar)
-      if(e.pendTime && e.reason == BF_R_EXPIRED && (e.ev == BF_EV_CANCEL || e.ev == BF_EV_DONE) && e.id != g_lastPendId)
+      if(e.pendTime && e.reason == BF_R_EXPIRED && (e.ev == BF_EV_CANCEL || e.ev == BF_EV_DROP || e.ev == BF_EV_DONE) &&
+         e.id != g_lastPendId)
         {
          g_nPendTime++;
          g_lastPendId = e.id;
@@ -1854,7 +1855,7 @@ void ExecBatch(const BfIntent &its[], const int n)
                 (g_tp.active ? " + open touch entry " + DoubleToString(g_tp.planned, 2) : "") + " > limit)";
       else
          // v10: the other setups' pending orders may still fill: with InpMaxTradesDay they count as positions
-         if(g_maxTradesDay > 0 && PendingOther(c) > 0 && g_risk.TradesToday() + PendingOther(c) >= g_maxTradesDay)
+         if(g_maxSetups > 1 && g_maxTradesDay > 0 && g_risk.TradesToday() + PendingOther(c) >= g_maxTradesDay)
             wait = "InpMaxTradesDay (" + IntegerToString(g_maxTradesDay) + "): " +
                    IntegerToString(g_risk.TradesToday()) + " positions today + " + IntegerToString(PendingOther(c)) +
                    " pending orders of other setups";
@@ -2050,6 +2051,11 @@ void ExecTouch(const BfIntent &it)
             else
             if(g_maxSetups > 1 && FreeSlots() <= 0)
                wait = "slot busy: all " + IntegerToString(MaxSetupsNow()) + " setup slots are busy";
+            else
+            if(g_maxSetups > 1 && g_maxTradesDay > 0 && g_risk.TradesToday() + PendingOther(-1) >= g_maxTradesDay)
+               wait = "InpMaxTradesDay (" + IntegerToString(g_maxTradesDay) + "): " +
+                      IntegerToString(g_risk.TradesToday()) + " positions today + " + IntegerToString(PendingOther(-1)) +
+                      " pending orders of other setups";
             else
                if(g_trade.Breaker())
                   wait = "order-error breaker (3 refused decisions; resets after 30 min) - last error: " + g_trade.lastError;
@@ -2575,6 +2581,8 @@ void SyncCtx(void)
    double vi;
    double vc;
    bool   found;
+   bool   timeUp;
+   BfSetup ss;
    if(!g_ctx.active)
       return;
    for(k = 0; k < BF_NLEV; k++)
@@ -2683,9 +2691,15 @@ void SyncCtx(void)
          g_ctx.lv[k].state = BF_XS_DONE;
          if(!g_ctx.lv[k].cancelled)
            {
+            // v10: the broker's expiry at the pending-order time limit (before the detector's own cancel on the bar
+            // close): the records say so and count as time-limit ends
+            timeUp = (reason == BF_R_EXPIRED && g_bp.pendingMaxSec > 0 && g_det.GetSetup(g_ctx.id, ss) &&
+                      ss.ordTime > 0 && (long)TimeCurrent() >= ss.ordTime + (long)g_bp.pendingMaxSec);
+            if(timeUp)
+               g_det.NotifyPendTimeUp(g_ctx.id);
             g_log.Info(LevelTag(k) + "pending order left the book without a fill (" + BfReasonName(reason) +
-                       ((reason == BF_R_EXPIRED && g_pendMin > 0) ? ": its broker-side expiry, the pending-order time " +
-                        "limit or the leg-expiry safety net" : "") + ")");
+                       (timeUp ? ": its broker-side expiry at the pending-order time limit, " +
+                        IntegerToString(g_pendMin) + " min after the first placement" : "") + ")");
             g_det.NotifyCancelled(g_ctx.id, k + 1, reason);
            }
          continue;
@@ -3437,8 +3451,8 @@ void SelfCheck(void)
                        "(weekend, gap risk beyond the 0.20 % budget)");
    if(g_maxSetups > 1)
       g_log.Info("SELF-CHECK note: several setups at a time - one trade per leg: a setup whose leg (direction and " +
-                 "100 %, so the same stop) another setup already trades ends (NO_LEVEL, 'the same leg'), so the same " +
-                 "orders are never sent twice");
+                 "100 %, so the same stop) another setup already holds (orders, positions, or a move on this bar) ends " +
+                 "(NO_LEVEL, 'the same leg'), so two setups never hold the same orders at the same time");
    if(g_maxSetups > 1)
       g_log.Info("SELF-CHECK note: several setups at a time - every confirmed setup places its orders while fewer than " +
                  IntegerToString(MaxSetupsNow()) + " setups have orders or positions" +
@@ -3451,12 +3465,12 @@ void SelfCheck(void)
                  IntegerToString(g_pendMin) + " min after its first placement (each order's broker-side expiry is set " +
                  "to that minute; the EA's own cancel comes on the first bar close at or after it; a move at a new high " +
                  "/ low does not restart it; a filled part runs on to its SL / TP / time stop)");
-   if(g_pendMin > 0 && (long)g_pendMin * 60 >= (long)g_legExp * (long)PeriodSeconds())
-      g_log.Info("SELF-CHECK note: InpPendingMaxMin (" + IntegerToString(g_pendMin) + " min) is not shorter than " +
-                 "InpLegExpiryBars (" + IntegerToString(g_legExp) + " bars = " +
-                 IntegerToString((int)((long)g_legExp * PeriodSeconds() / 60)) + " min on " + TfName() + "), counted " +
-                 "from the confirmation: the leg expiry usually cancels the orders first (EXPIRED without the time-limit " +
-                 "text). Raise InpLegExpiryBars to let the time limit decide.");
+   if(g_pendMin > 0 && (long)g_pendMin * 60 > (long)(g_legExp + 1) * (long)PeriodSeconds())
+      g_log.Info("SELF-CHECK note: InpPendingMaxMin (" + IntegerToString(g_pendMin) + " min) is longer than " +
+                 "InpLegExpiryBars + 1 (" + IntegerToString(g_legExp) + " bars = " +
+                 IntegerToString((int)((long)g_legExp * PeriodSeconds() / 60)) + " min on " + TfName() + ", counted " +
+                 "from the confirmation): the leg expiry always cancels the orders first (EXPIRED without the " +
+                 "time-limit text). Raise InpLegExpiryBars to let the time limit decide.");
    if(!InpUseCostFilter || (g_maxCostR <= 0.0))
       g_log.Info("SELF-CHECK note: the cost filter is off - an entry may be placed even when spread + commission + " +
                  "slippage are a large part of its risk (small Fibonacci legs)");

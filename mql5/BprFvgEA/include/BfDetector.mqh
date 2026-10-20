@@ -483,23 +483,6 @@ private:
       return(lu < m_s[i].X);
      }
 
-   //--- v10: a setup with orders or positions (ORDERED / FILLED) that trades the same leg as setup i: the same trade
-   //    direction and the same leg origin O (so the same stop; the leg origin no longer moves after the confirmation).
-   //    -1 = none
-   int               SameLegTraded(const int i)
-     {
-      int    j;
-      double tol = (m_p.tickSize > 0.0) ? 0.5 * m_p.tickSize : 1e-9;
-      for(j = 0; j < m_n; j++)
-        {
-         if(j == i || (m_s[j].phase != BF_PH_ORDERED && m_s[j].phase != BF_PH_FILLED))
-            continue;
-         if(m_s[j].dir == m_s[i].dir && MathAbs(m_s[j].O - m_s[i].O) < tol)
-            return(j);
-        }
-      return(-1);
-     }
-
    //--- v10: the EA's execution context of setup id still holds orders / positions (env.busyIds)
    bool              EnvBusy(const BfEnv &env, const int id)
      {
@@ -508,6 +491,29 @@ private:
          if(env.busyIds[k] == id)
             return(true);
       return(false);
+     }
+
+   //--- v10: a setup that holds the same leg as setup i: the same trade direction and the same leg origin O (so the
+   //    same stop; the leg origin no longer moves after the confirmation). It holds it while it has orders or positions
+   //    (ORDERED / FILLED), while it moves its orders on this bar (re-anchored and ready), and while its EA context
+   //    still holds its earlier orders / a position (env.busyIds). -1 = none
+   int               SameLegTraded(const int i, const int u, const BfEnv &env)
+     {
+      int    j;
+      bool   holds;
+      double tol = (m_p.tickSize > 0.0) ? 0.5 * m_p.tickSize : 1e-9;
+      for(j = 0; j < m_n; j++)
+        {
+         if(j == i)
+            continue;
+         holds = (m_s[j].phase == BF_PH_ORDERED || m_s[j].phase == BF_PH_FILLED ||
+                  (m_s[j].phase == BF_PH_LEG && ((m_s[j].ready && m_s[j].reAnchorBar == u) || EnvBusy(env, m_s[j].id))));
+         if(!holds)
+            continue;
+         if(m_s[j].dir == m_s[i].dir && MathAbs(m_s[j].O - m_s[i].O) < tol)
+            return(j);
+        }
+      return(-1);
      }
 
    //--- v10: the pending-order time limit is reached: pendingMaxSec after the setup's first placement (env.now)
@@ -1253,7 +1259,7 @@ private:
             continue;
          //--- the same leg (direction and origin, so the same stop) is already traded by another setup: copies of its
          //    orders would put several times the risk on one trade. One trade per leg: this setup ends
-         j = SameLegTraded(i);
+         j = SameLegTraded(i, u, env);
          if(j >= 0)
            {
             m_s[i].dupOf = m_s[j].id;
@@ -1497,6 +1503,15 @@ public:
       Stat(BF_STAT_DROP + reason);
       MaybeClosed(i, m_lastBar, reason);
       Compact();
+     }
+
+   //--- v10, EA executor only: the broker removed the orders at the pending-order time limit (their expiry) before
+   //    the detector's own cancel. The records of the coming NotifyCancelled calls carry the time-limit flag.
+   void              NotifyPendTimeUp(const int id)
+     {
+      int i = FindIndex(id);
+      if(i >= 0 && m_s[i].ordTime > 0)
+         m_s[i].pendTimeUp = true;
      }
 
    //--- EA executor only: no order of the decision was sent (transient reason). ORDERED -> LEG, levels cleared.

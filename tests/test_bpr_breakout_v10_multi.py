@@ -275,6 +275,8 @@ def _check_cap(recs, kv, cap):
     allowed = {0: (1, -1), 1: (1,), 2: (-1,)}[kv.get("direction", 0)]
     live: dict[int, set] = {}
     leg: dict[int, tuple] = {}                     # id -> (dir, SL) of its live levels
+    legO: dict[int, float] = {}                    # id -> leg origin of its orders (PLACE_LIMIT O)
+    confO: dict[int, float] = {}                   # id -> leg origin at its confirmation (fixed from then on)
     touch: dict[int, str] = {}
     trade: dict[int, int] = {}
     prev = None
@@ -288,6 +290,7 @@ def _check_cap(recs, kv, cap):
         i, ev, k, d = r["id"], r["ev"], r["k"], r["dir"]
         if ev == "CONFIRM":
             trade[i] = d
+            confO[i] = r["O"]
             assert d in allowed, r
         elif ev == "TOUCH_ENTRY":
             assert not touch, ("a second touch position", r, touch)
@@ -306,14 +309,18 @@ def _check_cap(recs, kv, cap):
                 same = [j for j, s in live.items() if s and j != i and leg.get(j) == (d, r["SL"])]
                 assert not same, ("two setups trade the same leg", r, same)
                 leg[i] = (d, r["SL"])
+                legO[i] = r["O"]
             live.setdefault(i, set()).add(k)
             assert (r["SL"] < r["P"] < r["TP"]) if d > 0 else (r["TP"] < r["P"] < r["SL"]), r
         elif ev in ("CANCEL", "DROP"):
             live.get(i, set()).discard(k)
         elif ev in ("DONE", "CLOSED"):
             if ev == "DONE" and r.get("dup"):
+                # the named setup holds the same leg: it has traded it (its levels may be moving on this bar, or held
+                # in its EA context), in the same direction, from the same origin
                 j = r["dup"]
-                assert r["reason"] == "NO_LEVEL" and live.get(j) and leg[j][0] == trade[i], ("duplicate of what?", r)
+                assert r["reason"] == "NO_LEVEL" and j in leg and leg[j][0] == trade[i], ("duplicate of what?", r)
+                assert abs(legO[j] - confO[i]) < 0.005, ("a different leg ended as a duplicate", r, legO[j], confO[i])
             live.pop(i, None)
         prev = r
 
@@ -462,12 +469,39 @@ def test_a_setup_whose_context_is_busy_takes_no_other_slot(exe, tmp_path, case, 
     seed, kv = case
     recs, _, _ = run_err(exe, tmp_path, _bars(seed, 4000), max_setups=cap, slots=1, ghost_bars=60, **kv)
     _check_slots(recs, cap)
+    # one trade per leg also against a busy context: no setup places on a ghost's leg (same direction and stop)
+    legs: dict[int, tuple] = {}
+    for r in recs:
+        if r["ev"] == "PLACE_LIMIT":
+            legs.setdefault(r["id"], (r["dir"], r["SL"]))
+    for s in _slots(recs).values():
+        held = {legs[g] for g in s["ghosts"] if g in legs}
+        for r in recs:
+            if r["n"] == s["n"] and r["ev"] == "PLACE_LIMIT" and r["id"] not in s["ghosts"]:
+                assert (r["dir"], r["SL"]) not in held, ("a setup placed on a busy context's leg", r)
     sl = _slots(recs)
     assert sum(1 for s in sl.values() if s["ghosts"]) > 100
     moved = {(r["n"], r["id"]) for r in recs if r["ev"] == "CANCEL" and r["reason"] == "NEW_EXTREME"}
     for r in recs:
         if r["ev"] == "PLACE_LIMIT" and r["id"] in sl[r["n"]]["ghosts"]:
             assert (r["n"], r["id"]) in moved, ("a setup with a busy context decided", r)
+
+
+@pytest.mark.parametrize("cap", [2, 5])
+@pytest.mark.parametrize("seed", [62, 72, 73])
+def test_the_trade_holding_a_leg_keeps_it_while_it_moves(exe, tmp_path, seed, cap):
+    """A setup that trades a leg and moves its orders at a new extreme is in LEG on that bar. A newer setup that
+    confirms the same leg on the same bar must not take the leg (or the slot) from it: the newcomer ends as the
+    duplicate, and the first trade places its moved orders. No setup that has placed orders ever ends as a duplicate
+    on the bar of its own move."""
+    kv = dict(setup_type=REV, **EA9)
+    recs, _, _ = run_err(exe, tmp_path, _bars(seed, 4000), max_setups=cap, **kv)
+    _check_cap(recs, kv, cap)
+    moved = {(r["n"], r["id"]) for r in recs if r["ev"] == "CANCEL" and r["reason"] == "NEW_EXTREME"}
+    assert moved
+    for r in recs:
+        if r["ev"] == "DONE" and r.get("dup"):
+            assert (r["n"], r["id"]) not in moved, ("the moving trade lost its leg", r)
 
 
 @pytest.mark.parametrize("case", [(72, REV), (73, BOTH), (74, REV)], ids=["seed72-REV", "seed73-BOTH", "seed74-REV"])
