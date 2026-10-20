@@ -21,6 +21,7 @@
 #define BF_MAX_INTENTS    128     // intents kept between two ClearIntents() calls (v10: up to 10 setups x 3 cancels
                                   // + 3 orders on one bar, plus a touch entry)
 #define BF_NLEV           3       // Fibonacci entry levels per setup (spec s.5)
+#define BF_MAX_BUSY       16      // v10: setups listed in BfEnv.busyIds (the EA's busy execution contexts)
 
 //+------------------------------------------------------------------+
 //| Input enums (spec s.1). The comment after each value is the text |
@@ -455,6 +456,8 @@ struct BfEnv
                                           // order can be sent now: a new extreme does not move (cancel) them
    int               freeSlots;           // v10 (maxSetups > 1): how many more setups may take orders now
    long              now;                 // v10: the decision moment (the next bar's open, server time; 0 = unknown)
+   int               nBusy;               // v10 (maxSetups > 1): the setups whose execution context in the EA still
+   int               busyIds[BF_MAX_BUSY];// holds orders / positions (their own slot, already counted as used)
   };
 
 void BfClearEnv(BfEnv &e)
@@ -465,6 +468,9 @@ void BfClearEnv(BfEnv &e)
    e.keepOrders     = false;
    e.freeSlots      = 0;
    e.now            = 0;
+   e.nBusy          = 0;
+   for(int k = 0; k < BF_MAX_BUSY; k++)
+      e.busyIds[k] = 0;
    e.riskOk         = false;
    e.spreadOk       = false;
    e.sp             = 0.0;
@@ -541,6 +547,7 @@ struct BfSetup
                                           // that was not a breakout; a breakout in progress (BREAK) keeps it
    long              ordTime;             // v10: env.now of the setup's first placement (0 = no order yet)
    int               ordBar;              // v10: the bar of that first placement (-1 = none)
+   int               dupOf;               // v10: ended because setup dupOf already trades the same leg (0 = no)
    bool              pendTimeUp;          // v10: the pending-order time limit (pendingMaxSec) ended its orders
    int               reAnchorBar;         // v10: the bar of its last re-anchor (it keeps its slot to decide again)
   };
@@ -610,6 +617,7 @@ void BfClearSetup(BfSetup &s)
    s.nRejC       = 0;
    s.ordTime     = 0;
    s.ordBar      = -1;
+   s.dupOf       = 0;
    s.pendTimeUp  = false;
    s.reAnchorBar = -1;
   }
@@ -679,6 +687,7 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.nRejC       = src.nRejC;
    dst.ordTime     = src.ordTime;
    dst.ordBar      = src.ordBar;
+   dst.dupOf       = src.dupOf;
    dst.pendTimeUp  = src.pendTimeUp;
    dst.reAnchorBar = src.reAnchorBar;
   }
@@ -775,6 +784,7 @@ struct BfEvent
    int               rejC;                // v9: the setup's rejection candles after this bar's candle (nRejC; on a
                                           // BREAKOUT: the count the breakout used, the breakout candle never counts)
    bool              pendTime;            // v10: the record comes from the pending-order time limit (EXPIRED)
+   int               dupOf;               // v10: DONE(NO_LEVEL) because setup dupOf trades the same leg (0 = no)
   };
 
 void BfClearEvent(BfEvent &e)
@@ -818,6 +828,7 @@ void BfClearEvent(BfEvent &e)
    e.lvlBar      = -1;
    e.kind        = BF_SETUP_CONTINUATION;
    e.rejC        = 0;
+   e.dupOf       = 0;
    e.pendTime    = false;
   }
 
@@ -862,6 +873,7 @@ void BfCopyEvent(BfEvent &dst, const BfEvent &src)
    dst.lvlBar      = src.lvlBar;
    dst.kind        = src.kind;
    dst.rejC        = src.rejC;
+   dst.dupOf       = src.dupOf;
    dst.pendTime    = src.pendTime;
   }
 

@@ -125,6 +125,7 @@ private:
       m_ev[m_nEv].kind        = s.kind;
       m_ev[m_nEv].rejC        = s.nRejC;
       m_ev[m_nEv].pendTime    = s.pendTimeUp;
+      m_ev[m_nEv].dupOf       = s.dupOf;
       m_nEv++;
      }
 
@@ -480,6 +481,33 @@ private:
       if(m_s[i].dir > 0)
          return(hu > m_s[i].X);
       return(lu < m_s[i].X);
+     }
+
+   //--- v10: a setup with orders or positions (ORDERED / FILLED) that trades the same leg as setup i: the same trade
+   //    direction and the same leg origin O (so the same stop; the leg origin no longer moves after the confirmation).
+   //    -1 = none
+   int               SameLegTraded(const int i)
+     {
+      int    j;
+      double tol = (m_p.tickSize > 0.0) ? 0.5 * m_p.tickSize : 1e-9;
+      for(j = 0; j < m_n; j++)
+        {
+         if(j == i || (m_s[j].phase != BF_PH_ORDERED && m_s[j].phase != BF_PH_FILLED))
+            continue;
+         if(m_s[j].dir == m_s[i].dir && MathAbs(m_s[j].O - m_s[i].O) < tol)
+            return(j);
+        }
+      return(-1);
+     }
+
+   //--- v10: the EA's execution context of setup id still holds orders / positions (env.busyIds)
+   bool              EnvBusy(const BfEnv &env, const int id)
+     {
+      int k;
+      for(k = 0; k < env.nBusy && k < BF_MAX_BUSY; k++)
+         if(env.busyIds[k] == id)
+            return(true);
+      return(false);
      }
 
    //--- v10: the pending-order time limit is reached: pendingMaxSec after the setup's first placement (env.now)
@@ -1168,7 +1196,10 @@ private:
    //| v10 (maxSetups > 1): every ready setup decides on its bar, in |
    //| creation order, while a slot is free (env.freeSlots). A setup |
    //| that moved its own orders on this bar (re-anchor), or whose   |
-   //| own touch position holds a slot (env.slotOwner), keeps it.    |
+   //| own touch position holds a slot (env.slotOwner), keeps it. A  |
+   //| setup whose EA context still holds its earlier orders waits   |
+   //| (env.busyIds); one whose leg another setup already trades     |
+   //| ends: one trade per leg.                                      |
    //+---------------------------------------------------------------+
    void              DecideMulti(const int u, const double &c[], const BfEnv &env)
      {
@@ -1176,6 +1207,7 @@ private:
       int  nReady  = 0;
       int  blocked = -1;
       int  free_   = env.freeSlots;
+      int  j;
       bool own;
       bool touched = (env.slotOwner > 0);                       // the EA holds one touch position at a time
       for(i = 0; i < m_n; i++)
@@ -1214,6 +1246,20 @@ private:
            }
          if(m_s[i].phase != BF_PH_LEG || !m_s[i].ready)
             continue;
+         //--- its earlier orders / position are still in its EA context (a delete that failed, a fill that raced its
+         //    cancel): that context already counts as used, and the EA cannot send anyway. Not on its re-anchor bar,
+         //    where the context still holds the orders being moved
+         if(m_s[i].reAnchorBar != u && EnvBusy(env, m_s[i].id))
+            continue;
+         //--- the same leg (direction and origin, so the same stop) is already traded by another setup: copies of its
+         //    orders would put several times the risk on one trade. One trade per leg: this setup ends
+         j = SameLegTraded(i);
+         if(j >= 0)
+           {
+            m_s[i].dupOf = m_s[j].id;
+            SetDone(i, u, BF_R_NO_LEVEL);
+            continue;
+           }
          own = (m_s[i].reAnchorBar == u || (env.slotOwner > 0 && env.slotOwner == m_s[i].id));
          if(!own && free_ <= 0)
            {

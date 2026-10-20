@@ -16,6 +16,9 @@ static bool fillsOut = false;                      // v10 tests: print H_FILL li
 static bool slotsOut = false;                      // v10 tests: print one H_SLOTS line per bar (multi mode)
 static int riskOffFrom = -1, spreadOffFrom = -1;  // v10 tests: !env.riskOk / !env.spreadOk from this bar on
 static bool intentsOut = false;                    // v10 tests: print one H_CANCEL line per cancel intent (with pt)
+static int ghostBars = 0;                          // v10 tests: the first NEW_EXTREME cancel of a setup leaves its EA context
+                                                   // busy for this many bars (a fill that raced the cancel): counted as used,
+                                                   // listed in env.busyIds, and its decisions answered with NotifyRetry
 static int retryBar = -1;                          // v10 tests: on this bar the executor answers every PLACE_LIMIT
                                                    // decision with NotifyRetry (no order sent), like the EA's waits
 static bool keepOrders = false;                    // 9.01 tests: env.keepOrders = !env.sessionEntryOk (the EA's mapping
@@ -68,6 +71,7 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "risk_off_from") riskOffFrom = (int)v;               // v10 tests
    else if(k == "spread_off_from") spreadOffFrom = (int)v;           // v10 tests
    else if(k == "intents") intentsOut = v != 0;                      // v10 tests
+   else if(k == "ghost_bars") ghostBars = (int)v;                    // v10 tests
    else if(k == "ext") extOut = v != 0;                              // v7 tests: + kind / zdir / lvl / lvlBar per record
    else if(k == "length") { p.length = (int)v; ep.length = (int)v; }
    else if(k == "vis_boxes") { p.visBoxes = (int)v; ep.visBoxes = (int)v; }
@@ -109,6 +113,8 @@ int main(int argc, char **argv)
    det.Init(p, tradeFrom);
    std::map<std::pair<int, int>, HOrd> pend, pos;      // (id, k), ordered like Python's sorted()
    int maxBusy = 0;                                     // v10 tests: the most setups ORDERED / FILLED at a bar's end
+   std::map<int, int> ghost;                            // v10 tests (ghost_bars): setup id -> last bar of its busy context
+   std::map<int, bool> ghosted;                         // a setup gets one ghost at most
    std::vector<HTouch> touch;                           // v6: at most one (slot rule); printed as H_TOUCH_* lines
    auto hline = [&](int n, const HTouch &t, const char *ev)
      {
@@ -129,8 +135,8 @@ int main(int argc, char **argv)
                 px ? Num(e.P).c_str() : "null", px ? Num(e.SL).c_str() : "null", px ? Num(e.TP).c_str() : "null",
                 ox ? Num(e.O).c_str() : "null", ox ? Num(e.X).c_str() : "null");
          if(extOut)
-            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d,\"pt\":%d", e.kind, e.zdir,
-                   Num(e.lvl).c_str(), e.lvlBar, e.rejC, e.pendTime ? 1 : 0);
+            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d,\"pt\":%d,\"dup\":%d", e.kind, e.zdir,
+                   Num(e.lvl).c_str(), e.lvlBar, e.rejC, e.pendTime ? 1 : 0, e.dupOf);
          printf("}\n");
         }
       det.ClearEvents();
@@ -216,6 +222,9 @@ int main(int argc, char **argv)
         }
       // v10: several setups at a time. A setup holds a slot while it is ORDERED / FILLED, or while its touch
       // position is open (the EA: its busy contexts, plus a touch position whose setup has none)
+      for(auto it = ghost.begin(); it != ghost.end();)
+         if(it->second < u) it = ghost.erase(it); else ++it;
+      std::string ghostIds;
       if(p.maxSetups > 1)
         {
          int used = det.BusyCount();
@@ -225,6 +234,23 @@ int main(int argc, char **argv)
             int ph = det.PhaseOf(t.id);
             if(ph != BF_PH_ORDERED && ph != BF_PH_FILLED) used++;
             env.slotOwner = t.id;
+           }
+         // env.busyIds = the EA's busy contexts: every setup ORDERED / FILLED, plus the ghosts
+         for(int k = 0; k < det.TrackedCount(); k++)
+           {
+            BfSetup bs;
+            if(det.GetTracked(k, bs) && (bs.phase == BF_PH_ORDERED || bs.phase == BF_PH_FILLED) && env.nBusy < BF_MAX_BUSY)
+               env.busyIds[env.nBusy++] = bs.id;
+           }
+         for(const auto &g : ghost)
+           {
+            int ph = det.PhaseOf(g.first);
+            if(ph != BF_PH_ORDERED && ph != BF_PH_FILLED)
+              {
+               used++;
+               if(env.nBusy < BF_MAX_BUSY) env.busyIds[env.nBusy++] = g.first;
+              }
+            ghostIds += (ghostIds.empty() ? "" : ",") + std::to_string(g.first);
            }
          env.freeSlots = (p.maxSetups > used) ? p.maxSetups - used : 0;
          env.slotFree = (env.freeSlots > 0);
@@ -249,10 +275,15 @@ int main(int argc, char **argv)
          BfIntent it;
          det.GetIntent(k, it);
          std::pair<int, int> key(it.id, it.k);
-         if(it.type == BF_EV_PLACE_LIMIT && u == retryBar)
+         if(it.type == BF_EV_PLACE_LIMIT && (u == retryBar || ghost.count(it.id)))
            {
             if(std::find(retried.begin(), retried.end(), it.id) == retried.end()) retried.push_back(it.id);
             continue;
+           }
+         if(it.type == BF_EV_CANCEL && ghostBars > 0 && it.reason == BF_R_NEW_EXTREME && it.k == 1 && !ghosted[it.id])
+           {
+            ghosted[it.id] = true;
+            ghost[it.id] = u + ghostBars;
            }
          if(it.type == BF_EV_CANCEL && intentsOut)
             printf("{\"n\":%d,\"id\":%d,\"ev\":\"H_CANCEL\",\"dir\":%d,\"k\":%d,\"reason\":\"%s\",\"pt\":%d}\n", u, it.id,
@@ -266,8 +297,9 @@ int main(int argc, char **argv)
       flush();
       if(det.BusyCount() > maxBusy) maxBusy = det.BusyCount();
       if(slotsOut)
-         printf("{\"n\":%d,\"id\":0,\"ev\":\"H_SLOTS\",\"busy\":[%s],\"free\":%d,\"blk\":%d,\"after\":%d,\"owner\":%d}\n", u,
-                busyIds.c_str(), env.freeSlots, det.StatValue(BF_STAT_BLK_SLOT) - blk0, det.BusyCount(), env.slotOwner);
+         printf("{\"n\":%d,\"id\":0,\"ev\":\"H_SLOTS\",\"busy\":[%s],\"free\":%d,\"blk\":%d,\"after\":%d,\"owner\":%d,\"ghosts\":[%s]}\n", u,
+                busyIds.c_str(), env.freeSlots, det.StatValue(BF_STAT_BLK_SLOT) - blk0, det.BusyCount(), env.slotOwner,
+                ghostIds.c_str());
      }
    fprintf(stderr, "MAXBUSY %d\n", maxBusy);
    printf("STATS");

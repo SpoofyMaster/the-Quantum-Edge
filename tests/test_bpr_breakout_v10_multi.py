@@ -23,7 +23,7 @@ import subprocess
 import pytest
 
 from bk_scenarios import bar, mirror, scenarios, v5_sequences, v6_sequences, v9_sequences
-from test_bpr_breakout_v6_setups import BOTH, CONT, REV, SP, _bars
+from test_bpr_breakout_v6_setups import BOTH, CONT, REV, SP, _bars, stat
 from test_bpr_breakout_v6_setups import exe as _exe_fixture  # noqa: F401 (module-scoped harness build)
 from test_bpr_breakout_v6_setups import run as _run6
 
@@ -31,6 +31,7 @@ exe = _exe_fixture
 pytestmark = pytest.mark.skipif(shutil.which("g++") is None, reason="g++ not installed")
 EA9 = dict(anticipate=1, t1_wait=0, rev_fvg=0, rev_rej_c=2)
 D = pytest.mark.parametrize("d", [1, -1], ids=["bullish-BPR", "bearish-BPR"])
+MS = pytest.mark.parametrize("ms", [1, 5], ids=["one-setup", "five-setups"])
 
 # the owner's C1 / C2 example up to its limits (placed on 23: sell 99.90 / 100.30 / 100.61, 0 % = 98.20), then:
 C1C2 = v9_sequences()["c1c2"][:24]
@@ -117,12 +118,13 @@ def test_a_move_does_not_restart_the_time_limit(exe, tmp_path, d):
 
 
 @D
-def test_time_limit_also_cancels_kept_orders(exe, tmp_path, d):
+@MS
+def test_time_limit_also_cancels_kept_orders(exe, tmp_path, d, ms):
     """9.01 InpCancelAtSessionEnd = false: from 24 no order can be sent, so the new low on 24 does not move the limits
     (keepOrders). The time limit is a cancel the owner asked for: it still ends them, on 23 + 3. The move's own
     cancel intents never carry the flag."""
     bars = side(C1C2 + [NEW_LOW] + FLAT2, d)
-    kv = dict(setup_type=REV, sess_off_from=24, keep_orders=1, **EA9)
+    kv = dict(setup_type=REV, sess_off_from=24, keep_orders=1, max_setups=ms, **EA9)
     recs, _ = run(exe, tmp_path, bars, pend_max_sec=180, intents=1, **kv)
     i = rev_id(recs, d)
     assert of(recs, i, "PLACE_LIMIT", "CANCEL", "DONE") == \
@@ -131,7 +133,8 @@ def test_time_limit_also_cancels_kept_orders(exe, tmp_path, d):
     assert of(recs, i, "H_CANCEL") == [(26, "H_CANCEL", k, "EXPIRED", 1) for k in (1, 2, 3)]
     base, _ = run(exe, tmp_path, bars, **kv)
     assert of(base, i, "CANCEL", "DONE") == []
-    moved, _ = run(exe, tmp_path, side(C1C2 + [NEW_LOW] + FLAT2, d), setup_type=REV, pend_max_sec=180, intents=1, **EA9)
+    moved, _ = run(exe, tmp_path, side(C1C2 + [NEW_LOW] + FLAT2, d), setup_type=REV, pend_max_sec=180, intents=1,
+                   max_setups=ms, **EA9)
     assert of(moved, i, "H_CANCEL")[:3] == [(24, "H_CANCEL", k, "NEW_EXTREME", 0) for k in (1, 2, 3)]
 
 
@@ -167,13 +170,14 @@ def test_a_setup_waiting_to_move_its_orders_ends_with_the_limit(exe, tmp_path, d
 
 
 @D
-def test_no_time_limit_before_the_first_placement(exe, tmp_path, d):
+@MS
+def test_no_time_limit_before_the_first_placement(exe, tmp_path, d, ms):
     """(a) The entry window is closed from 23: the setup never places, so the time limit never ends it. (b) The
     executor cannot send the decision of 23 (NotifyRetry): the limit starts at the decision of 24 that was sent."""
     bars = side(C1C2 + FLAT, d)
-    never, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=60, sess_off_from=23, **EA9)
+    never, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=60, sess_off_from=23, max_setups=ms, **EA9)
     assert not [r for r in never if r.get("pt")] and not [r for r in never if r["ev"] == "PLACE_LIMIT"]
-    retry, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=180, retry_bar=23, **EA9)
+    retry, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=180, retry_bar=23, max_setups=ms, **EA9)
     i = rev_id(retry, d)
     assert of(retry, i, "PLACE_LIMIT", "CANCEL", "DONE") == \
         [(n, "PLACE_LIMIT", k, None, 0) for n in (23, 24) for k in (1, 2, 3)] + \
@@ -181,11 +185,12 @@ def test_no_time_limit_before_the_first_placement(exe, tmp_path, d):
 
 
 @D
-def test_a_move_the_executor_could_not_send_keeps_the_time_limit(exe, tmp_path, d):
+@MS
+def test_a_move_the_executor_could_not_send_keeps_the_time_limit(exe, tmp_path, d, ms):
     """The orders of 23 are in the book; the move of 24 cannot be sent (NotifyRetry on 24), the setup sends it on 25.
     The limit still counts from 23 (cancel on 26), not from the move."""
     bars = side(C1C2 + [NEW_LOW] + FLAT2, d)
-    recs, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=180, retry_bar=24, **EA9)
+    recs, _ = run(exe, tmp_path, bars, setup_type=REV, pend_max_sec=180, retry_bar=24, max_setups=ms, **EA9)
     i = rev_id(recs, d)
     assert of(recs, i, "PLACE_LIMIT", "CANCEL", "DONE") == \
         [(23, "PLACE_LIMIT", k, None, 0) for k in (1, 2, 3)] + \
@@ -195,8 +200,9 @@ def test_a_move_the_executor_could_not_send_keeps_the_time_limit(exe, tmp_path, 
 
 
 def test_explicit_defaults_equal_default(exe, tmp_path):
-    """max_setups=1 and pend_max_sec=0 are the defaults (= v9; the parity harness checks the defaults against the v4
-    Python reference)."""
+    """max_setups=1 and pend_max_sec=0 are the detector's defaults: given explicitly they change nothing. (That these
+    defaults reproduce 9.01 was checked once against a 9.01 build, journal day 14; the parity harness keeps checking the
+    defaults against the v4 Python reference.)"""
     seqs = dict(scenarios())
     seqs.update(v5_sequences())
     seqs.update(v6_sequences())
@@ -222,6 +228,9 @@ def test_random_series_time_limit(exe, tmp_path, case, m):
     bars = _bars(seed, 3000)
     recs, _, _ = run_err(exe, tmp_path, bars, pend_max_sec=60 * m, fills=1, **kv)
     base, _, _ = run_err(exe, tmp_path, bars, fills=1, **kv)
+    # the harness prints a bar's fills (n = u) before the records of the exits checked on that bar (n = u - 1)
+    recs = sorted(recs, key=lambda r: r["n"])
+    base = sorted(base, key=lambda r: r["n"])
     first: dict[int, int] = {}
     live: dict[int, set] = {}                      # id -> levels in the book
     n_pt = 0
@@ -260,9 +269,12 @@ def test_random_series_time_limit(exe, tmp_path, case, m):
 # ---------------------------------------------------------------------------------------------------------------
 def _check_cap(recs, kv, cap):
     """v6's invariants with InpMaxSetups: at most cap setups with orders / positions (limits, touch positions); one
-    touch position at a time, only into a free slot; no new decision while the setup's own levels are live."""
+    touch position at a time, only into a free slot; no new decision while the setup's own levels are live; one trade
+    per leg: no two setups with live levels in the same direction with the same stop (the same leg origin), and a
+    setup ended as a duplicate names a setup that is trading in its direction."""
     allowed = {0: (1, -1), 1: (1,), 2: (-1,)}[kv.get("direction", 0)]
     live: dict[int, set] = {}
+    leg: dict[int, tuple] = {}                     # id -> (dir, SL) of its live levels
     touch: dict[int, str] = {}
     trade: dict[int, int] = {}
     prev = None
@@ -291,11 +303,17 @@ def _check_cap(recs, kv, cap):
             if new_batch:
                 assert not live.get(i), ("new decision while its own levels are live", r)
                 assert len(busy(excl=i)) < cap, ("more setups with orders / positions than max_setups", r, busy(i))
+                same = [j for j, s in live.items() if s and j != i and leg.get(j) == (d, r["SL"])]
+                assert not same, ("two setups trade the same leg", r, same)
+                leg[i] = (d, r["SL"])
             live.setdefault(i, set()).add(k)
             assert (r["SL"] < r["P"] < r["TP"]) if d > 0 else (r["TP"] < r["P"] < r["SL"]), r
         elif ev in ("CANCEL", "DROP"):
             live.get(i, set()).discard(k)
         elif ev in ("DONE", "CLOSED"):
+            if ev == "DONE" and r.get("dup"):
+                j = r["dup"]
+                assert r["reason"] == "NO_LEVEL" and live.get(j) and leg[j][0] == trade[i], ("duplicate of what?", r)
             live.pop(i, None)
         prev = r
 
@@ -306,16 +324,18 @@ def _slots(recs):
 
 def _check_slots(recs, cap):
     """Per bar (H_SLOTS, no touch entry): the setups that place without having been busy before the bar take the free
-    slots, never more; a BLOCKED_SLOT only when they took them all; the busy count never exceeds cap."""
+    slots, never more; a BLOCKED_SLOT only when they took them all; the busy count never exceeds cap. A ghost (a setup
+    whose EA context is still busy, ghost_bars) holds its slot and never takes another one."""
     placed: dict[int, set] = {}
     for r in recs:
         if r["ev"] == "PLACE_LIMIT":
             placed.setdefault(r["n"], set()).add(r["id"])
     n_full = 0
     for n, s in _slots(recs).items():
-        new = placed.get(n, set()) - set(s["busy"])
-        assert s["after"] <= cap and len(s["busy"]) <= cap, s
-        assert s["free"] == max(0, cap - len(s["busy"])), s
+        busy, ghosts = set(s["busy"]), set(s.get("ghosts", []))
+        new = placed.get(n, set()) - busy - ghosts
+        assert s["after"] <= cap and len(busy | ghosts) <= cap, s
+        assert s["free"] == max(0, cap - len(busy | ghosts)), s
         assert len(new) <= s["free"], (s, new)
         if s["blk"] > 0:
             assert len(new) == s["free"], ("a setup was kept out while a slot was free", s, new)
@@ -326,20 +346,26 @@ def _check_slots(recs, cap):
 # continuation setups rarely overlap in these series (seed 101 does); reversal setups often do
 MULTI = [(101, dict(setup_type=CONT)), (72, dict(setup_type=REV, **EA9)), (73, dict(setup_type=BOTH, **EA9)),
          (101, dict(setup_type=CONT, anticipate=1)), (75, dict(setup_type=BOTH, anticipate=1, fvg_rule=2)),
-         (76, dict(setup_type=BOTH, **EA9, pend_max_sec=600))]
+         (76, dict(setup_type=BOTH, **EA9, pend_max_sec=600)),
+         # without anticipation: a re-anchored setup decides again only on a later bar, so it needs a free slot then
+         (72, dict(setup_type=BOTH, t1_wait=0, rev_fvg=0, rev_rej_c=2)),
+         (73, dict(setup_type=BOTH, t1_wait=0, rev_fvg=0, rev_rej_c=2))]
 
 
 @pytest.mark.parametrize("case", MULTI, ids=[f"case{j}-seed{c[0]}" for j, c in enumerate(MULTI)])
 @pytest.mark.parametrize("cap", [2, 3, 5])
 def test_random_series_several_setups(exe, tmp_path, case, cap):
-    """Random series with max_setups = cap: the invariants above hold, the busy count reaches cap and never exceeds
-    it, and more setups trade than with one at a time."""
+    """Random series with max_setups = cap: the invariants above hold, the busy count reaches at least 2 and never
+    exceeds cap, and more setups trade than with one at a time. With 2 slots the reversal series fill them and keep
+    ready setups out (BLOCKED_SLOT)."""
     seed, kv = case
     bars = _bars(seed, 4000)
-    recs, _, mb = run_err(exe, tmp_path, bars, max_setups=cap, slots=1, **kv)
+    recs, st, mb = run_err(exe, tmp_path, bars, max_setups=cap, slots=1, **kv)
     _check_cap(recs, kv, cap)
-    _check_slots(recs, cap)
+    n_full = _check_slots(recs, cap)
     assert mb == max(s["after"] for s in _slots(recs).values()) and 2 <= mb <= cap
+    if cap == 2 and kv["setup_type"] != CONT:
+        assert mb == 2 and n_full > 0 and stat(st, "BLOCKED_SLOT") > 0
     one, _, mb1 = run_err(exe, tmp_path, bars, **kv)
     assert mb1 == 1
     traded = {r["id"] for r in recs if r["ev"] == "PLACE_LIMIT"}
@@ -391,7 +417,7 @@ def test_a_setup_moving_its_orders_keeps_its_slot(exe, tmp_path, seed):
     """max_setups=2, anticipated entries: a busy setup that moves its orders at a new extreme places them again on the
     same bar even when no slot is free (the slots are full: free = 0). And a busy setup's records do not depend on the
     other setups: every setup that places first on the same bar after the same history is followed identically with
-    2 and with 10 slots."""
+    2 and with 10 slots (except a setup the one-trade-per-leg rule ends in either run)."""
     kv = dict(setup_type=BOTH, anticipate=1, max_cost_r=0)
     bars = _bars(seed, 4000)
     recs, _, _ = run_err(exe, tmp_path, bars, max_setups=2, slots=1, **kv)
@@ -411,6 +437,8 @@ def test_a_setup_moving_its_orders_keeps_its_slot(exe, tmp_path, seed):
         fb = next((r for r in b if r["ev"] == "PLACE_LIMIT"), None)
         if fb is None or fa["n"] != fb["n"] or [r for r in a if r["n"] < fa["n"]] != [r for r in b if r["n"] < fa["n"]]:
             continue
+        if any(r.get("dup") for r in a + b):
+            continue                               # one trade per leg links it to another setup (its duplicate rule)
         # after the first placement: identical until the setup is back in LEG without orders after a move it could
         # not place (it then competes for a slot again), i.e. compare up to its first move without a same-bar placement
         stop = next((r["n"] for r in a if r["ev"] == "CANCEL" and r["reason"] == "NEW_EXTREME" and
@@ -421,15 +449,55 @@ def test_a_setup_moving_its_orders_keeps_its_slot(exe, tmp_path, seed):
     assert same >= 5
 
 
+GHOST = [(72, dict(setup_type=BOTH, **EA9)), (73, dict(setup_type=REV, **EA9)), (75, dict(setup_type=CONT, anticipate=1))]
+
+
+@pytest.mark.parametrize("case", GHOST, ids=[f"seed{c[0]}" for c in GHOST])
+@pytest.mark.parametrize("cap", [2, 3])
+def test_a_setup_whose_context_is_busy_takes_no_other_slot(exe, tmp_path, case, cap):
+    """The EA cannot send a setup's orders while its context still holds its earlier ones (a delete that failed, a
+    fill that raced its cancel; harness ghost_bars: the first move of each setup leaves its context busy for 60 bars).
+    That context counts as used; the setup waits without taking a second slot, so it keeps no other setup out: the
+    slot invariants hold with the ghosts, and a ghost's setup decides only on the bar of its own move."""
+    seed, kv = case
+    recs, _, _ = run_err(exe, tmp_path, _bars(seed, 4000), max_setups=cap, slots=1, ghost_bars=60, **kv)
+    _check_slots(recs, cap)
+    sl = _slots(recs)
+    assert sum(1 for s in sl.values() if s["ghosts"]) > 100
+    moved = {(r["n"], r["id"]) for r in recs if r["ev"] == "CANCEL" and r["reason"] == "NEW_EXTREME"}
+    for r in recs:
+        if r["ev"] == "PLACE_LIMIT" and r["id"] in sl[r["n"]]["ghosts"]:
+            assert (r["n"], r["id"]) in moved, ("a setup with a busy context decided", r)
+
+
+@pytest.mark.parametrize("case", [(72, REV), (73, BOTH), (74, REV)], ids=["seed72-REV", "seed73-BOTH", "seed74-REV"])
+def test_one_trade_per_leg(exe, tmp_path, case):
+    """Stacked BPRs often give their reversal setups the same leg (the same origin and extreme). Each would send the
+    same three limits with the same stop: up to 5 times the risk on one trade. A setup whose leg (direction and origin,
+    so its stop) another setup already trades ends DONE(NO_LEVEL), naming that setup (dup); no two setups ever hold
+    live orders in the same direction with the same stop. One setup at a time is unchanged (no duplicate records)."""
+    seed, st = case
+    kv = dict(setup_type=st, **EA9)
+    bars = _bars(seed, 4000)
+    recs, _, _ = run_err(exe, tmp_path, bars, max_setups=5, **kv)
+    _check_cap(recs, kv, 5)
+    assert sum(1 for r in recs if r["ev"] == "DONE" and r.get("dup")) >= 3
+    one, _, _ = run_err(exe, tmp_path, bars, **kv)
+    assert not [r for r in one if r.get("dup")]
+
+
 @pytest.mark.parametrize("gate", ["sess_off_from", "risk_off_from", "spread_off_from"])
 @pytest.mark.parametrize("cap", [1, 3])
 def test_several_setups_respect_the_gates(exe, tmp_path, cap, gate):
     """No order is placed while the entry window is closed, the daily risk is used up (env.riskOk) or the spread is
     too wide (env.spreadOk), from bar 1500 on: one at a time or several."""
     kv = dict(setup_type=BOTH, **EA9)
-    recs, _, _ = run_err(exe, tmp_path, _bars(72, 3000), max_setups=cap, **{gate: 1500}, **kv)
+    recs, st, _ = run_err(exe, tmp_path, _bars(72, 3000), max_setups=cap, **{gate: 1500}, **kv)
     assert [r for r in recs if r["ev"] == "PLACE_LIMIT" and r["n"] < 1500]
     assert not [r for r in recs if r["ev"] == "PLACE_LIMIT" and r["n"] >= 1500]
+    counters = {"sess_off_from": "BLOCKED_SESSION", "risk_off_from": "BLOCKED_RISK", "spread_off_from": "BLOCKED_SPREAD"}
+    for g, name in counters.items():
+        assert (stat(st, name) > 0) == (g == gate), (name, stat(st, name))
 
 
 @pytest.mark.parametrize("seed", [92, 96, 98])

@@ -361,6 +361,12 @@ the `blocked*` diagnostics and try again on the next bar.
 setups may take orders now: `maxSetups` − the setups with orders or positions − a touch position whose setup has
 none; 0 while an unowned position or order exists) and `env.slotOwner` (the setup of the open touch position, hedging
 accounts). With the gates (session, risk, spread) met, every candidate decides in creation order:
+- a ready `LEG` setup whose id is in `env.busyIds` (its EA context still holds earlier orders / a position: a delete
+  that failed, a fill that raced its cancel) is skipped without taking a slot, except on its re-anchor bar;
+- **one trade per leg:** a ready `LEG` setup whose trade direction and leg origin `O` (so its stop) equal those of a
+  setup in `ORDERED` / `FILLED` (decided on an earlier bar or earlier on this one) ends `DONE(NO_LEVEL)` with
+  `dupOf` = that setup's id (harness `dup`). Stacked BPRs often share a leg; their orders would be copies of one
+  trade;
 - a ready `LEG` setup that re-anchored on this bar (`reAnchorBar = u`), or whose own touch position is open, decides
   without a free slot (its slot is its own);
 - any other ready `LEG` setup decides while a slot is left (`free > 0`) and takes one when it places a level;
@@ -498,7 +504,11 @@ OK; the spread is a constant `sp`. Cancel intents remove the level at once.
     levels (`PlannedOther`) and of the touch position.
   - **`ExecuteIntents`.** Cancels first, then one batch per setup in the order of the intents, then the touch entry.
   - **Time limit.** `env.now` = the next bar's open. Each limit order's server-side expiry is also capped at
-    `ordTime + pendingMaxSec + one bar` (at least one minute ahead).
+    `ordTime + pendingMaxSec` (at least one minute ahead), so the broker ends it to the minute; the detector's cancel
+    follows on the first bar close at or after it.
+  - **`env.busyIds`** = the ids of the busy contexts. **`InpMaxTradesDay`**: a batch waits when the positions of the
+    day + the other contexts' pending levels reach it. **`BF_MAX_DEL`** = 48 (10 setups × 3 deletes on one bar).
+    A market fill without a known position id takes the untracked position of its direction and volume.
   - **Touch entry.** One touch position at a time; it needs a free slot. Its daily-loss check adds every context's
     planned risk.
 - **Placement of one decision (the batch of `PLACE_LIMIT` intents).**
