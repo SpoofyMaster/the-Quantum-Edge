@@ -7,10 +7,12 @@ tested by price from above, T1 Candles body must not close out of the BPR box, a
 on the box, if they close out of the BPR box no trade, and same for a tape from below the BPR."
 
 Read as (detector param revBodyInBox, EA input InpRevBodyInBox, harness key rev_body_box): for a reversal setup on a
-bullish BPR (tapped from above), the body - open and close - of every candle of the T1 / T2 touch and of every counted
-rejection candle (C1, C2, ...) must be in the box or above it; on the edge counts as in the box; the wicks may go out.
-Otherwise the setup ends DONE(BROKEN) with bodyOut (harness "bo": n = the Tn candle, 10 + n = Cn). A bearish BPR
-(tapped from below) is the mirror image. Continuation setups already end BROKEN at a wick beyond the box. The bars are
+bullish BPR (tapped from above), the body - open and close - of every candle of the T1 / T2 touch and of the rejection
+candles the breakout needs (C1 .. C<rev_rej_c>) must be in the box or above it; on the edge counts as in the box; the
+wicks may go out. A second tap that closes beyond the reversal level too early (v9: a pullback visit, no touch) is the
+owner's T2 and is checked as T2 while a second touch is allowed. Otherwise the setup ends DONE(BROKEN) with bodyOut
+(harness "bo": n = the Tn candle, 10 + n = Cn, 1000 + n = a later candle of the Tn touch). A bearish BPR (tapped from
+below) is the mirror image. Continuation setups already end BROKEN at a wick beyond the box. The bars are
 tests/bk_scenarios.py v11_sequences(). Skipped without g++.
 """
 import shutil
@@ -34,12 +36,22 @@ def run(exe, tmp_path, bars, **kv):
     return _run6(exe, tmp_path, bars, hold=50, **kv)[0]
 
 
+def below(bars):
+    """The tap from below: mirror(bars) with the high of bar 12 raised from 102.12 to 102.55. Plain mirrored bars also
+    arm a BPR on 12 ([102.12, 102.5], just above the tracked one) that trades the same leg; without it the tracked setup
+    is the only one, so its orders can be compared from both sides."""
+    m = mirror(bars)
+    assert m[12] == bar(102.1, 102.12, 100.08, 100.1), m[12]
+    m[12] = bar(102.1, 102.55, 100.08, 100.1)
+    return m
+
+
 def side(bars, d):
-    return bars if d > 0 else mirror(bars)
+    return bars if d > 0 else below(bars)
 
 
 def sid(recs, kind=1):
-    """the setup of the BPR formed on bar 13 (the mirrored bars arm another BPR earlier)"""
+    """the setup of the BPR formed on bar 13"""
     return next(r["id"] for r in recs if r["ev"] == "ARMED" and r["n"] == 13 and r["kind"] == kind)
 
 
@@ -56,13 +68,15 @@ def body_out(b, zd, zb, zt):
     return min(o, c) < zb if zd > 0 else max(o, c) > zt
 
 
-# name -> (bar of the end, bodyOut, v10's first PLACE_LIMIT bar on the tapped-from-above side)
+# name -> (bar of the end, bodyOut, v10's first PLACE_LIMIT bar, from above and from below)
 NO_TRADE = {
     "t1_body_out": (17, 1, 23),
     "c2_body_out": (20, 12, 25),
     "c1_body_out": (18, 11, 24),
-    "t1_next_candle_out": (18, 1, 24),
+    "t1_next_candle_out": (18, 1001, 24),
     "t2_body_out": (21, 2, 25),
+    "early_t2": (19, 2, 26),
+    "early_t2_next_out": (20, 1002, 26),
 }
 
 
@@ -70,8 +84,7 @@ NO_TRADE = {
 @pytest.mark.parametrize("name", list(NO_TRADE))
 def test_a_body_out_of_the_box_means_no_trade(exe, tmp_path, d, name):
     """Each case ends on the candle whose body leaves the box, DONE(BROKEN) with bo naming it, and never places an
-    order. Before that candle the records are the v10 ones; v10 (rev_body_box=0) went on to a breakout (and, tapped
-    from above, to limits)."""
+    order. Before that candle the records are the v10 ones; v10 (rev_body_box=0) went on to a breakout and limits."""
     end, bo, pl10 = NO_TRADE[name]
     bars = side(V11[name], d)
     recs = run(exe, tmp_path, bars, setup_type=REV, rev_body_box=1, **EA)
@@ -84,22 +97,33 @@ def test_a_body_out_of_the_box_means_no_trade(exe, tmp_path, d, name):
     v10 = run(exe, tmp_path, bars, setup_type=REV, **EA)
     assert [r for r in v10 if r["n"] < end] == [r for r in recs if r["n"] < end]
     assert of(v10, i, "BREAKOUT") and not of(v10, i, "DONE")[:1] == [(end, "DONE", 0, "BROKEN", 0)]
-    if d > 0:
-        assert of(v10, i, "PLACE_LIMIT")[0][0] == pl10
+    assert of(v10, i, "PLACE_LIMIT")[0][0] == pl10
 
 
 @D
 @pytest.mark.parametrize("name", ["t1_wick_out_ok", "t1_close_on_edge"])
 def test_wicks_out_and_bodies_on_the_edge_still_trade(exe, tmp_path, d, name):
     """A T1 wick below the box (body in it), and a T1 body that closes exactly on the box's edge with a C1 opening
-    there: allowed, the setup's records are those of v10, and it trades (limits on 23 when tapped from above)."""
+    there: allowed, the setup's records are those of v10, and it trades (limits on 23)."""
     bars = side(V11[name], d)
     recs = run(exe, tmp_path, bars, setup_type=REV, rev_body_box=1, **EA)
     i = sid(recs)
     assert mine(recs, i) == mine(run(exe, tmp_path, bars, setup_type=REV, **EA), i)
     assert of(recs, i, "BREAKOUT") and not [r for r in recs if r["id"] == i and r.get("bo")]
-    if d > 0:
-        assert of(recs, i, "PLACE_LIMIT")[0][0] == 23
+    assert of(recs, i, "PLACE_LIMIT")[0][0] == 23
+
+
+def test_plain_mirrored_bars_trade_through_the_other_bpr(exe, tmp_path):
+    """Why below() patches bar 12: on plain mirrored bars a second BPR (armed on 12, [102.12, 102.5]) holds the slot
+    and places the limits of the same leg, with the rule on or off; the tracked setup only breaks out. With the
+    patch, only the tracked BPR is armed before the touch."""
+    for name in ("t1_wick_out_ok", "t1_body_out"):
+        recs = run(exe, tmp_path, mirror(V11[name]), setup_type=REV, rev_body_box=1, **EA)
+        other = next(r for r in recs if r["ev"] == "ARMED" and r["n"] == 12)
+        assert (other["zb"], other["zt"]) == (102.12, 102.5) and of(recs, other["id"], "PLACE_LIMIT")
+        assert not of(recs, sid(recs), "PLACE_LIMIT")
+        patched = run(exe, tmp_path, below(V11[name]), setup_type=REV, rev_body_box=1, **EA)
+        assert [r["n"] for r in patched if r["ev"] == "ARMED" and r["n"] < 17] == [13]
 
 
 @D
@@ -120,6 +144,30 @@ def test_a_c_candle_opening_below_the_box_is_out(exe, tmp_path, d):
     out = seq[:18] + [c1] + seq[19:]
     recs = run(exe, tmp_path, side(out, d), setup_type=REV, rev_body_box=1, **EA)
     assert of(recs, sid(recs), "DONE") == [(18, "DONE", 0, "BROKEN", 11)]
+
+
+@D
+def test_an_early_second_tap_is_checked_only_while_a_second_touch_is_allowed(exe, tmp_path, d):
+    """early_t2: T1 (17, wick 99.0 in the box), C1 (18) = the rejection, 19 closes through the box (97.8) after one
+    rejection candle. v9 makes 19 a pullback visit, not a touch; v11 checks it as T2 (2 touches allowed: ends, bo 2).
+    With max_touches = 1 there is no T2: 19 is a pullback visit after the last touch, not checked, and the setup
+    trades as in v10. Its records otherwise follow v9: no TOUCH 2 event, the level stays the T1 wick."""
+    bars = side(V11["early_t2"], d)
+    recs = run(exe, tmp_path, bars, setup_type=REV, rev_body_box=1, **EA)
+    i = sid(recs)
+    assert of(recs, i, "TOUCH", "REJECT", "DONE") == [(17, "TOUCH", 1, None, 0), (18, "REJECT", 0, None, 0),
+                                                      (19, "DONE", 0, "BROKEN", 2)]
+    one = dict(setup_type=REV, max_touches=1, **EA)
+    a = run(exe, tmp_path, bars, rev_body_box=1, **one)
+    assert mine(a, i) == mine(run(exe, tmp_path, bars, **one), i) and of(a, i, "PLACE_LIMIT")
+    # a second tap in the box above the T1 wick (19 closes at 99.2, two green candles follow) is a normal T2
+    # (TOUCH 2): checked as before, in the box, and the setup goes on
+    seq = V11["early_t2"]
+    ok = seq[:19] + [bar(100.2, 100.25, 99.1, 99.2), bar(99.2, 99.3, 99.15, 99.25), bar(99.25, 99.45, 99.2, 99.4)] + \
+        seq[22:]
+    rr = run(exe, tmp_path, side(ok, d), setup_type=REV, rev_body_box=1, **EA)
+    j = sid(rr)
+    assert of(rr, j, "TOUCH")[1][:3] == (19, "TOUCH", 2) and not of(rr, j, "DONE") and of(rr, j, "BREAKOUT")
 
 
 @D
@@ -203,10 +251,18 @@ def test_random_series(exe, tmp_path, case):
     base = run(exe, tmp_path, bars, **kv)
     ends = [r for r in recs if r["ev"] == "DONE" and r.get("bo")]
     assert len(ends) >= 5
+    rc, mt = kv.get("rev_rej_c", 2), kv.get("max_touches", 2)
     for r in ends:
         assert r["kind"] == 1 and r["reason"] == "BROKEN" and body_out(bars[r["n"]], r["zdir"], r["zb"], r["zt"]), r
-        if r["bo"] < 10:
-            assert any(x["id"] == r["id"] and x["ev"] == "TOUCH" and x["k"] == r["bo"] for x in recs), r
+        touch = {x["k"]: x["n"] for x in recs if x["id"] == r["id"] and x["ev"] == "TOUCH"}
+        last = max((k for k, n in touch.items() if n < r["n"]), default=0)
+        if r["bo"] >= 1000:                          # a later candle of the latest touch, or of an early T2 after it
+            k = r["bo"] - 1000
+            assert last >= 1 and (k == last or k == last + 1 <= mt), (r, touch)
+        elif r["bo"] > 10:                           # Cn: one of the rejection candles the breakout needs
+            assert 1 <= r["bo"] - 10 <= rc and last >= 1, (r, touch)
+        else:                                        # Tn: that TOUCH on this bar, or an early second tap (no TOUCH)
+            assert touch.get(r["bo"]) == r["n"] or (r["bo"] == last + 1 <= mt and r["bo"] not in touch), (r, touch)
     ended = {r["id"]: r["n"] for r in recs if r["ev"] in ("DONE", "CLOSED")}
     for r in recs:
         if r["ev"] == "TOUCH" and r["kind"] == 1 and ended.get(r["id"]) != r["n"]:

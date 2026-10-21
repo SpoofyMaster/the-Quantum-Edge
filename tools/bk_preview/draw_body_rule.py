@@ -3,7 +3,8 @@ candles and of the rejection candles C1, C2 must not close out of the box (below
 each drawn from the records of the v11 detector with the EA's default inputs (REVERSAL):
   1. allowed: the T1 wick goes below the box, its body stays in it; C1 in the box, C2 above it -> trade;
   2. the owner's "T1 NO": the T1 body closes below the box -> no trade;
-  3. C2 opens and closes below the box -> no trade;
+  3. C2 opens and closes below the box -> no trade (drawn with a gap: without it, the candle before C2 would close
+     below the box and end the setup there, as a later candle of the T1 touch);
   4. a BPR tapped from below (the mirror image): the T1 body closes above the box -> no trade.
 
 Usage: PYTHONPATH=.:tests python tools/bk_preview/draw_body_rule.py [out.svg]
@@ -55,7 +56,9 @@ with tempfile.TemporaryDirectory() as td:
           "v11 ends the setup on that close (DONE BROKEN). v10 traded it: limits on 23."]),
         ("c2_body_out", False, "3. NO TRADE: C2 closes below the box",
          ["T1 (17): wick below the box, body in it: valid. C1 (18) in the box: valid.",
-          "C2 (20) opens and closes BELOW the box: no trade (DONE BROKEN on 20). v10 traded it (limits on 25)."]),
+          "C2 (20) opens and closes BELOW the box: no trade (DONE BROKEN on 20). v10 traded it (limits on 25).",
+          "Drawn with a GAP (20 opens 0.60 below 19's close). Without it, 19 closes below the box: the setup ends on",
+          "19 (a later candle of the T1 touch). On M1 a C body below the box mostly needs such a gap."]),
         ("t1_body_out", True, "4. Tap from BELOW (bearish BPR): the mirror image",
          ["The BPR is tested from below: the T1 / T2 bodies and the red C1 / C2 must stay in the box or below it.",
           "Here T1 (17) closes ABOVE the box: no trade (DONE BROKEN on 17)."]),
@@ -89,7 +92,7 @@ def panel(ox, oy, bars, rv, rv10, mir, title, lines):
     first, last = 12, min(len(bars) - 1, 29)
     lo = min(b[2] for b in bars[first:last + 1]) - 0.3
     hi = max(b[1] for b in bars[first:last + 1]) + 0.4
-    L, R, T, B = 52, 150, 70, 26
+    L, R, T, B = 52, 150, 70 + 16 * max(0, len(lines) - 2), 26
     cw = (PW - L - R) / (last - first + 1)
 
     def x(i):
@@ -159,7 +162,7 @@ def panel(ox, oy, bars, rv, rv10, mir, title, lines):
         s.append(f'<line x1="{x(bad) - r_:.1f}" y1="{cy + r_:.1f}" x2="{x(bad) + r_:.1f}" y2="{cy - r_:.1f}" '
                  f'stroke="#ff1744" stroke-width="3"/>')
         bo = done["bo"]
-        who = f"T{bo}" if bo < 10 else f"C{bo - 10}"
+        who = f"T{bo - 1000}-touch candle" if bo >= 1000 else f"T{bo}" if bo < 10 else f"C{bo - 10}"
         side = "below" if zd > 0 else "above"
         body = min(o, c) if zd > 0 else max(o, c)
         yt = y(edge) + (40 if zd > 0 else -32)

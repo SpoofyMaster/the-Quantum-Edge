@@ -763,6 +763,7 @@ private:
          //--- v9: a close beyond the reversal level that is not the reversal breakout (price came back before enough
          //    rejection candles): the count restarts, and the candle is no touch. If it opens a new visit, step 6
          //    treats it like a pullback visit: it does not take the T2 slot and its wick does not become the level.
+         //    v11: for the body rule that visit is the second tap, T2, while a second touch is allowed.
          early = (m_p.revRejCandles > 0 && HasRev(i) && ph == BF_PH_ZONE && m_s[i].touches > 0 &&
                   BeyondRev(i, c[u]));
          if(early)
@@ -783,6 +784,19 @@ private:
                TrackRev(i, u, h[u], l[u]);
                StartCand(i, u, h[u], l[u]);
                m_s[i].tVisit = false;                           // v11: a pullback visit, not a touch
+               //--- v11: an early second tap (the T1 wick in the box, then a close through the box after 1 rejection
+               //    candle): the owner's T2, so its body must stay in the box too
+               if(early && m_s[i].touches < m_p.maxTouches)
+                 {
+                  m_s[i].tVisit  = true;
+                  m_s[i].tVisitK = m_s[i].touches + 1;
+                  if(m_p.revBodyInBox && BodyOut(i, o[u], c[u]))
+                    {
+                     m_s[i].bodyOut = m_s[i].tVisitK;
+                     SetDone(i, u, BF_R_BROKEN);
+                     return;
+                    }
+                 }
               }
             else
                if(!m_s[i].inEp)
@@ -816,7 +830,8 @@ private:
                   else
                      TrackRev(i, u, h[u], l[u]);
                   StartCand(i, u, h[u], l[u]);
-                  m_s[i].tVisit = true;
+                  m_s[i].tVisit  = true;
+                  m_s[i].tVisitK = m_s[i].touches;
                   //--- v11: the body of a T1 / T2 candle must stay in the box or on its side of it ("T1 candles body
                   //    must not close out of the BPR box"): otherwise no trade
                   if(m_p.revBodyInBox && HasRev(i) && BodyOut(i, o[u], c[u]))
@@ -836,7 +851,7 @@ private:
                   //--- v11: the next candles of the same touch (consecutive candles touching the box are one touch)
                   if(m_p.revBodyInBox && HasRev(i) && m_s[i].tVisit && BodyOut(i, o[u], c[u]))
                     {
-                     m_s[i].bodyOut = m_s[i].touches;
+                     m_s[i].bodyOut = 1000 + m_s[i].tVisitK;
                      SetDone(i, u, BF_R_BROKEN);
                      return;
                     }

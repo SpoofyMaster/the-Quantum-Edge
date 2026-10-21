@@ -531,6 +531,18 @@ def v11_sequences() -> dict[str, list]:
         # allowed: T1 closes exactly on the box's bottom (98.0) and C1 opens there: on the box counts as in it
         "t1_close_on_edge": up + [bar(100.1, 100.15, 97.6, 98.0), bar(98.0, 99.1, 97.95, 99.0),
                                   bar(99.0, 100.6, 98.95, 100.5)] + top + v11_drop(100.1),
+        # the second tap comes too early: T1 (17) has its wick in the box (99.0), C1 (18) closes above it (the
+        # rejection), 19 comes back and closes below the box (97.8), below the T1 wick after one rejection candle.
+        # v9 makes 19 a pullback visit (no touch); the owner sees T2: no trade (v10 traded it, limits on 26)
+        "early_t2": up + [bar(100.1, 100.15, 99.0, 99.6), bar(99.6, 100.25, 99.55, 100.2),
+                          bar(100.2, 100.25, 97.7, 97.8), bar(97.8, 98.55, 97.75, 98.5), bar(98.5, 99.45, 98.45, 99.4),
+                          bar(99.4, 100.55, 99.35, 100.5)] + top + v11_drop(100.1),
+        # the same early second tap closes in the box (98.5); the next candle of that visit (20) closes below the box:
+        # no trade (a later candle of the T2 touch)
+        "early_t2_next_out": up + [bar(100.1, 100.15, 99.0, 99.6), bar(99.6, 100.25, 99.55, 100.2),
+                                   bar(100.2, 100.25, 98.4, 98.5), bar(98.5, 98.55, 97.7, 97.8),
+                                   bar(97.8, 99.45, 97.75, 99.4), bar(99.4, 100.55, 99.35, 100.5)] + top +
+        v11_drop(100.1),
     }
     for v in sq.values():
         check(v)

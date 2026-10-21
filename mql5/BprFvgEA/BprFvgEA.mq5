@@ -86,9 +86,10 @@
 // Version 11 = v10 + the owner's rule of 2026-10-21 ("on T1 or T2, the body of those candles must not go out of BPR
 // rectangle ... after that C1 and C2 must also above or on the box, if they close out of the BPR box no trade, and
 // same for a tape from below"): InpRevBodyInBox (default true). For a reversal setup on a BPR tapped from above (a
-// bullish BPR), the bodies (open and close) of the T1 / T2 candles - every candle of the touch - and of the counted
-// rejection candles C1, C2, ... must stay in the box or above it; the wicks may go out. A body below the box ends the
-// setup: no trade (DONE BROKEN, "the body of T1 closed below the BPR box"). A BPR tapped from below: the mirror image.
+// bullish BPR), the bodies (open and close) of the T1 / T2 candles - every candle of the touch; a second tap that
+// closes through the box too early (v9: no touch) is T2 too - and of the rejection candles the breakout needs, C1 ..
+// C<InpRevRejCandles> (C1, C2), must stay in the box or above it; the wicks may go out. A body below the box ends the
+// setup: no trade (DONE BROKEN, "the body of T1 is below the BPR box"). A BPR tapped from below: the mirror image.
 // Continuation setups already end at a wick beyond the box (BROKEN). false = v10. Detector param revBodyInBox (MQL5
 // only); tests/test_bpr_breakout_v11_body.py; chart research/indicators/preview/bpr_body_rule_example.svg.
 //
@@ -147,7 +148,7 @@ input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Se
 input ENUM_BF_REVLEVEL    InpRevLevel             = BF_REVLVL_DEEPEST;  // Reversal level: DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick
 input bool                InpRevNeedRejection     = true;               // Reversal: a rejection after T1 must come before the breakout
 input int                 InpRevRejCandles        = 2;                  // Reversal: candles in the BPR's direction after T1 before the breakout (green for a bullish BPR; 0 = off)
-input bool                InpRevBodyInBox         = true;               // Reversal: T1 / T2 and C1, C2 bodies must stay in the BPR box or on its side (tapped from above: not below it); else no trade
+input bool                InpRevBodyInBox         = true;               // Reversal: T1 / T2 and C1 .. C<InpRevRejCandles> bodies must stay in the BPR box or on its side (tapped from above: not below it); else no trade
 input bool                InpRevNeedFvg           = false;              // Reversal: wait for an FVG of the drop (false = no wait; with InpAnticipateEntries the limits go in at the 2nd close)
 input int                 InpMaxBarsToT1          = 0;                  // Bars from a BPR's creation to its T1 (0 = no limit; -1 = v7 rules)
 input bool                InpTouchEntry           = false;              // Market order at the next open after the T1 candle (BPR direction)
@@ -744,14 +745,25 @@ string SetupCsv(const BfEvent &e)
    return(line);
   }
 
-// v11: which candle's body left the box, and where ("the body of T1 (open 100.10, close 97.80) closed below the BPR box
-// (bottom 98.00)")
+// v11: the candle whose body left the box (detector bodyOut: n = Tn, 10 + n = Cn, 1000 + n = a later candle of the
+// Tn touch). Short form for the chart label ("T1", "C2", "T1-touch candle"), long form for the log
+string BodyOutWho(const BfEvent &e, const bool longForm)
+  {
+   if(e.bodyOut >= 1000)
+      return(longForm ? "a later candle of the T" + IntegerToString(e.bodyOut - 1000) + " touch" :
+             "T" + IntegerToString(e.bodyOut - 1000) + "-touch candle");
+   if(e.bodyOut >= 10)
+      return("C" + IntegerToString(e.bodyOut - 10));
+   return("T" + IntegerToString(e.bodyOut));
+  }
+
+// v11: which candle's body left the box, and where ("the body of T1 (open 100.10, close 97.80) is below the BPR box
+// (bottom 98.00)"; the open or the close may be the price out of the box)
 string BodyOutText(const BfEvent &e)
   {
-   string who = (e.bodyOut >= 10) ? "C" + IntegerToString(e.bodyOut - 10) : "T" + IntegerToString(e.bodyOut);
-   string oc  = (e.n >= 0 && e.n < g_n) ? " (open " + Px(g_o[e.n]) + ", close " + Px(g_c[e.n]) + ")" : "";
-   return("the body of " + who + oc + " closed " + ((e.zdir > 0) ? "below the BPR box (bottom " + Px(e.B) + ")" :
-          "above the BPR box (top " + Px(e.T) + ")"));
+   string oc = (e.n >= 0 && e.n < g_n) ? " (open " + Px(g_o[e.n]) + ", close " + Px(g_c[e.n]) + ")" : "";
+   return("the body of " + BodyOutWho(e, true) + oc + " is " + ((e.zdir > 0) ? "below the BPR box (bottom " +
+          Px(e.B) + ")" : "above the BPR box (top " + Px(e.T) + ")"));
   }
 
 // One Experts-log line per detector record
@@ -874,12 +886,12 @@ void DrawEvent(const BfEvent &e)
                         g_render.SetupDelete(e.id, "T" + IntegerToString(k));
                     }
                   g_render.SetupGrey(e.id);
-                  //--- v11: the candle whose body left the box: "NO TRADE" on it (drawn after the grey, in red)
+                  //--- v11: the candle whose body left the box: "NO TRADE" on it (drawn after the grey, in red), on
+                  //    the other side of the candle from its T label (below a bullish BPR's touch candle: above it)
                   if(e.ev == BF_EV_DONE && e.bodyOut > 0)
-                     g_render.SetupText(e.id, "BO", t, (e.zdir > 0) ? lo : hi, "NO TRADE: " +
-                                        ((e.bodyOut >= 10) ? "C" + IntegerToString(e.bodyOut - 10) :
-                                         "T" + IntegerToString(e.bodyOut)) + " body out of the BPR", C'255,23,68',
-                                        (e.zdir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER, tip + " (" + BodyOutText(e) + ")");
+                     g_render.SetupText(e.id, "BO", t, (e.zdir > 0) ? hi : lo, "NO TRADE: " + BodyOutWho(e, false) +
+                                        " body out of the BPR", C'255,23,68', (e.zdir > 0) ? ANCHOR_LOWER : ANCHOR_UPPER,
+                                        tip + " (" + BodyOutText(e) + ")");
                  }
   }
 
@@ -1149,6 +1161,8 @@ void CountWarmEvents(void)
          g_warmArmed++;
       if(e.ev == BF_EV_DONE)
          g_warmDone++;
+      if(e.ev == BF_EV_DONE && e.bodyOut > 0)
+         g_nBodyOut++;                           // v11: a subset of "broken", which counts the warm-up too
      }
    g_det.ClearEvents();
   }
@@ -3302,12 +3316,19 @@ string SlotRuleText(void)
    return("one setup at a time, so no new setup trades while it is open");
   }
 
+// v11: the candles the body rule checks: T1 / T2 and the rejection candles the breakout needs (C1 .. C<N>)
+string BodyRuleCandles(void)
+  {
+   int n = g_bp.revRejCandles;
+   return("T1 / T2" + ((n > 0) ? " and C1" + ((n > 1) ? ((n > 2) ? " .. C" : ", C") + IntegerToString(n) : "") : ""));
+  }
+
 string SetupTypeText(void)
   {
    string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "") +
                ((g_bp.revRejCandles > 0) ? (InpRevNeedRejection ? " of" : ", after") + " at least " +
                 IntegerToString(g_bp.revRejCandles) + " candles in the BPR's direction (green for a bullish BPR)" : "") +
-               (g_bp.revBodyInBox ? ", T1 / T2 and C bodies in the box (else no trade)" : "") +
+               (g_bp.revBodyInBox ? ", " + BodyRuleCandles() + " bodies in the box (else no trade)" : "") +
                ((InpRevNeedFvg && InpFvgRule != BF_FVGRULE_NONE) ? ", FVG of the drop needed" :
                 (InpAnticipateEntries ? ", no FVG wait: limits at the confirming close" :
                  ", no FVG wait (limits after a pullback candle)"));
@@ -3466,9 +3487,10 @@ void SelfCheck(void)
                   " setups trade at a time" : "one setup trades at a time") : ""));
    if(InpSetupType != BF_SETUP_CONTINUATION && g_bp.revBodyInBox)
       g_log.Info("SELF-CHECK note: reversal bodies in the box (InpRevBodyInBox) - for a BPR tapped from above, the bodies " +
-                 "(open and close) of the T1 / T2 candles (every candle of the touch) and of the rejection candles C1, " +
-                 "C2, ... must stay in the box or above it; the wicks may go out. A body below the box ends the setup: " +
-                 "no trade (DONE BROKEN). Tapped from below: the mirror image");
+                 "(open and close) of the " + BodyRuleCandles() + " candles (T: every candle of the touch; C: the " +
+                 IntegerToString(g_bp.revRejCandles) + " rejection candles of InpRevRejCandles) must stay in the box or " +
+                 "above it; the wicks may go out. A body below the box ends the setup: no trade (DONE BROKEN). Tapped " +
+                 "from below: the mirror image");
    if(InpAnticipateEntries)
       g_log.Info("SELF-CHECK note: anticipated entries - the limits wait in the book from the confirmation (once the " +
                  "FVG condition holds) and are deleted and sent again at every new high / low of the leg (up to 3 " +

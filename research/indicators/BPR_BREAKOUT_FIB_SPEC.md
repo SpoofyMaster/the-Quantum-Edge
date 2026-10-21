@@ -314,13 +314,30 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   body of those candles must not go out of BPR rectangle ... C1 and C2 must also above or on the box, if they close out
   of the BPR box no trade, and same for a tape from below". `bodyOut(u)`: bullish BPR (tapped from above)
   `min(o[u], c[u]) < B`; bearish `max(o[u], c[u]) > T` (on the edge is in the box; the wicks are free).
-  1. **Touch candles.** At a new touch (T1 / T2, step 6) and on every next candle of the same touch visit (`tVisit`:
-     set at a touch, cleared at its rejection, at a pullback visit and at a breakout): `bodyOut(u)` →
-     `DONE(BROKEN)` with `bodyOut = touches`. Before the v6 touch entry, so no touch entry follows.
-  2. **Rejection candles.** In the v9 count, a candle that counts as C`n` with `n ≤ revRejCandles` and `bodyOut(u)` →
-     `DONE(BROKEN)` with `bodyOut = 10 + n`.
-  3. **Not checked:** other candles (neither T nor C), pullback visits, breakout candles. Continuation setups already
-     end `BROKEN` at a wick beyond the far side.
+  1. **Touch candles.** At a new touch (T1 / T2, step 6): `bodyOut(u)` → `DONE(BROKEN)` with `bodyOut = touches`.
+     This check runs before the v6 touch entry, so no touch entry follows. On every next candle of the same touch
+     visit, `bodyOut(u)` → `DONE(BROKEN)` with `bodyOut = 1000 + tVisitK` (a later candle of the T`tVisitK` touch).
+     - `tVisit` is set at a touch with `tVisitK = touches`. It is cleared at the touch's rejection, at a pullback
+       visit and at a breakout.
+     - The C codes go up to 10 + 100, hence 1000.
+  2. **Early second tap** (review of 2026-10-21). A visit opened by a v9 early close (beyond the reversal level after
+     fewer than `revRejCandles` C) is a pullback visit, not a touch. While `touches < maxTouches`, it is still the
+     owner's T`touches + 1`:
+     - `tVisit = true` and `tVisitK = touches + 1`;
+     - `bodyOut(u)` → `DONE(BROKEN)` with `bodyOut = touches + 1`;
+     - its later candles are checked as in 1.
+
+     The v9 state is unchanged: no TOUCH record, and the level stays. Why: when the T1 wick is in the box, a close
+     below the box is always beyond the level, so without this step the owner's "T2 body out" could never fire.
+  3. **Rejection candles.** In the v9 count, a candle that counts as C`n` with `n ≤ revRejCandles` and `bodyOut(u)` →
+     `DONE(BROKEN)` with `bodyOut = 10 + n`. On gapless bars a C body beyond the box needs the candle before it to
+     close beyond the box. That candle went unchecked, or it was a touch candle and already ended the setup.
+  4. **Not checked:**
+     - pullback visits after the last allowed touch;
+     - breakout candles, and the candles after a failed breakout in the same visit;
+     - C candles after C`revRejCandles`.
+
+     Continuation setups already end `BROKEN` at a wick beyond the far side.
 
   Records carry `bodyOut` (harness `bo`); the reason stays `BROKEN` (the reason codes are shared with the Python
   reference's stats layout).

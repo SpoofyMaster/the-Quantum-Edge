@@ -331,7 +331,9 @@ struct BfParams
    bool              revBodyInBox;        // reversal: the bodies of the T1 / T2 candles (every candle of the touch) and
                                           // of the rejection candles C1 .. C<revRejCandles> must stay in the BPR box or on
                                           // its side of it (a bullish BPR, tested from above: not below its bottom B;
-                                          // a bearish one: not above its top T). Otherwise no trade: DONE(BROKEN)
+                                          // a bearish one: not above its top T). Otherwise no trade: DONE(BROKEN).
+                                          // A second tap that closes beyond the level too early (v9: no touch) is
+                                          // checked as T2 while 2 touches are allowed
    // v10 (EA only; 1 / 0 = v9)
    int               maxSetups;           // setups with orders or positions at the same time (1 = one at a time, the
                                           // v2-v9 rule). > 1: every ready setup decides on its bar while a slot is
@@ -556,7 +558,9 @@ struct BfSetup
    int               ordBar;              // v10: the bar of that first placement (-1 = none)
    int               dupOf;               // v10: ended because setup dupOf already trades the same leg (0 = no)
    bool              tVisit;              // v11: the current visit of the zone is a touch (T1 / T2), not a pullback
-   int               bodyOut;             // v11: ended because a body left the box: n = the Tn candle, 10 + n = Cn
+   int               tVisitK;             // v11: that touch's number n (Tn; an early second tap is T2)
+   int               bodyOut;             // v11: ended because a body left the box: n = the Tn candle, 10 + n = Cn,
+                                          // 1000 + n = a later candle of the Tn touch (C: n <= 100)
    bool              pendTimeUp;          // v10: the pending-order time limit (pendingMaxSec) ended its orders
    int               reAnchorBar;         // v10: the bar of its last re-anchor (it keeps its slot to decide again)
   };
@@ -628,6 +632,7 @@ void BfClearSetup(BfSetup &s)
    s.ordBar      = -1;
    s.dupOf       = 0;
    s.tVisit      = false;
+   s.tVisitK     = 0;
    s.bodyOut     = 0;
    s.pendTimeUp  = false;
    s.reAnchorBar = -1;
@@ -700,6 +705,7 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.ordBar      = src.ordBar;
    dst.dupOf       = src.dupOf;
    dst.tVisit      = src.tVisit;
+   dst.tVisitK     = src.tVisitK;
    dst.bodyOut     = src.bodyOut;
    dst.pendTimeUp  = src.pendTimeUp;
    dst.reAnchorBar = src.reAnchorBar;
@@ -798,7 +804,8 @@ struct BfEvent
                                           // BREAKOUT: the count the breakout used, the breakout candle never counts)
    bool              pendTime;            // v10: the record comes from the pending-order time limit (EXPIRED)
    int               dupOf;               // v10: DONE(NO_LEVEL) because setup dupOf trades the same leg (0 = no)
-   int               bodyOut;             // v11: DONE(BROKEN) because a body left the box: n = Tn, 10 + n = Cn
+   int               bodyOut;             // v11: DONE(BROKEN) because a body left the box: n = Tn, 10 + n = Cn,
+                                          // 1000 + n = a later candle of the Tn touch (C: n <= 100)
   };
 
 void BfClearEvent(BfEvent &e)
