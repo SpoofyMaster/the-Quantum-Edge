@@ -332,8 +332,8 @@ struct BfParams
                                           // of the rejection candles C1 .. C<revRejCandles> must stay in the BPR box or on
                                           // its side of it (a bullish BPR, tested from above: not below its bottom B;
                                           // a bearish one: not above its top T). Otherwise no trade: DONE(BROKEN).
-                                          // A second tap that closes beyond the level too early (v9: no touch) is
-                                          // checked as T2 while 2 touches are allowed
+                                          // An early tap (a visit that closes beyond the level too early, v9: no
+                                          // touch) is checked like the next touch while one is allowed
    // v10 (EA only; 1 / 0 = v9)
    int               maxSetups;           // setups with orders or positions at the same time (1 = one at a time, the
                                           // v2-v9 rule). > 1: every ready setup decides on its bar while a slot is
@@ -558,7 +558,7 @@ struct BfSetup
    int               ordBar;              // v10: the bar of that first placement (-1 = none)
    int               dupOf;               // v10: ended because setup dupOf already trades the same leg (0 = no)
    bool              tVisit;              // v11: the current visit of the zone is a touch (T1 / T2), not a pullback
-   int               tVisitK;             // v11: that touch's number n (Tn; an early second tap is T2)
+   int               tVisitK;             // v11: that touch's number n (Tn; an early tap: touches + 1)
    int               bodyOut;             // v11: ended because a body left the box: n = the Tn candle, 10 + n = Cn,
                                           // 1000 + n = a later candle of the Tn touch (C: n <= 100)
    bool              pendTimeUp;          // v10: the pending-order time limit (pendingMaxSec) ended its orders

@@ -9,8 +9,8 @@ on the box, if they close out of the BPR box no trade, and same for a tape from 
 Read as (detector param revBodyInBox, EA input InpRevBodyInBox, harness key rev_body_box): for a reversal setup on a
 bullish BPR (tapped from above), the body - open and close - of every candle of the T1 / T2 touch and of the rejection
 candles the breakout needs (C1 .. C<rev_rej_c>) must be in the box or above it; on the edge counts as in the box; the
-wicks may go out. A second tap that closes beyond the reversal level too early (v9: a pullback visit, no touch) is the
-owner's T2 and is checked as T2 while a second touch is allowed. Otherwise the setup ends DONE(BROKEN) with bodyOut
+wicks may go out. An early tap (a visit that closes beyond the reversal level too early; v9: a pullback visit, no
+touch) is checked like the next touch while one is allowed. Otherwise the setup ends DONE(BROKEN) with bodyOut
 (harness "bo": n = the Tn candle, 10 + n = Cn, 1000 + n = a later candle of the Tn touch). A bearish BPR (tapped from
 below) is the mirror image. Continuation setups already end BROKEN at a wick beyond the box. The bars are
 tests/bk_scenarios.py v11_sequences(). Skipped without g++.
@@ -149,7 +149,8 @@ def test_a_c_candle_opening_below_the_box_is_out(exe, tmp_path, d):
 @D
 def test_an_early_second_tap_is_checked_only_while_a_second_touch_is_allowed(exe, tmp_path, d):
     """early_t2: T1 (17, wick 99.0 in the box), C1 (18) = the rejection, 19 closes through the box (97.8) after one
-    rejection candle. v9 makes 19 a pullback visit, not a touch; v11 checks it as T2 (2 touches allowed: ends, bo 2).
+    rejection candle. v9 makes 19 a pullback visit, not a touch; v11 checks it like T2 (2 touches allowed: ends, bo 2,
+    the EA's "early tap after T1").
     With max_touches = 1 there is no T2: 19 is a pullback visit after the last touch, not checked, and the setup
     trades as in v10. Its records otherwise follow v9: no TOUCH 2 event, the level stays the T1 wick."""
     bars = side(V11["early_t2"], d)
@@ -168,6 +169,49 @@ def test_an_early_second_tap_is_checked_only_while_a_second_touch_is_allowed(exe
     rr = run(exe, tmp_path, side(ok, d), setup_type=REV, rev_body_box=1, **EA)
     j = sid(rr)
     assert of(rr, j, "TOUCH")[1][:3] == (19, "TOUCH", 2) and not of(rr, j, "DONE") and of(rr, j, "BREAKOUT")
+
+
+@D
+def test_an_early_tap_in_the_box_changes_nothing(exe, tmp_path, d):
+    """An early tap whose body stays in the box (19 closes at 98.5, below the T1 wick 99.0, after one green candle):
+    the setup's records are those of v10. The level stays the T1 wick (v9: the early tap is no touch) and it trades."""
+    seq = v11_up() + [bar(100.1, 100.15, 99.0, 99.6), bar(99.6, 100.25, 99.55, 100.2), bar(100.2, 100.25, 98.4, 98.5),
+                      bar(98.5, 100.6, 98.45, 100.5), bar(100.5, 100.8, 100.45, 100.7), bar(100.7, 100.75, 98.6, 98.7),
+                      bar(98.7, 98.75, 98.55, 98.6), bar(98.6, 98.65, 98.5, 98.55),
+                      bar(98.55, 99.4, 98.5, 99.3)] + v11_drop(99.3)
+    bars = side(seq, d)
+    recs = run(exe, tmp_path, bars, setup_type=REV, rev_body_box=1, **EA)
+    i = sid(recs)
+    assert mine(recs, i) == mine(run(exe, tmp_path, bars, setup_type=REV, **EA), i)
+    assert [r["n"] for r in recs if r["id"] == i and r["ev"] == "TOUCH"] == [17]
+    brk = next(r for r in recs if r["id"] == i and r["ev"] == "BREAKOUT")
+    assert brk["n"] == 22 and brk["lvl"] == (99.0 if d > 0 else 101.0) and of(recs, i, "PLACE_LIMIT")
+
+
+@D
+def test_every_tap_until_the_last_allowed_touch_is_checked(exe, tmp_path, d):
+    """An early tap does not use up a touch (v9), so the taps checked are those up to the last allowed TOUCH (the T
+    labels on the chart), plus any early tap before it. T1 (17, wick 99.0 in the box), a red candle above the box
+    (18, the rejection), then:
+    - A: an early tap in the box (19), C1 above the box (20), and a tap (21) that closes below the box: still before
+      T2, so checked; it is again an early tap (bo 2 with 1 TOUCH: the EA calls it "the early tap after T1");
+    - B: a real T2 (19, TOUCH 2), and the same tap (21): after the last allowed touch, the pullback; not checked, it
+      trades as in v10."""
+    up = v11_up()
+    t1, rj = bar(100.1, 100.15, 99.0, 100.05), bar(100.05, 100.1, 99.95, 100.0)
+    tail = [bar(97.8, 98.6, 97.75, 98.5), bar(98.5, 99.5, 98.45, 99.4), bar(99.4, 100.55, 99.35, 100.5),
+            bar(100.5, 101.6, 100.4, 100.45), bar(100.45, 100.5, 100.0, 100.1)] + v11_drop(100.1)
+    a = up + [t1, rj, bar(100.0, 100.05, 98.4, 98.5), bar(98.5, 100.3, 98.45, 100.2),
+              bar(100.2, 100.25, 97.7, 97.8)] + tail
+    b = up + [t1, rj, bar(100.0, 100.05, 99.1, 99.95), bar(99.95, 100.0, 99.92, 99.93),
+              bar(99.93, 99.95, 97.7, 97.8)] + tail
+    ra = run(exe, tmp_path, side(a, d), setup_type=REV, rev_body_box=1, **EA)
+    i = sid(ra)
+    assert of(ra, i, "TOUCH", "DONE") == [(17, "TOUCH", 1, None, 0), (21, "DONE", 0, "BROKEN", 2)]
+    rb = run(exe, tmp_path, side(b, d), setup_type=REV, rev_body_box=1, **EA)
+    j = sid(rb)
+    assert [r["n"] for r in rb if r["id"] == j and r["ev"] == "TOUCH"] == [17, 19]
+    assert mine(rb, j) == mine(run(exe, tmp_path, side(b, d), setup_type=REV, **EA), j) and of(rb, j, "PLACE_LIMIT")
 
 
 @D
@@ -191,7 +235,8 @@ def test_continuation_setups_are_not_affected(exe, tmp_path, name):
         assert [r for r in a if r.get("kind") == 0] == [r for r in b if r.get("kind") == 0]
 
 
-def test_a_pullback_visit_is_not_a_touch(exe, tmp_path):
+@D
+def test_a_pullback_visit_is_not_a_touch(exe, tmp_path, d):
     """Only the touches (T1, T2) are checked, not a later pullback visit: after T1 (17, wick 97.5), C1, C2 and the
     rejection, a red candle comes back into the box and closes below it without closing below the T1 wick: with
     max_touches = 1 that visit is the pullback, not T2, and the setup goes on."""
@@ -199,7 +244,7 @@ def test_a_pullback_visit_is_not_a_touch(exe, tmp_path):
     seq = up + [bar(100.1, 100.15, 97.5, 98.2), bar(98.2, 99.1, 98.15, 99.0), bar(99.0, 100.6, 98.95, 100.5),
                 bar(100.5, 100.6, 100.0, 100.1), bar(100.1, 100.15, 97.7, 97.8), bar(98.0, 100.6, 97.95, 100.5),
                 bar(100.5, 101.6, 100.4, 100.45), bar(100.45, 100.5, 100.0, 100.1)] + v11_drop(100.1)
-    recs = run(exe, tmp_path, seq, setup_type=REV, rev_body_box=1, max_touches=1, **EA)
+    recs = run(exe, tmp_path, side(seq, d), setup_type=REV, rev_body_box=1, max_touches=1, **EA)
     i = sid(recs)
     assert [r["n"] for r in recs if r["id"] == i and r["ev"] == "TOUCH"] == [17]
     assert not of(recs, i, "DONE") and of(recs, i, "BREAKOUT")
@@ -208,10 +253,9 @@ def test_a_pullback_visit_is_not_a_touch(exe, tmp_path):
                   bar(100.5, 100.6, 100.0, 100.1), bar(100.1, 100.15, 97.7, 98.1), bar(98.1, 98.2, 97.6, 97.8),
                   bar(98.0, 100.6, 97.95, 100.5), bar(100.5, 101.6, 100.4, 100.45),
                   bar(100.45, 100.5, 100.0, 100.1)] + v11_drop(100.1)
-    for b in (two_c, mirror(two_c)):
-        rr = run(exe, tmp_path, b, setup_type=REV, rev_body_box=1, max_touches=1, **EA)
-        assert not of(rr, sid(rr), "DONE") and of(rr, sid(rr), "BREAKOUT")
-    two = run(exe, tmp_path, seq, setup_type=REV, rev_body_box=1, **EA)       # max_touches = 2: that visit is T2
+    rr = run(exe, tmp_path, side(two_c, d), setup_type=REV, rev_body_box=1, max_touches=1, **EA)
+    assert not of(rr, sid(rr), "DONE") and of(rr, sid(rr), "BREAKOUT")
+    two = run(exe, tmp_path, side(seq, d), setup_type=REV, rev_body_box=1, **EA)   # max_touches = 2: that visit is T2
     assert of(two, sid(two), "DONE") == [(21, "DONE", 0, "BROKEN", 2)]
 
 
@@ -261,7 +305,7 @@ def test_random_series(exe, tmp_path, case):
             assert last >= 1 and (k == last or k == last + 1 <= mt), (r, touch)
         elif r["bo"] > 10:                           # Cn: one of the rejection candles the breakout needs
             assert 1 <= r["bo"] - 10 <= rc and last >= 1, (r, touch)
-        else:                                        # Tn: that TOUCH on this bar, or an early second tap (no TOUCH)
+        else:                                        # Tn: that TOUCH on this bar, or an early tap (no TOUCH) before Tn
             assert touch.get(r["bo"]) == r["n"] or (r["bo"] == last + 1 <= mt and r["bo"] not in touch), (r, touch)
     ended = {r["id"]: r["n"] for r in recs if r["ev"] in ("DONE", "CLOSED")}
     for r in recs:

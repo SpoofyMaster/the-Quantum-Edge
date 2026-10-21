@@ -177,11 +177,11 @@ Legend: `[ ]` open · `[x]` done · `[!]` blocked (reason) · `[?]` needs user d
 - [x] EA-19 v11 (2026-10-21, journal day15): owner's rule: for a reversal, the bodies of the T1 / T2 candles (every
   candle of the touch) and of C1 .. C`InpRevRejCandles` must stay in the BPR box or on its side (tapped from above:
   not below it), else no trade (`InpRevBodyInBox`, default true; false = v10); `tests/test_bpr_breakout_v11_body.py`;
-  chart `research/indicators/preview/bpr_body_rule_example.svg`. Review fixes (same day): an early second tap (v9: no
-  touch) is checked as T2; later candles of a touch are reported as such (code 1000 + n); warm-up count; log /
+  chart `research/indicators/preview/bpr_body_rule_example.svg`. Review fixes (same day): an early tap (v9: no touch)
+  is checked like T2; later candles of a touch are reported as such (code 1000 + n); warm-up count; log /
   label wording; tapped-from-below orders tested.
 - [?] U-24 User: compile v11; run the tester with `InpSetupType = REVERSAL`; check that no reversal trades after a
-  T1 / T2 or C1 / C2 body out of the box (also an early second tap through the box after one green candle) and
+  T1 / T2 or C1 / C2 body out of the box (also an early tap through the box after one green candle) and
   that a T1 with only its wick out still trades; send the compiler
   messages, the `[BFEA]` lines and the `BFEA11_*` CSV files.
 - [?] U-23 User: compile v10 and send every compiler message (the multi-setup executor is new code). Run the tester

@@ -320,15 +320,21 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
      - `tVisit` is set at a touch with `tVisitK = touches`. It is cleared at the touch's rejection, at a pullback
        visit and at a breakout.
      - The C codes go up to 10 + 100, hence 1000.
-  2. **Early second tap** (review of 2026-10-21). A visit opened by a v9 early close (beyond the reversal level after
-     fewer than `revRejCandles` C) is a pullback visit, not a touch. While `touches < maxTouches`, it is still the
-     owner's T`touches + 1`:
+  2. **Early tap** (review of 2026-10-21). A visit opened by a v9 early close (beyond the reversal level after fewer
+     than `revRejCandles` C) is a pullback visit, not a touch. While `touches < maxTouches`, it is checked like the
+     next touch:
      - `tVisit = true` and `tVisitK = touches + 1`;
      - `bodyOut(u)` → `DONE(BROKEN)` with `bodyOut = touches + 1`;
      - its later candles are checked as in 1.
 
-     The v9 state is unchanged: no TOUCH record, and the level stays. Why: when the T1 wick is in the box, a close
-     below the box is always beyond the level, so without this step the owner's "T2 body out" could never fire.
+     The EA calls it "the early tap after T`touches`": its code is above the record's `touches`. The v9 state is
+     unchanged: no TOUCH record, the level stays, `touches` stays. So an early tap does not use up a touch. Every
+     early tap before the last allowed touch is checked, and so is the next real touch. The rule thus covers the taps
+     the chart labels `T1` / `T2`, and any early tap before the last of them.
+
+     Why: when the T1 wick is in the box, the first candle of a second tap that closes below the box is always
+     beyond the level (v9: no touch), so before this step its body was never checked. Later candles of a real T2
+     touch were checked.
   3. **Rejection candles.** In the v9 count, a candle that counts as C`n` with `n ≤ revRejCandles` and `bodyOut(u)` →
      `DONE(BROKEN)` with `bodyOut = 10 + n`. On gapless bars a C body beyond the box needs the candle before it to
      close beyond the box. That candle went unchecked, or it was a touch candle and already ended the setup.

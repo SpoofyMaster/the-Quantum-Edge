@@ -763,7 +763,7 @@ private:
          //--- v9: a close beyond the reversal level that is not the reversal breakout (price came back before enough
          //    rejection candles): the count restarts, and the candle is no touch. If it opens a new visit, step 6
          //    treats it like a pullback visit: it does not take the T2 slot and its wick does not become the level.
-         //    v11: for the body rule that visit is the second tap, T2, while a second touch is allowed.
+         //    v11: for the body rule that visit is checked like the next touch while one is allowed (an early tap).
          early = (m_p.revRejCandles > 0 && HasRev(i) && ph == BF_PH_ZONE && m_s[i].touches > 0 &&
                   BeyondRev(i, c[u]));
          if(early)
@@ -784,8 +784,9 @@ private:
                TrackRev(i, u, h[u], l[u]);
                StartCand(i, u, h[u], l[u]);
                m_s[i].tVisit = false;                           // v11: a pullback visit, not a touch
-               //--- v11: an early second tap (the T1 wick in the box, then a close through the box after 1 rejection
-               //    candle): the owner's T2, so its body must stay in the box too
+               //--- v11: an early tap before the last allowed touch (e.g. the T1 wick in the box, C1, then a close
+               //    through the box): a tap of the box like T2, so its body must stay in the box too. touches does not
+               //    change (v9), so tVisitK = touches + 1 > touches tells the EA it was an early tap
                if(early && m_s[i].touches < m_p.maxTouches)
                  {
                   m_s[i].tVisit  = true;
