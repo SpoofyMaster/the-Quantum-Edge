@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//| BprFvgEA.mq5  (version 10)                                       |
+//| BprFvgEA.mq5  (version 11)                                       |
 //| LuxAlgo FVG / BPR zones on the chart + the owner's BPR setup:    |
 //| rejection -> breakout -> Fibonacci pullback entries              |
 //+------------------------------------------------------------------+
@@ -83,6 +83,14 @@
 //    0.20 %; all of them within the 1.00 % planned daily loss). v2-v9 traded one setup at a time and skipped the others.
 //    1 = the v9 rule. Hedging accounts only: on a netting account the setups would share one position, so it stays 1.
 // Detector params pendingMaxSec / maxSetups (MQL5 only); tests/test_bpr_breakout_v10_multi.py.
+// Version 11 = v10 + the owner's rule of 2026-10-21 ("on T1 or T2, the body of those candles must not go out of BPR
+// rectangle ... after that C1 and C2 must also above or on the box, if they close out of the BPR box no trade, and
+// same for a tape from below"): InpRevBodyInBox (default true). For a reversal setup on a BPR tapped from above (a
+// bullish BPR), the bodies (open and close) of the T1 / T2 candles - every candle of the touch - and of the counted
+// rejection candles C1, C2, ... must stay in the box or above it; the wicks may go out. A body below the box ends the
+// setup: no trade (DONE BROKEN, "the body of T1 closed below the BPR box"). A BPR tapped from below: the mirror image.
+// Continuation setups already end at a wick beyond the box (BROKEN). false = v10. Detector param revBodyInBox (MQL5
+// only); tests/test_bpr_breakout_v11_body.py; chart research/indicators/preview/bpr_body_rule_example.svg.
 //
 // STATUS: NOT YET COMPILED in MetaEditor (written without a compiler). Send the compiler messages.
 // TRADING RULES: hypothesis H-14, UNTESTED. No claim of profitability.
@@ -95,7 +103,7 @@
 //+------------------------------------------------------------------+
 #property copyright   "(c) LuxAlgo - FVG/BPR Pine v5 logic; port + setups under CC BY-NC-SA 4.0"
 #property link        "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-#property version     "10.00"
+#property version     "11.00"
 #property description "LuxAlgo FVG/BPR zones + BPR rejection -> breakout -> Fibonacci 50/61.8/71 limit entries (H-14)."
 #property description "Tester/demo only; real accounts are log-only. Licence CC BY-NC-SA 4.0 (non-commercial)."
 
@@ -139,6 +147,7 @@ input ENUM_BF_SETUPTYPE   InpSetupType            = BF_SETUP_CONTINUATION; // Se
 input ENUM_BF_REVLEVEL    InpRevLevel             = BF_REVLVL_DEEPEST;  // Reversal level: DEEPEST wick of the T1 / T2 candles / T1 wick / LAST touch wick
 input bool                InpRevNeedRejection     = true;               // Reversal: a rejection after T1 must come before the breakout
 input int                 InpRevRejCandles        = 2;                  // Reversal: candles in the BPR's direction after T1 before the breakout (green for a bullish BPR; 0 = off)
+input bool                InpRevBodyInBox         = true;               // Reversal: T1 / T2 and C1, C2 bodies must stay in the BPR box or on its side (tapped from above: not below it); else no trade
 input bool                InpRevNeedFvg           = false;              // Reversal: wait for an FVG of the drop (false = no wait; with InpAnticipateEntries the limits go in at the 2nd close)
 input int                 InpMaxBarsToT1          = 0;                  // Bars from a BPR's creation to its T1 (0 = no limit; -1 = v7 rules)
 input bool                InpTouchEntry           = false;              // Market order at the next open after the T1 candle (BPR direction)
@@ -386,6 +395,7 @@ int            g_nRollDel     = 0;      // pending orders deleted by the 16:44 N
 int            g_nPendTime    = 0;      // v10: setups whose limit orders the pending-order time limit ended
 int            g_lastPendId   = 0;      // v10: the last setup counted in g_nPendTime
 int            g_nDup         = 0;      // v10: setups ended because another setup already traded their leg
+int            g_nBodyOut     = 0;      // v11: reversal setups ended because a T / C body left the box
 int            g_maxBusy      = 0;      // v10: the most setups with orders / positions at the same time so far
 
 //--- validated copies of the inputs
@@ -629,6 +639,8 @@ void BuildParams(void)
    g_bp.revNeedFvg           = InpRevNeedFvg;
    // v9 (EA only; 0 = v8)
    g_bp.revRejCandles        = ClampWarn("InpRevRejCandles", InpRevRejCandles, 0, 100);
+   // v11 (EA only; false = v10)
+   g_bp.revBodyInBox         = InpRevBodyInBox;
    // v10 (EA only; 1 / 0 = v9)
    g_bp.maxSetups            = g_maxSetups;
    g_bp.pendingMaxSec        = g_pendMin * 60;
@@ -732,6 +744,16 @@ string SetupCsv(const BfEvent &e)
    return(line);
   }
 
+// v11: which candle's body left the box, and where ("the body of T1 (open 100.10, close 97.80) closed below the BPR box
+// (bottom 98.00)")
+string BodyOutText(const BfEvent &e)
+  {
+   string who = (e.bodyOut >= 10) ? "C" + IntegerToString(e.bodyOut - 10) : "T" + IntegerToString(e.bodyOut);
+   string oc  = (e.n >= 0 && e.n < g_n) ? " (open " + Px(g_o[e.n]) + ", close " + Px(g_c[e.n]) + ")" : "";
+   return("the body of " + who + oc + " closed " + ((e.zdir > 0) ? "below the BPR box (bottom " + Px(e.B) + ")" :
+          "above the BPR box (top " + Px(e.T) + ")"));
+  }
+
 // One Experts-log line per detector record
 string EventText(const BfEvent &e)
   {
@@ -776,6 +798,9 @@ string EventText(const BfEvent &e)
    if(e.ev == BF_EV_DONE && e.dupOf > 0)
       s = s + " (NO_LEVEL: the same leg - direction and 100 % - is already traded by #" + IntegerToString(e.dupOf) +
           "; one trade per leg)";
+   else
+   if(e.ev == BF_EV_DONE && e.bodyOut > 0)
+      s = s + " (BROKEN: " + BodyOutText(e) + " - no trade)";
    else
       if(e.reason != BF_R_NONE)
          s = s + " (" + BfReasonName(e.reason) + ")";
@@ -849,6 +874,12 @@ void DrawEvent(const BfEvent &e)
                         g_render.SetupDelete(e.id, "T" + IntegerToString(k));
                     }
                   g_render.SetupGrey(e.id);
+                  //--- v11: the candle whose body left the box: "NO TRADE" on it (drawn after the grey, in red)
+                  if(e.ev == BF_EV_DONE && e.bodyOut > 0)
+                     g_render.SetupText(e.id, "BO", t, (e.zdir > 0) ? lo : hi, "NO TRADE: " +
+                                        ((e.bodyOut >= 10) ? "C" + IntegerToString(e.bodyOut - 10) :
+                                         "T" + IntegerToString(e.bodyOut)) + " body out of the BPR", C'255,23,68',
+                                        (e.zdir > 0) ? ANCHOR_UPPER : ANCHOR_LOWER, tip + " (" + BodyOutText(e) + ")");
                  }
   }
 
@@ -1086,6 +1117,8 @@ void HandleEvents(void)
         }
       if(e.ev == BF_EV_DONE && e.dupOf > 0)
          g_nDup++;                               // v10: one trade per leg
+      if(e.ev == BF_EV_DONE && e.bodyOut > 0)
+         g_nBodyOut++;                           // v11: a body out of the box
       // v10: setups whose limit orders the pending-order time limit ended (its records come together on one bar)
       if(e.pendTime && e.reason == BF_R_EXPIRED && (e.ev == BF_EV_CANCEL || e.ev == BF_EV_DROP || e.ev == BF_EV_DONE) &&
          e.id != g_lastPendId)
@@ -2202,7 +2235,7 @@ bool FinishTouch(void)
    reason = DealReasonText(lastReason, g_tp.closeReason);
    if(g_tp.planned > 0.0)
       R = pnl / g_tp.planned;
-   // BFEA10_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA11_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_tp.id) + ",T," + IntegerToString(g_tp.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_tp.SL) + "," + Px(g_tp.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -2515,7 +2548,7 @@ bool FinishPosition(const ulong posId)
    reason = DealReasonText(lastReason, cr);
    if(plan > 0.0)
       R = pnl / plan;
-   // BFEA10_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
+   // BFEA11_trades row: id,levels,dir,entry_time,entry,lots,SL,TP,exit_time,exit,exit_reason,pnl,R,planned_risk,setup
    line = IntegerToString(g_ctx.id) + "," + levels + "," + IntegerToString(g_ctx.dir) + "," + CBfLogger::Ts(tIn) + "," +
           ((vIn > 0.0) ? DoubleToString(pxIn / vIn, _Digits + 2) : "") + "," + DoubleToString(vIn, 2) + "," +
           Px(g_ctx.SL) + "," + Px(g_ctx.TP) + "," + CBfLogger::Ts(tOut) + "," +
@@ -3199,7 +3232,8 @@ string DiagWaits(void)
 
 string DiagEnded(void)
   {
-   return("ended: broken " + IntegerToString(St(BF_STAT_DONE + BF_R_BROKEN)) + " broken-at-start " +
+   return("ended: broken " + IntegerToString(St(BF_STAT_DONE + BF_R_BROKEN)) +
+          (g_bp.revBodyInBox ? " (body out of the box " + IntegerToString(g_nBodyOut) + ")" : "") + " broken-at-start " +
           IntegerToString(St(BF_STAT_DONE + BF_R_BROKEN_AT_CREATION)) + " expired " + IntegerToString(g_nExpPre) +
           " before / " + IntegerToString(g_nExpLeg) + " after the breakout" +
           ((g_pendMin > 0) ? " (pending-order time limit " + IntegerToString(g_nPendTime) + ")" : "") + " | touch limit " +
@@ -3273,6 +3307,7 @@ string SetupTypeText(void)
    string rv = "level " + RevLevelText() + (InpRevNeedRejection ? ", after a rejection" : "") +
                ((g_bp.revRejCandles > 0) ? (InpRevNeedRejection ? " of" : ", after") + " at least " +
                 IntegerToString(g_bp.revRejCandles) + " candles in the BPR's direction (green for a bullish BPR)" : "") +
+               (g_bp.revBodyInBox ? ", T1 / T2 and C bodies in the box (else no trade)" : "") +
                ((InpRevNeedFvg && InpFvgRule != BF_FVGRULE_NONE) ? ", FVG of the drop needed" :
                 (InpAnticipateEntries ? ", no FVG wait: limits at the confirming close" :
                  ", no FVG wait (limits after a pullback candle)"));
@@ -3323,7 +3358,7 @@ void UpdatePanel(void)
       return;
    g_trade.TradePermission(perm);
    g_permWhy = perm;
-   g_render.PanelSet(0, "BprFvgEA v10 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
+   g_render.PanelSet(0, "BprFvgEA v11 " + _Symbol + " " + TfName() + " | mode: " + g_trade.modeNote + " | algo trading: " +
                      ((perm == "") ? "ON" : "OFF - " + perm));
    g_render.PanelSet(1, "rules: touches <= " + IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) +
                      " closes" + (InpRejectBeforeBreak ? " after a rejection" : "") + ", FVG " + FvgRuleText() + " | entries " + FibText(g_fib[0]) + " " + FibText(g_fib[1]) + " " +
@@ -3429,6 +3464,11 @@ void SelfCheck(void)
                  ((InpSetupType == BF_SETUP_BOTH) ? "; each BPR is followed twice (ids in the log: '#n' continuation, " +
                   "'#n REV' reversal), " + ((MaxSetupsNow() > 1) ? "up to " + IntegerToString(g_maxSetups) +
                   " setups trade at a time" : "one setup trades at a time") : ""));
+   if(InpSetupType != BF_SETUP_CONTINUATION && g_bp.revBodyInBox)
+      g_log.Info("SELF-CHECK note: reversal bodies in the box (InpRevBodyInBox) - for a BPR tapped from above, the bodies " +
+                 "(open and close) of the T1 / T2 candles (every candle of the touch) and of the rejection candles C1, " +
+                 "C2, ... must stay in the box or above it; the wicks may go out. A body below the box ends the setup: " +
+                 "no trade (DONE BROKEN). Tapped from below: the mirror image");
    if(InpAnticipateEntries)
       g_log.Info("SELF-CHECK note: anticipated entries - the limits wait in the book from the confirmation (once the " +
                  "FVG condition holds) and are deleted and sent again at every new high / low of the leg (up to 3 " +
@@ -3746,6 +3786,7 @@ int OnInit()
    g_nPendTime    = 0;
    g_lastPendId   = 0;
    g_nDup         = 0;
+   g_nBodyOut     = 0;
    g_maxBusy      = 0;
    g_ci           = 0;
    g_nExpPre      = 0;
@@ -3756,14 +3797,14 @@ int OnInit()
 
    if(!g_tradeLogic)
       g_log.Error("InpFvgType = IFVG: setups need FVG. The EA draws the zones only; trading is disabled.");
-   g_log.Info("start v10: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
+   g_log.Info("start v11: " + _Symbol + " " + TfName() + " | mode " + g_trade.modeNote + " | BPR rejection -> breakout -> " +
               "fib entries " + FibText(g_fib[0]) + "/" + FibText(g_fib[1]) + "/" + FibText(g_fib[2]) + ", touches <= " +
               IntegerToString(g_maxTouches) + ", " + IntegerToString(g_confirm) + " closes, FVG " + FvgRuleText() +
               ", direction " + DirectionText() + " | risk " + DoubleToString(g_riskPct, 2) + "% per setup, daily " +
               DoubleToString(g_dayLossPct, 2) + "% | hypothesis H-14 (untested)");
-   g_log.Info("start v10: " + FiltersText());
-   g_log.Info("start v10: " + ExitsText());
-   g_log.Info("start v10: " + EntryModeText());
+   g_log.Info("start v11: " + FiltersText());
+   g_log.Info("start v11: " + ExitsText());
+   g_log.Info("start v11: " + EntryModeText());
    if(InpLogCsv && !optim)
       g_log.Info("CSV logs (Common Files folder): " + g_log.SetupsFile() + ", " + g_log.TradesFile() + " | run " +
                  g_runText);

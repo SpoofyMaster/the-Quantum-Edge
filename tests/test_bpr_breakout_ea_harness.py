@@ -169,7 +169,7 @@ def _run_both(exe, tmp_path, bars, params, sp, trade_from=0, hold_bars=120):
 
 def _crafted():
     from bk_scenarios import (boundary_cases, mirror, scenarios, v5_sequences, v6_sequences, v7_sequences, v8_sequences,
-                              v9_sequences)
+                              v9_sequences, v11_sequences)
 
     out = []
     seqs = dict(scenarios())
@@ -193,6 +193,10 @@ def _crafted():
     for name, bars in v9_sequences().items():
         seqs[f"v9_{name}"] = bars
         seqs[f"v9_short_{name}"] = mirror(bars)
+    # v11 sequences (the owner's T1 / C1 / C2 bodies out of the box) at the defaults
+    for name, bars in v11_sequences().items():
+        seqs[f"v11_{name}"] = bars
+        seqs[f"v11_short_{name}"] = mirror(bars)
     for name, bars in seqs.items():
         for rule in ("ANY_GAP", "LUXALGO", "NONE"):
             out.append((f"{name}-{rule}", bars, {"fvg_rule": rule}))

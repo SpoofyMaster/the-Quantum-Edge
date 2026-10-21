@@ -126,6 +126,7 @@ private:
       m_ev[m_nEv].rejC        = s.nRejC;
       m_ev[m_nEv].pendTime    = s.pendTimeUp;
       m_ev[m_nEv].dupOf       = s.dupOf;
+      m_ev[m_nEv].bodyOut     = s.bodyOut;
       m_nEv++;
      }
 
@@ -271,6 +272,15 @@ private:
    bool              HasRev(const int i)
      {
       return(m_s[i].kind == BF_SETUP_REVERSAL);
+     }
+
+   //--- v11 (revBodyInBox): the body of candle u is out of the BPR box on the far side: below its bottom B for a
+   //    bullish BPR (tested from above), above its top T for a bearish one. On the edge is in the box.
+   bool              BodyOut(const int i, const double ou, const double cu)
+     {
+      if(m_s[i].zdir > 0)
+         return(MathMin(ou, cu) < m_s[i].B);
+      return(MathMax(ou, cu) > m_s[i].T);
      }
 
    //--- v7: the setup that sends the touch entry: the continuation one (CONTINUATION / BOTH), or the reversal one
@@ -663,7 +673,17 @@ private:
          //    beyond the level that is not the breakout restarts the count (below, after step 5b).
          if(HasRev(i) && ph != BF_PH_BREAK && m_s[i].touches > 0 && u > m_s[i].touchBar1 && !BeyondRev(i, c[u]) &&
             ((zd > 0) ? (c[u] > o[u]) : (c[u] < o[u])))
+           {
             m_s[i].nRejC++;
+            //--- v11: the rejection candles the breakout needs (C1 .. C<revRejCandles>, "C1 and C2") must be above or
+            //    on the box (bullish BPR; below or on it for a bearish one): "if they close out of the BPR box no trade"
+            if(m_p.revBodyInBox && m_s[i].nRejC <= m_p.revRejCandles && BodyOut(i, o[u], c[u]))
+              {
+               m_s[i].bodyOut = 10 + m_s[i].nRejC;
+               SetDone(i, u, BF_R_BROKEN);
+               return;
+              }
+           }
          //--- step 4: BREAK (continuation, or v6 reversal)
          if(ph == BF_PH_BREAK)
            {
@@ -703,6 +723,7 @@ private:
                m_s[i].phase  = BF_PH_BREAK;
                m_s[i].brkBar = u;
                m_s[i].nClose = 1;
+               m_s[i].tVisit = false;                           // v11
                Track(i, u, h[u], l[u]);
                TrackRev(i, u, h[u], l[u]);
                AddEvent(u, BF_EV_BREAKOUT, m_s[i], 0, BF_R_NONE);
@@ -724,6 +745,7 @@ private:
                m_s[i].dir    = -zd;
                m_s[i].brkBar = u;
                m_s[i].nClose = 1;
+               m_s[i].tVisit = false;                           // v11
                Track(i, u, h[u], l[u]);
                TrackRev(i, u, h[u], l[u]);
                //--- v7.01: a breakout candle that enters the zone opens a visit (not a touch): if the breakout fails
@@ -760,6 +782,7 @@ private:
                //    v9: so is a visit opened by a close beyond the level that is not the breakout.
                TrackRev(i, u, h[u], l[u]);
                StartCand(i, u, h[u], l[u]);
+               m_s[i].tVisit = false;                           // v11: a pullback visit, not a touch
               }
             else
                if(!m_s[i].inEp)
@@ -793,6 +816,15 @@ private:
                   else
                      TrackRev(i, u, h[u], l[u]);
                   StartCand(i, u, h[u], l[u]);
+                  m_s[i].tVisit = true;
+                  //--- v11: the body of a T1 / T2 candle must stay in the box or on its side of it ("T1 candles body
+                  //    must not close out of the BPR box"): otherwise no trade
+                  if(m_p.revBodyInBox && HasRev(i) && BodyOut(i, o[u], c[u]))
+                    {
+                     m_s[i].bodyOut = m_s[i].touches;
+                     SetDone(i, u, BF_R_BROKEN);
+                     return;
+                    }
                   //--- v6 touch entry: on the close of the T1 candle, if that candle did not break the BPR
                   if(m_p.touchEntry && m_s[i].touches == 1 && !brokeNow && DirAllowed(zd) && TouchOwner(i))
                      m_s[i].touchReady = true;
@@ -801,6 +833,13 @@ private:
                  {
                   Track(i, u, h[u], l[u]);
                   TrackRev(i, u, h[u], l[u]);
+                  //--- v11: the next candles of the same touch (consecutive candles touching the box are one touch)
+                  if(m_p.revBodyInBox && HasRev(i) && m_s[i].tVisit && BodyOut(i, o[u], c[u]))
+                    {
+                     m_s[i].bodyOut = m_s[i].touches;
+                     SetDone(i, u, BF_R_BROKEN);
+                     return;
+                    }
                  }
             m_s[i].ref   = u;
             m_s[i].lvl   = (zd > 0) ? h[u] : l[u];
@@ -813,7 +852,8 @@ private:
             if(rj)
               {
                AddEvent(u, BF_EV_REJECT, m_s[i], 0, BF_R_NONE);
-               m_s[i].inEp = false;
+               m_s[i].inEp   = false;
+               m_s[i].tVisit = false;                           // v11: the touch is over
               }
             if(m_s[i].phase == BF_PH_ZONE)
               {

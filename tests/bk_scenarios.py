@@ -486,6 +486,57 @@ def v9_sequences() -> dict[str, list]:
     return sq
 
 
+def v11_up() -> list:
+    """The BPR [98.0, 99.9] forms (13), price goes up without touching it (14-15) and comes back (16)."""
+    return prefix() + [bar(100.2, 100.95, 100.15, 100.9), bar(100.9, 101.6, 100.85, 101.5),
+                       bar(101.5, 101.55, 100.0, 100.1)]
+
+
+def v11_drop(c: float) -> list:
+    """Two closes below 97.5 (the reversal breakout under a T1 wick of 97.5 / 97.6), a new low, a pullback, more."""
+    return [bar(c, c + 0.05, 97.3, 97.4), bar(97.4, 97.5, 96.9, 97.0), bar(97.0, 97.05, 96.6, 96.7),
+            bar(96.7, 98.4, 96.65, 98.3), bar(98.3, 98.35, 96.2, 96.3), bar(96.3, 96.4, 96.1, 96.2)]
+
+
+def v11_sequences() -> dict[str, list]:
+    """Sequences of the BprFvgEA v11 rule (tests/test_bpr_breakout_v11_body.py), from the owner's drawing of
+    2026-10-21: for a BPR tapped from above, the bodies of the T1 / T2 candles and of the rejection candles C1, C2
+    must not close out of the box (below it); otherwise no trade. Wicks may go out. Bullish BPR [98.0, 99.9] armed on
+    13, T1 on 17; mirror() gives the tap from below. Also in the parity set at the default settings."""
+    up = v11_up()
+    t1_deep = bar(100.1, 100.15, 97.5, 98.2)                 # 17: T1, wick 97.5 below the box, body 98.2-100.1 in it
+    top = [bar(100.5, 101.6, 100.4, 100.45), bar(100.45, 100.5, 100.0, 100.1)]   # the top of the bounce, then red
+    sq = {
+        # the owner's "T1 NO": T1 (17) opens above the box and closes below it (97.8); then C1, C2, the drop. v10
+        # traded it (limits on 23); v11: no trade
+        "t1_body_out": up + [bar(100.1, 100.15, 97.6, 97.8), bar(97.8, 99.5, 97.75, 99.4),
+                             bar(99.4, 100.6, 99.35, 100.5)] + top + v11_drop(100.1),
+        # T1 (17) with its wick below the box but its body in it, C1 (18) in the box, a red candle (19) in the box,
+        # C2 (20) opens and closes below the box: no trade (v10 traded it, limits on 25)
+        "c2_body_out": up + [t1_deep, bar(98.2, 99.1, 98.15, 99.0), bar(99.0, 99.05, 98.3, 98.4),
+                             bar(97.8, 97.95, 97.6, 97.9), bar(97.9, 100.6, 97.85, 100.5)] + top + v11_drop(100.1),
+        # C1 (18) opens and closes below the box: no trade
+        "c1_body_out": up + [t1_deep, bar(97.7, 97.95, 97.6, 97.9), bar(97.9, 100.6, 97.85, 100.5),
+                             bar(100.5, 100.6, 100.0, 100.55)] + top + v11_drop(100.1),
+        # the next candle of the T1 touch (18, red, still touching) closes below the box: no trade
+        "t1_next_candle_out": up + [t1_deep, bar(98.2, 98.3, 97.55, 97.7), bar(97.7, 100.6, 97.65, 100.5),
+                                    bar(100.5, 100.6, 100.0, 100.55)] + top + v11_drop(100.1),
+        # T1 (17, wick 97.5), C1 18 in the box, C2 19 closes above it (the rejection), away (20), T2 (21) closes
+        # below the box (97.8) without closing below the T1 wick: no trade
+        "t2_body_out": up + [t1_deep, bar(98.2, 99.1, 98.15, 99.0), bar(99.0, 100.6, 98.95, 100.5),
+                             bar(100.5, 100.6, 100.0, 100.1), bar(100.1, 100.15, 97.7, 97.8)] + top + v11_drop(100.1),
+        # allowed: the T1 wick goes below the box, its body stays in it; C1 in the box, C2 above it: trades
+        "t1_wick_out_ok": up + [t1_deep, bar(98.2, 99.1, 98.15, 99.0), bar(99.0, 100.6, 98.95, 100.5)] + top +
+        v11_drop(100.1),
+        # allowed: T1 closes exactly on the box's bottom (98.0) and C1 opens there: on the box counts as in it
+        "t1_close_on_edge": up + [bar(100.1, 100.15, 97.6, 98.0), bar(98.0, 99.1, 97.95, 99.0),
+                                  bar(99.0, 100.6, 98.95, 100.5)] + top + v11_drop(100.1),
+    }
+    for v in sq.values():
+        check(v)
+    return sq
+
+
 def boundary_cases() -> dict[str, tuple[list, dict]]:
     """Sequences that sit exactly on a comparison boundary, built from the detector's own arithmetic so the float
     values are identical in Python and in the C++ transliteration. name -> (bars, BreakoutParams overrides)."""

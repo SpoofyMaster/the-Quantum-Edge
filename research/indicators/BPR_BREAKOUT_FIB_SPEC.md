@@ -6,7 +6,7 @@
 from that message **before any data was looked at**.
 
 **Implementations.** This file is the single source of truth for:
-- the MQL5 EA `mql5/BprFvgEA/` (version 10; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5; 9.01 = `InpCancelAtSessionEnd = false` keeps the pending orders, §8; v10 = 9.01 plus the pending-order time limit and several setups at a time, §4.2–§5 and §8): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
+- the MQL5 EA `mql5/BprFvgEA/` (version 11; v3 = v2 plus the EA-only switches of §8; v4 = v3 plus the EA-only exit switches of §8; v5 = v4 plus the MQL5-only entry switches of §4.2–§5 and §8; v6 = v5 plus the MQL5-only reversal setup and touch entry of §4.5, §5 and §8; v7 = v6 with the reversal rules of the owner's example of 2026-10-15, §4.5; v8 = 7.01 plus tracking every BPR until its first touch and quick reversal limits, §3, §4.1, §4.5, §7; v9 = v8 plus the reversal's rejection candles of the owner's rule of 2026-10-17, §4.5; 9.01 = `InpCancelAtSessionEnd = false` keeps the pending orders, §8; v10 = 9.01 plus the pending-order time limit and several setups at a time, §4.2–§5 and §8; v11 = v10 plus the reversal's bodies in the box, §4.5): pure detector `include/BfDetector.mqh`, executor `BprFvgEA.mq5`;
 - the Python reference `qe/strategies/bpr_breakout.py`.
 
 The two detectors must emit the same event records; `tests/test_bpr_breakout_ea_harness.py` checks this.
@@ -77,6 +77,7 @@ gives the rules.
 | `InpMaxBarsToT1` | (MQL5 only: `t1WaitBars`) | −1 (EA: 0) | v8: bars from the BPR's creation to T1, 0 = no limit, −1 = v7 rules (§3, §4.1, §4.5, §7) |
 | `InpRevNeedFvg` | (MQL5 only: `revNeedFvg`) | true (EA: false) | v8: the reversal waits for its FVG (§4.5) |
 | `InpRevRejCandles` | (MQL5 only: `revRejCandles`) | 0 (EA: 2) | v9: rejection candles needed before the reversal breakout (§4.5) |
+| `InpRevBodyInBox` | (MQL5 only: `revBodyInBox`) | false (EA: true) | v11: the T1 / T2 and C1 .. C`revRejCandles` bodies stay in the box (§4.5) |
 | `InpPendingMaxMin` | (MQL5 only: `pendingMaxSec` = minutes × 60) | 0 | v10: a setup's limits end this long after its first placement (§4.2–§4.4 notes) |
 | `InpMaxSetups` | (MQL5 only: `maxSetups`) | 1 (EA: 5) | v10: setups with orders or positions at the same time (§5, §8) |
 
@@ -309,6 +310,20 @@ A reversal setup has this state (bullish BPR; a bearish BPR is the mirror image:
   that was not a breakout. A rejection candle never closes beyond the level, so it is never a breakout candle itself.
   A doji and the T1 candle do not count. Every record carries the setup's `nRejC` after its bar (`rejC`; the harness
   prints it as `rc` with `ext=1`). On a `BREAKOUT` it is the count the breakout used.
+- **v11 bodies in the box** (`revBodyInBox`; reversal setups only). The owner's rule of 2026-10-21: "on T1 or T2, the
+  body of those candles must not go out of BPR rectangle ... C1 and C2 must also above or on the box, if they close out
+  of the BPR box no trade, and same for a tape from below". `bodyOut(u)`: bullish BPR (tapped from above)
+  `min(o[u], c[u]) < B`; bearish `max(o[u], c[u]) > T` (on the edge is in the box; the wicks are free).
+  1. **Touch candles.** At a new touch (T1 / T2, step 6) and on every next candle of the same touch visit (`tVisit`:
+     set at a touch, cleared at its rejection, at a pullback visit and at a breakout): `bodyOut(u)` →
+     `DONE(BROKEN)` with `bodyOut = touches`. Before the v6 touch entry, so no touch entry follows.
+  2. **Rejection candles.** In the v9 count, a candle that counts as C`n` with `n ≤ revRejCandles` and `bodyOut(u)` →
+     `DONE(BROKEN)` with `bodyOut = 10 + n`.
+  3. **Not checked:** other candles (neither T nor C), pullback visits, breakout candles. Continuation setups already
+     end `BROKEN` at a wick beyond the far side.
+
+  Records carry `bodyOut` (harness `bo`); the reason stays `BROKEN` (the reason codes are shared with the Python
+  reference's stats layout).
 - **The reversal leg `rO` / `rX`** (100 % / 0 %): `TrackRev(u)` runs on every pre-confirmation bar from T1 on: if
   `h[u] > rO`, then `rO = h[u]` and `rX = l[u]`; otherwise if `l[u] < rX`, then `rX = l[u]`.
   - T1 starts it: `rO = h[u]`, `rX = l[u]`. This only matters while no visit has been rejected

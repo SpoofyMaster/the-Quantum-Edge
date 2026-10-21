@@ -327,6 +327,11 @@ struct BfParams
                                           // level that was not a breakout ("a rejection of at least 2 green candles,
                                           // successive or not, before price comes back for the breakout"). > 0 also:
                                           // such a close is no touch (no T2, the level stays)
+   // v11 (EA only; false = v10)
+   bool              revBodyInBox;        // reversal: the bodies of the T1 / T2 candles (every candle of the touch) and
+                                          // of the rejection candles C1 .. C<revRejCandles> must stay in the BPR box or on
+                                          // its side of it (a bullish BPR, tested from above: not below its bottom B;
+                                          // a bearish one: not above its top T). Otherwise no trade: DONE(BROKEN)
    // v10 (EA only; 1 / 0 = v9)
    int               maxSetups;           // setups with orders or positions at the same time (1 = one at a time, the
                                           // v2-v9 rule). > 1: every ready setup decides on its bar while a slot is
@@ -376,6 +381,7 @@ void BfDefaultParams(BfParams &p)
    p.t1WaitBars           = -1;
    p.revNeedFvg           = true;
    p.revRejCandles        = 0;
+   p.revBodyInBox         = false;
    p.maxSetups            = 1;
    p.pendingMaxSec        = 0;
    p.useSession           = true;
@@ -417,6 +423,7 @@ void BfCopyParams(BfParams &dst, const BfParams &src)
    dst.t1WaitBars           = src.t1WaitBars;
    dst.revNeedFvg           = src.revNeedFvg;
    dst.revRejCandles        = src.revRejCandles;
+   dst.revBodyInBox         = src.revBodyInBox;
    dst.maxSetups            = src.maxSetups;
    dst.pendingMaxSec        = src.pendingMaxSec;
    dst.useSession           = src.useSession;
@@ -548,6 +555,8 @@ struct BfSetup
    long              ordTime;             // v10: env.now of the setup's first placement (0 = no order yet)
    int               ordBar;              // v10: the bar of that first placement (-1 = none)
    int               dupOf;               // v10: ended because setup dupOf already trades the same leg (0 = no)
+   bool              tVisit;              // v11: the current visit of the zone is a touch (T1 / T2), not a pullback
+   int               bodyOut;             // v11: ended because a body left the box: n = the Tn candle, 10 + n = Cn
    bool              pendTimeUp;          // v10: the pending-order time limit (pendingMaxSec) ended its orders
    int               reAnchorBar;         // v10: the bar of its last re-anchor (it keeps its slot to decide again)
   };
@@ -618,6 +627,8 @@ void BfClearSetup(BfSetup &s)
    s.ordTime     = 0;
    s.ordBar      = -1;
    s.dupOf       = 0;
+   s.tVisit      = false;
+   s.bodyOut     = 0;
    s.pendTimeUp  = false;
    s.reAnchorBar = -1;
   }
@@ -688,6 +699,8 @@ void BfCopySetup(BfSetup &dst, const BfSetup &src)
    dst.ordTime     = src.ordTime;
    dst.ordBar      = src.ordBar;
    dst.dupOf       = src.dupOf;
+   dst.tVisit      = src.tVisit;
+   dst.bodyOut     = src.bodyOut;
    dst.pendTimeUp  = src.pendTimeUp;
    dst.reAnchorBar = src.reAnchorBar;
   }
@@ -785,6 +798,7 @@ struct BfEvent
                                           // BREAKOUT: the count the breakout used, the breakout candle never counts)
    bool              pendTime;            // v10: the record comes from the pending-order time limit (EXPIRED)
    int               dupOf;               // v10: DONE(NO_LEVEL) because setup dupOf trades the same leg (0 = no)
+   int               bodyOut;             // v11: DONE(BROKEN) because a body left the box: n = Tn, 10 + n = Cn
   };
 
 void BfClearEvent(BfEvent &e)
@@ -829,6 +843,7 @@ void BfClearEvent(BfEvent &e)
    e.kind        = BF_SETUP_CONTINUATION;
    e.rejC        = 0;
    e.dupOf       = 0;
+   e.bodyOut     = 0;
    e.pendTime    = false;
   }
 
@@ -874,6 +889,7 @@ void BfCopyEvent(BfEvent &dst, const BfEvent &src)
    dst.kind        = src.kind;
    dst.rejC        = src.rejC;
    dst.dupOf       = src.dupOf;
+   dst.bodyOut     = src.bodyOut;
    dst.pendTime    = src.pendTime;
   }
 

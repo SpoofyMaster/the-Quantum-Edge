@@ -62,6 +62,7 @@ static void SetParam(BfParams &p, BfEngineParams &ep, double &sp, int &tradeFrom
    else if(k == "t1_wait") p.t1WaitBars = (int)v;                    // v8, EA only: -1 = v7, 0 = no limit
    else if(k == "rev_fvg") p.revNeedFvg = v != 0;                    // v8, EA only
    else if(k == "rev_rej_c") p.revRejCandles = (int)v;               // v9, EA only: 0 = v8
+   else if(k == "rev_body_box") p.revBodyInBox = v != 0;             // v11, EA only: false = v10
    else if(k == "max_setups") p.maxSetups = (int)v;                  // v10, EA only: 1 = one setup at a time
    else if(k == "pend_max_sec") p.pendingMaxSec = (int)v;            // v10, EA only: 0 = off
    else if(k == "bar_sec") barSec = (int)v;                          // v10 tests
@@ -135,8 +136,9 @@ int main(int argc, char **argv)
                 px ? Num(e.P).c_str() : "null", px ? Num(e.SL).c_str() : "null", px ? Num(e.TP).c_str() : "null",
                 ox ? Num(e.O).c_str() : "null", ox ? Num(e.X).c_str() : "null");
          if(extOut)
-            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d,\"pt\":%d,\"dup\":%d", e.kind, e.zdir,
-                   Num(e.lvl).c_str(), e.lvlBar, e.rejC, e.pendTime ? 1 : 0, e.dupOf);
+            printf(",\"kind\":%d,\"zdir\":%d,\"lvl\":%s,\"lvlBar\":%d,\"rc\":%d,\"pt\":%d,\"dup\":%d,\"bo\":%d,\"zb\":%s,\"zt\":%s",
+                   e.kind, e.zdir, Num(e.lvl).c_str(), e.lvlBar, e.rejC, e.pendTime ? 1 : 0, e.dupOf, e.bodyOut,
+                   Num(e.B).c_str(), Num(e.T).c_str());
          printf("}\n");
         }
       det.ClearEvents();
